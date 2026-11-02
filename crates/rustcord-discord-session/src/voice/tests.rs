@@ -1355,7 +1355,9 @@ fn nacked(packet: &[u8]) -> Option<(u32, u32, Vec<u16>)> {
         )
         .ok()?;
     let lost = body[4..]
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|entry| {
             super::nack::lost(
                 u16::from_be_bytes([entry[0], entry[1]]),

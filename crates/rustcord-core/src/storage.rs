@@ -142,7 +142,7 @@ impl Reservation {
         }
         shared
             .bytes
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |held| {
                 held.checked_add(bytes)
                     .filter(|total| *total <= MAX_QUEUED_BYTES)
             })
@@ -192,7 +192,7 @@ impl AnswerSlot {
     fn reserve(shared: &Arc<Shared>) -> Option<Self> {
         shared
             .answers
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |held| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |held| {
                 (held < CACHED_ANSWERS).then_some(held + 1)
             })
             .ok()?;

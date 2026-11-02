@@ -461,7 +461,8 @@ pub(crate) fn secondary_click(
         (UserId(user), place)
     } else if let Some(user) = number("active:avatar:") {
         (UserId(user), Place::Friends)
-    } else if let Some(message) = number("pp:name:").or_else(|| number("pp:avatar:")) {
+    } else {
+        let message = number("pp:name:").or_else(|| number("pp:avatar:"))?;
         let channel = ui.channel()?;
         let user = store.timeline(channel)?.get(MessageId(message))?.author;
         let server = store.channel(channel).and_then(|found| found.server);
@@ -470,8 +471,6 @@ pub(crate) fn secondary_click(
             None => Place::Direct { channel },
         };
         (user, place)
-    } else {
-        return None;
     };
     // Opening it closes the other menus, as the voice's does.
     ui.voice.menu = None;

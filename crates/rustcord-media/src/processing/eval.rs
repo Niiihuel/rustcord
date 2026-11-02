@@ -640,8 +640,10 @@ fn echo_left(far: &[f32]) -> f64 {
     let (mut before, mut after) = (0.0_f64, 0.0_f64);
     let mut frame = vec![0.0; FRAME];
     for (index, (played, mic)) in far
-        .chunks_exact(FRAME)
-        .zip(heard.chunks_exact(FRAME))
+        .as_chunks::<FRAME>()
+        .0
+        .iter()
+        .zip(heard.as_chunks::<FRAME>().0)
         .enumerate()
     {
         processor.render(played, 0).unwrap();

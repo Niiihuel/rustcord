@@ -89,7 +89,9 @@ fn annotated_tags() -> Result<Vec<(String, String)>> {
     ])?;
     let fields: Vec<&str> = listed.split('\0').collect();
     Ok(fields
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|tag| tag[1] == "tag")
         .map(|tag| (tag[0].trim().to_owned(), tag[2].trim().to_owned()))
         .collect())

@@ -144,10 +144,9 @@ fn murmur3(bytes: &[u8]) -> u32 {
             .wrapping_mul(0x1b87_3593)
     };
     let mut hash = 0u32;
-    let blocks = bytes.chunks_exact(4);
-    let tail = blocks.remainder();
+    let (blocks, tail) = bytes.as_chunks::<4>();
     for block in blocks {
-        hash ^= mix(u32::from_le_bytes([block[0], block[1], block[2], block[3]]));
+        hash ^= mix(u32::from_le_bytes(*block));
         hash = hash
             .rotate_left(13)
             .wrapping_mul(5)

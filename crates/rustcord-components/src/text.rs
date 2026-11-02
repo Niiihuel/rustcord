@@ -511,7 +511,9 @@ fn spoil(
         })
         .collect();
     let cuts: Vec<(usize, usize)> = marks
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter(|pair| pair[1] != (pair[0].0, pair[0].1 + 2))
         .flatten()
         .copied()

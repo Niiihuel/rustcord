@@ -609,7 +609,9 @@ fn capture(
                     return;
                 };
                 let samples: Vec<f32> = bytes
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|sample| f32::from_le_bytes([sample[0], sample[1], sample[2], sample[3]]))
                     .collect();
                 mix.borrow_mut().push(id, &samples);

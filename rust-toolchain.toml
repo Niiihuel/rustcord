@@ -1,0 +1,5 @@
+# The compiler every checkout, CI and release builds with: rustup installs it
+# on first use. `rust-version` in Cargo.toml and the workflows follow it.
+[toolchain]
+channel = "1.99.1"
+components = ["rustfmt", "clippy"]
