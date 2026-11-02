@@ -61,8 +61,9 @@ fn the_sign_in_page_says_where_it_comes_from_and_offers_the_others() {
     // The choices survive the page's own reset of the window.
     assert_eq!(host.ui.providers.options.len(), 3);
     let text = host.painted().join(" ");
-    assert!(text.contains("Sesión personal · no oficial"));
-    assert!(text.contains("Experimento personal no oficial"));
+    // The sign-in card keeps clear of the provider's origin and warning.
+    assert!(!text.contains("Sesión personal · no oficial"));
+    assert!(!text.contains("Experimento personal no oficial"));
     host.click("provider:list");
     let text = host.painted().join(" ");
     assert!(text.contains("Simulación de prueba · sin conexión real"));

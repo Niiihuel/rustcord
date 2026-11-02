@@ -63,6 +63,8 @@ en [limn](https://github.com/Niiihuel/limn).
   independiente del proveedor: nada por encima de `rustcord-provider` conoce
   un servicio concreto. Distinguir proveedor oficial, simulado y no oficial;
   autorizar el experimento personal no implica aprobación de Discord.
+  Esa advertencia va en el README y en Ajustes → Conexiones, no en la
+  pantalla de acceso (2026-11-01).
 - No afirmar que algo funciona sin haberlo probado; lo simulado se etiqueta
   como simulado en la interfaz.
 - Nada de código ajeno copiado: lo que se toma de otro cliente o servicio se

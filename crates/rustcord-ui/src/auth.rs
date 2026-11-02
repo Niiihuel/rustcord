@@ -166,12 +166,11 @@ pub fn view(ui: &Ui, store: &Store, look: &Look, context: &ViewContext) -> Eleme
         choosing && !store.accounts.is_empty(),
     );
     let mut content = body(ui, store, inner, look);
-    // Where this comes from, always; an unofficial one also says what it risks.
-    content
-        .push(text(crate::providers::origin(provider), 13.0, look.muted).size(Some(inner), None));
-    if provider.kind == ProviderKind::Unofficial {
-        content
-            .push(text(t(crate::providers::UNOFFICIAL), 13.0, look.idle).size(Some(inner), None));
+    // Only the simulation says where it comes from: its data is invented.
+    if provider.kind == ProviderKind::Simulated {
+        content.push(
+            text(crate::providers::origin(provider), 13.0, look.muted).size(Some(inner), None),
+        );
     }
     if choosing && crate::providers::choosable(ui) {
         content.push(
