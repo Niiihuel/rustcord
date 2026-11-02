@@ -647,7 +647,9 @@ mod tests {
         assert!(matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)));
     }
 
+    // Hyprland runs only on Linux, where any key may go global.
     #[test]
+    #[cfg(target_os = "linux")]
     fn under_hyprland_a_held_key_is_let_go_by_its_release_shortcut_too() {
         let mut global = GlobalPushToTalk::new(true);
         let mut ui = ptt("V");
