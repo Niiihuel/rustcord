@@ -1,0 +1,313 @@
+//! Settings state, desktop settings, accounts, sign-in and providers (`rustcord-ui`).
+
+pub(super) const ENTRIES: super::Entries = &[
+    // The settings' pages (`settings/mod.rs`).
+    ("Cuenta", "Account"),
+    ("Datos y privacidad", "Data and privacy"),
+    ("Notificaciones", "Notifications"),
+    ("Voz y video", "Voice and video"),
+    ("Apariencia", "Appearance"),
+    ("Accesibilidad", "Accessibility"),
+    ("Idioma y hora", "Language and time"),
+    ("Privacidad de la actividad", "Activity privacy"),
+    // The sidebar's groups.
+    ("General", "General"),
+    ("Experiencia", "Experience"),
+    ("Juegos y aplicaciones", "Games and apps"),
+    ("Otro", "Other"),
+    ("Servidor", "Server"),
+    ("Mensaje directo", "Direct message"),
+    ("La cuenta todavía no se conectó.", "The account hasn't connected yet."),
+    (
+        "Este proveedor no permite editar el perfil.",
+        "This provider doesn't allow editing the profile.",
+    ),
+    ("El próximo envío será rechazado", "The next send will be rejected"),
+    (
+        "Fallo simulado, para ver el reintento.",
+        "A simulated failure, to see the retry.",
+    ),
+    ("El próximo envío no tendrá respuesta", "The next send will get no answer"),
+    (
+        "A los 30 s se marcará como de destino incierto.",
+        "After 30 s it will be marked as possibly not delivered.",
+    ),
+    ("Borrando datos locales…", "Deleting local data…"),
+    (
+        "Esperando a que se confirme el cambio en este equipo.",
+        "Waiting for the change to be confirmed on this device.",
+    ),
+    ("Conexión simulada cortada", "Simulated connection cut"),
+    ("El cliente debería reconectar solo.", "The client should reconnect on its own."),
+    // The desktop's settings (`settings/pages/desktop.rs`): sections and the
+    // words each setting is found by.
+    (
+        "código de privacidad cifrado de extremo a extremo dave verificar llamada seguridad",
+        "privacy code end-to-end encryption e2ee dave verify call security",
+    ),
+    ("Fuente", "Font"),
+    (
+        "fuente letra tipografía familia del sistema interfaz texto",
+        "font typeface typography family system interface text",
+    ),
+    ("Paneles y canales", "Panels and channels"),
+    (
+        "ancho de los paneles lista de canales miembros arrastrar restablecer",
+        "panel width channel list members drag resize reset",
+    ),
+    (
+        "mostrar canales ocultos sin acceso privados ver favoritos fijados",
+        "show hidden channels no access private view favorites pinned",
+    ),
+    ("Escritorio", "Desktop"),
+    (
+        "bandeja del sistema cerrar a la bandeja minimizar segundo plano ícono",
+        "system tray close to tray minimize background icon",
+    ),
+    (
+        "iniciar con la sesión al encender arrancar automáticamente inicio",
+        "start with session login startup launch automatically autostart",
+    ),
+    (
+        "rich presence actividad de otros programas juegos reproductores socket local discord ipc",
+        "rich presence activity other programs games players local socket discord ipc",
+    ),
+    (
+        "detectar juegos procesos jugando actividad",
+        "detect games processes playing activity",
+    ),
+    ("actividad actual publicada ahora", "current activity published now"),
+    ("Código de privacidad", "Privacy code"),
+    (
+        "Este proveedor no cifra las llamadas de extremo a extremo.",
+        "This provider doesn't encrypt calls end to end.",
+    ),
+    (
+        "Durante una llamada cifrada aparece aquí y en Detalles de voz, con el código para verificar a cada persona.",
+        "During an encrypted call it shows here and in Voice details, with the code to verify each person.",
+    ),
+    ("Ubuntu (la de Rustcord)", "Ubuntu (Rustcord's own)"),
+    ("Buscando las fuentes del sistema…", "Looking for the system's fonts…"),
+    (
+        "La del texto de toda la ventana. Si desinstalas una fuente, Rustcord vuelve a la suya.",
+        "The text font for the whole window. If you uninstall a font, Rustcord goes back to its own.",
+    ),
+    ("Fuente de la interfaz", "Interface font"),
+    ("Ancho de los paneles", "Panel widths"),
+    (
+        "Arrastra el borde de la lista de canales o de la de miembros. Ahora: {channels} y {members} px.",
+        "Drag the edge of the channel list or the member list. Now: {channels} and {members} px.",
+    ),
+    ("Restablecer", "Reset"),
+    ("Mostrar los canales ocultos", "Show hidden channels"),
+    (
+        "Lista también los canales que no puedes ver, atenuados y sin abrirse.",
+        "Also lists the channels you can't see, dimmed and not openable.",
+    ),
+    (
+        "El escritorio no tiene bandeja del sistema: cerrar sale de Rustcord.",
+        "Your desktop has no system tray: closing quits Rustcord.",
+    ),
+    (
+        "Rustcord se abre al iniciar la sesión.",
+        "Rustcord opens when you sign in.",
+    ),
+    ("Leyendo…", "Reading…"),
+    ("Este proveedor no publica actividades.", "This provider doesn't publish activities."),
+    (
+        "Otros programas de este equipo, como juegos o reproductores, pueden mostrar lo que haces. Solo ven tu usuario, sin acceso a la red.",
+        "Other programs on this computer, like games or players, can show what you're doing. They only see your user, with no network access.",
+    ),
+    ("Actividad de otros programas", "Activity from other programs"),
+    ("Este proveedor no reconoce juegos.", "This provider doesn't recognize games."),
+    ("Detectar juegos", "Detect games"),
+    (
+        "Cada 10 s Rustcord mira el nombre de tus programas abiertos y muestra «Jugando a…» si es un juego.",
+        "Every 10 s Rustcord checks the names of your open programs and shows “Playing…” for a game.",
+    ),
+    ("la aplicación {application}", "the app {application}"),
+    ("una aplicación", "an app"),
+    (
+        "Jugando a {name}, detectado en este equipo.",
+        "Playing {name}, detected on this device.",
+    ),
+    ("{name} dice lo que estás haciendo.", "{name} says what you're doing."),
+    ("Ninguna por ahora.", "None for now."),
+    ("Ahora", "Now"),
+    ("Sin atajo", "No shortcut"),
+    ("Quitar", "Remove"),
+    ("Pulsa la combinación. Esc cancela.", "Press the combination. Esc cancels."),
+    (
+        "Mientras lo mantienes, el micrófono no pasa.",
+        "While you hold it, the microphone is muted.",
+    ),
+    ("Sólo en la ventana: {reason}", "Only in the window: {reason}"),
+    (
+        "Pidiendo el atajo global al escritorio…",
+        "Asking the desktop for the global shortcut…",
+    ),
+    (
+        "También fuera de Rustcord, como el escritorio lo asigne.",
+        "Also outside Rustcord, as the desktop assigns it.",
+    ),
+    // Shortcuts and panels (`desktop.rs`).
+    ("Pulsar para hablar", "Push to talk"),
+    ("Silenciar o activar el micrófono", "Mute or unmute the microphone"),
+    ("Ensordecer o volver a oír", "Deafen or undeafen"),
+    ("Pulsar para silenciar", "Push to mute"),
+    ("Una aplicación", "An app"),
+    ("Cambiar el ancho de la lista de canales", "Resize the channel list"),
+    ("Cambiar el ancho de la lista de miembros", "Resize the member list"),
+    ("Cambiar el ancho del chat de la llamada", "Resize the call's chat"),
+    // Folders and messaging privacy (`account.rs`).
+    (
+        "No se pudieron cambiar las notificaciones",
+        "Couldn't change the notifications",
+    ),
+    ("No se pudieron cambiar las carpetas", "Couldn't change the folders"),
+    ("Mover arriba", "Move up"),
+    ("Mover abajo", "Move down"),
+    ("Nueva carpeta", "New folder"),
+    ("Mover a una carpeta", "Move to a folder"),
+    ("Sacar de la carpeta", "Remove from folder"),
+    ("Ajustes de carpeta", "Folder settings"),
+    ("Desarmar carpeta", "Ungroup folder"),
+    (
+        "Todavía no se leyó la privacidad de tu cuenta.",
+        "Your account's privacy hasn't been read yet.",
+    ),
+    (
+        "Permitir mensajes directos de miembros del servidor",
+        "Allow direct messages from server members",
+    ),
+    (
+        "Permite recibir MD de otros miembros del servidor. Para los servidores a los que entres desde ahora.",
+        "Allow direct messages from other server members. For the servers you join from now on.",
+    ),
+    (
+        "Solicitudes de mensajes",
+        "Message requests",
+    ),
+    (
+        "Filtra mensajes de miembros del servidor que quizás no conozcas.",
+        "Filter messages from server members you may not know.",
+    ),
+    (
+        "Para cambiarlo en un servidor, usa «Ajustes de privacidad» en su menú.",
+        "To change it for a server, use “Privacy settings” in its menu.",
+    ),
+    ("Filtrar todo el spam", "Filter all spam"),
+    ("También los de tus amigos.", "Your friends' too."),
+    (
+        "Filtrar los mensajes de personas que no sean tus amigos (recomendado)",
+        "Filter messages from people who aren't your friends (recommended)",
+    ),
+    (
+        "Lo que la cuenta hace si nunca se cambió.",
+        "What the account does if it was never changed.",
+    ),
+    ("No filtrar el spam", "Don't filter spam"),
+    (
+        "Filtrar automáticamente los mensajes de spam sospechosos",
+        "Automatically filter suspected spam messages",
+    ),
+    (
+        "Lo que parece spam va a una carpeta aparte en vez de a tus mensajes directos.",
+        "What looks like spam goes to a separate folder instead of your direct messages.",
+    ),
+    (
+        "Mensajes en los canales del servidor",
+        "Messages in server channels",
+    ),
+    ("Mensajes directos de amigos", "Direct messages from friends"),
+    (
+        "Mensajes directos de otras personas",
+        "Direct messages from others",
+    ),
+    ("Archivo multimedia sexual para adultos", "Mature sexual media"),
+    (
+        "Difumina las imágenes explícitas hasta que decidas verlas.",
+        "Blurs explicit images until you decide to view them.",
+    ),
+    ("Mostrar", "Show"),
+    ("Difuminar", "Blur"),
+    ("Bloquear", "Block"),
+    ("Todo el mundo", "Everyone"),
+    (
+        "Cualquiera que sepa tu nombre de usuario.",
+        "Anyone who knows your username.",
+    ),
+    ("Amigos de amigos", "Friends of friends"),
+    (
+        "Quienes tienen un amigo en común contigo.",
+        "People who have a friend in common with you.",
+    ),
+    (
+        "Los miembros del servidor solo pueden enviarte solicitudes de amistad desde los servidores donde también permites mensajes directos.",
+        "Server members can only send you friend requests from servers where you also allow direct messages.",
+    ),
+    ("Mensajes directos", "Direct messages"),
+    ("No se pudo cambiar la privacidad", "Couldn't change the privacy"),
+    ("No se pudo guardar la nota", "Couldn't save the note"),
+    ("La nota es muy larga", "The note is too long"),
+    ("Puede tener hasta 256 caracteres.", "It can be up to 256 characters."),
+    // Sign-in (`auth.rs`).
+    ("Cuenta guardada", "Saved account"),
+    ("Ocultar los proveedores", "Hide the providers"),
+    ("Usar otro proveedor", "Use another provider"),
+    ("Preparando el acceso", "Getting sign-in ready"),
+    ("Enseguida puedes conectar tu cuenta.", "You can connect your account in a moment."),
+    ("¡Qué bueno verte!", "Good to see you!"),
+    ("¡Te damos la bienvenida de nuevo!", "Welcome back!"),
+    ("¡Nos alegra verte de nuevo!", "We're so excited to see you again!"),
+    ("Elige una cuenta", "Choose an account"),
+    (
+        "Selecciona una cuenta para iniciar sesión o agrega una nueva.",
+        "Select an account to sign in or add a new one.",
+    ),
+    (
+        "Conecta tu cuenta desde el navegador para continuar.",
+        "Connect your account from the browser to continue.",
+    ),
+    ("No pudimos iniciar sesión", "We couldn't sign you in"),
+    ("Puedes volver a intentarlo cuando quieras.", "You can try again whenever you want."),
+    ("Continúa en tu navegador", "Continue in your browser"),
+    (
+        "Autoriza el acceso y vuelve a Rustcord para continuar.",
+        "Authorize access and come back to Rustcord to continue.",
+    ),
+    ("Continúa el inicio de sesión", "Continue signing in"),
+    (
+        "Completa el acceso en la ventana de inicio de sesión.",
+        "Finish signing in in the sign-in window.",
+    ),
+    ("Un momento…", "One moment…"),
+    ("Estamos verificando tu cuenta.", "We're verifying your account."),
+    ("Tu cuenta", "Your account"),
+    ("Solo puedes agregar {max} cuentas.", "You can only add {max} accounts."),
+    ("{name} cerró sesión", "{name} logged out"),
+    ("Volver a intentar", "Try again"),
+    ("Iniciar sesión", "Sign in"),
+    ("Abrir navegador", "Open browser"),
+    // Providers (`providers.rs`, `challenges.rs`).
+    (
+        "Experimento personal no oficial: el servicio no lo aprobó, puede dejar de funcionar y usarlo puede tener consecuencias para tu cuenta.",
+        "Unofficial personal experiment: the service hasn't approved it, it may stop working, and using it may have consequences for your account.",
+    ),
+    ("sin conexión real", "no real connection"),
+    ("oficial", "official"),
+    ("no oficial", "unofficial"),
+    ("En uso", "In use"),
+    ("Usar", "Use"),
+    (
+        "¿Cambiar a {name}? Se cierra la sesión actual y se borran de la ventana sus conversaciones, borradores, búsquedas, visores y trabajos en curso. Las cuentas recordadas y tus preferencias se conservan.",
+        "Switch to {name}? The current session is signed out and its conversations, drafts, searches, viewers and work in progress are cleared from the window. Remembered accounts and your preferences are kept.",
+    ),
+    ("Cambiar", "Change"),
+    ("El servicio", "The service"),
+    // A real account's first cards.
+    ("No se pudo cargar la nota.", "Couldn't load the note."),
+    ("Abre Rustcord de forma automática cuando se inicie tu computadora", "Open Rustcord automatically when your computer starts"),
+    ("Al hacer clic en X, Rustcord se minimiza en lugar de cerrarse por completo.", "Clicking X minimizes Rustcord instead of closing it completely."),
+    ("Minimiza Rustcord en la bandeja del sistema", "Minimize Rustcord to System Tray"),
+];

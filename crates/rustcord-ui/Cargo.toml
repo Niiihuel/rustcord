@@ -1,0 +1,23 @@
+[package]
+name = "rustcord-ui"
+description = "Rustcord's window: the view of the state and what the person's actions ask for"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Interface text in the language the person chose.
+rustcord-i18n.workspace = true
+limn.workspace = true
+rustcord-components.workspace = true
+rustcord-media.workspace = true
+rustcord-model.workspace = true
+rustcord-provider.workspace = true
+rustcord-state.workspace = true
+# Validate explicitly pasted HTTPS media links before inserting text; no fetch.
+url = "2"

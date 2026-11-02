@@ -1,0 +1,62 @@
+[package]
+name = "rustcord-desktop"
+description = "Rustcord's desktop window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "rustcord"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The unofficial session login is isolated from the main limn UI.
+session-login = ["dep:rustcord-discord-session", "dep:rustcord-login", "rustcord-login/webview"]
+
+[dependencies]
+# Interface text in the language the person chose.
+rustcord-i18n.workspace = true
+limn.workspace = true
+limn-egui.workspace = true
+# Opens the window and drives the frame loop; limn-egui paints into it.
+eframe.workspace = true
+# egui 0.37 moved its emoji fonts behind this feature; keeps the text as it was.
+egui = { version = "0.37.0", default-features = false, features = ["monochrome_emoji_fonts"] }
+rustcord-components.workspace = true
+rustcord-core.workspace = true
+# The OAuth2 adapter is selected only by the desktop host.
+rustcord-discord.workspace = true
+# Optional unofficial session adapter and its isolated login process.
+rustcord-discord-session = { workspace = true, optional = true }
+rustcord-login = { workspace = true, optional = true }
+rustcord-media.workspace = true
+rustcord-model.workspace = true
+# The desktop's global push-to-talk shortcut, through its portal.
+rustcord-platform.workspace = true
+rustcord-provider.workspace = true
+rustcord-state.workspace = true
+rustcord-ui.workspace = true
+# Rustcord's own updates: the check before the window, the mandatory update's
+# window and the optional one's installation.
+rustcord-update.workspace = true
+# Which characters a font draws, to fall back to a system font for the rest;
+# the same version egui already builds to read fonts.
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
+# Saves `--screenshot` captures as PNG; already built for limn-egui's images.
+# JPEG makes the picture of the account's own stream others see before
+# watching it; rustcord-core already builds it.
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+[build-dependencies]
+# rustcord.exe's icon and version information on Windows (build.rs): rc.exe
+# with MSVC, windres with MinGW. Without its `toml` feature it only brings
+# version_check. A `cfg(windows)` build dependency would ask about the
+# machine that builds, not the target, so it is built everywhere and does
+# nothing off Windows.
+winresource = { version = "0.1.34", default-features = false }

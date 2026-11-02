@@ -1,0 +1,67 @@
+//! Files in apps' modals: the field, its limits, and why
+//! they did not go.
+
+pub(super) const ENTRIES: super::Entries = &[
+    // rustcord-model/src/interactions.rs
+    ("Adjunta un archivo", "Attach a file"),
+    (
+        "Adjunta al menos {min} archivos",
+        "Attach at least {min} files",
+    ),
+    (
+        "Adjunta como mucho {max} archivos",
+        "Attach at most {max} files",
+    ),
+    // rustcord-components/src/interactions.rs
+    ("Elegir archivos", "Choose files"),
+    ("Un archivo", "One file"),
+    ("Hasta {max} archivos", "Up to {max} files"),
+    ("Tipos permitidos: {kinds}", "Allowed types: {kinds}"),
+    ("imágenes", "images"),
+    ("videos", "videos"),
+    ("audio", "audio"),
+    // rustcord-discord-session/src/interactions.rs
+    (
+        "Los archivos no coinciden con el formulario: no se envió nada.",
+        "The files don't match the form: nothing was sent.",
+    ),
+    (
+        "No tienes permiso para adjuntar archivos en el canal.",
+        "You don't have permission to attach files in the channel.",
+    ),
+    (
+        "El formulario supera los archivos o el tamaño permitidos.",
+        "The form exceeds the allowed files or size.",
+    ),
+    (
+        "Un archivo no es de un tipo que acepte el formulario: no se envió nada.",
+        "A file isn't of a type the form accepts: nothing was sent.",
+    ),
+    // rustcord-provider/src/mock/interactions.rs
+    (
+        "Los archivos no coinciden con el formulario (simulado).",
+        "The files don't match the form (simulated).",
+    ),
+    (
+        "No tienes permiso para adjuntar archivos (simulado).",
+        "You don't have permission to attach files (simulated).",
+    ),
+    // rustcord-state/src/interactions.rs
+    (
+        "No tienes permiso para adjuntar archivos aquí",
+        "You don't have permission to attach files here",
+    ),
+    // rustcord-ui/src/interactions.rs
+    (
+        "{name} no es de un tipo que acepte este campo",
+        "{name} isn't of a type this field accepts",
+    ),
+    (
+        "Los archivos ya se están enviando",
+        "The files are already being sent",
+    ),
+    (
+        "Espera la respuesta de la aplicación.",
+        "Wait for the app's answer.",
+    ),
+];

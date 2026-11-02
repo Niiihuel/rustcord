@@ -1,0 +1,315 @@
+//! Friends, requests and blocks, as the provider reports them, and what the
+//! account may do about each person. The list is keyed by person, so a
+//! repeated or late report replaces what was known instead of adding a row.
+//! Until the provider reports a whole list it stays unknown: a single event
+//! must not pass for the complete list.
+
+use std::collections::HashMap;
+
+use rustcord_i18n::{t, tr};
+use rustcord_model::{ChannelId, ChannelKind, Relationship, RelationshipKind, User, UserId};
+use rustcord_provider::{AuthenticationState, ConnectionState};
+
+use crate::{Applied, Permit, Store};
+
+/// What the account may do about one person.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SocialAbilities {
+    /// Accept the request they sent.
+    pub accept: Permit,
+    /// Remove a friend, ignore their request or cancel the account's.
+    pub remove: Permit,
+    pub block: Permit,
+    pub unblock: Permit,
+    /// Open the direct conversation with them, starting it if needed.
+    pub message: Permit,
+    /// Give a friend a private name, or take it away.
+    pub nickname: Permit,
+    /// Ignore them: their messages fold, and they are not told.
+    pub ignore: Permit,
+    /// Stop ignoring them.
+    pub unignore: Permit,
+}
+
+impl Store {
+    pub(crate) fn ready_relationships(&mut self, relationships: Option<Vec<Relationship>>) {
+        self.relationships = relationships.map(|list| {
+            list.into_iter()
+                .map(|relationship| (relationship.user, relationship))
+                .collect::<HashMap<_, _>>()
+        });
+    }
+
+    pub(crate) fn relationship_changed(&mut self, relationship: Relationship) -> Applied {
+        let user = relationship.user;
+        match self.relationships.as_mut() {
+            Some(known) if Some(user) != self.me => {
+                known.insert(user, relationship);
+                Applied::Relationship(user)
+            }
+            _ => Applied::Nothing,
+        }
+    }
+
+    pub(crate) fn relationship_removed(&mut self, user: UserId) -> Applied {
+        match self
+            .relationships
+            .as_mut()
+            .and_then(|known| known.remove(&user))
+        {
+            Some(_) => Applied::Relationship(user),
+            None => Applied::Nothing,
+        }
+    }
+
+    /// Everyone the account has a relationship with, by name; `None` while
+    /// the provider has not reported the list, or cannot.
+    pub fn relationships(&self) -> Option<Vec<&Relationship>> {
+        let known = self.relationships.as_ref()?;
+        Some(
+            self.by_name(
+                known
+                    .values()
+                    .filter(|relationship| relationship.kind != RelationshipKind::None),
+            ),
+        )
+    }
+
+    /// Everyone the account ignores, by name, whatever else it has with them.
+    pub fn ignored(&self) -> Vec<&Relationship> {
+        let known = self.relationships.iter().flat_map(|known| known.values());
+        self.by_name(known.filter(|relationship| relationship.ignored))
+    }
+
+    /// `found`, sorted by the name shown for each person.
+    fn by_name<'a>(&self, found: impl Iterator<Item = &'a Relationship>) -> Vec<&'a Relationship> {
+        let mut list: Vec<(String, &Relationship)> = found
+            .map(|relationship| {
+                (
+                    self.user(relationship.user)
+                        .map_or_else(String::new, |user| user.shown_name().to_lowercase()),
+                    relationship,
+                )
+            })
+            .collect();
+        list.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.user.cmp(&b.1.user)));
+        list.into_iter()
+            .map(|(_, relationship)| relationship)
+            .collect()
+    }
+
+    /// The account's friendship, request or block with `user`. Someone it
+    /// only ignores has none: see [`Store::is_ignored`].
+    pub fn relationship(&self, user: UserId) -> Option<&Relationship> {
+        self.relationships
+            .as_ref()?
+            .get(&user)
+            .filter(|known| known.kind != RelationshipKind::None)
+    }
+
+    /// Whether the account ignores `user`: their messages fold, they raise no
+    /// notifications and their activity is hidden. They are not told.
+    pub fn is_ignored(&self, user: UserId) -> bool {
+        self.relationships
+            .as_ref()
+            .and_then(|known| known.get(&user))
+            .is_some_and(|known| known.ignored)
+    }
+
+    /// Whether the account blocked `user`.
+    pub fn blocked(&self, user: UserId) -> bool {
+        self.relationship(user)
+            .is_some_and(|relationship| relationship.kind == RelationshipKind::Blocked)
+    }
+
+    /// The direct conversation with `user`, when there is one.
+    pub fn direct_with(&self, user: UserId) -> Option<ChannelId> {
+        self.channels
+            .values()
+            .find(|channel| channel.kind == ChannelKind::Direct && channel.recipients == [user])
+            .map(|channel| channel.id)
+    }
+
+    /// Whether the list of friends can be shown, and why not.
+    pub fn friends_list(&self) -> Permit {
+        if !self.capabilities().relationships {
+            Permit::Denied(t("Esta conexión no ofrece la lista de amigos").into())
+        } else if self.relationships.is_none() {
+            Permit::Denied(t("La lista de amigos todavía no llegó").into())
+        } else {
+            Permit::Allowed
+        }
+    }
+
+    /// Whether a friend request can be sent by handle.
+    pub fn add_friend(&self) -> Permit {
+        self.social_write(
+            self.capabilities().friend_requests,
+            t("enviar solicitudes de amistad"),
+        )
+    }
+
+    /// What the account may do about `user`.
+    pub fn social(&self, user: UserId) -> SocialAbilities {
+        let kind = self
+            .relationship(user)
+            .map(|relationship| relationship.kind);
+        let capabilities = self.capabilities();
+        let requests = self.social_write(capabilities.friend_requests, t("gestionar amistades"));
+        let blocks = self.social_write(capabilities.block_users, t("bloquear personas"));
+        let ignores = self.social_write(capabilities.ignore_users, t("ignorar personas"));
+        let when = |permit: &Permit, ok: bool, otherwise: &str| match permit {
+            Permit::Allowed if !ok => Permit::Denied(otherwise.into()),
+            permit => permit.clone(),
+        };
+        SocialAbilities {
+            accept: when(
+                &requests,
+                kind == Some(RelationshipKind::IncomingRequest),
+                t("No hay una solicitud de esta persona"),
+            ),
+            remove: when(
+                &requests,
+                kind.is_some_and(|kind| kind != RelationshipKind::Blocked),
+                t("No hay una amistad ni una solicitud con esta persona"),
+            ),
+            ignore: match &ignores {
+                Permit::Allowed if Some(user) == self.me => {
+                    Permit::Denied(t("No puedes ignorarte a ti").into())
+                }
+                Permit::Allowed if kind == Some(RelationshipKind::Blocked) => {
+                    Permit::Denied(t("Bloqueaste a esta persona").into())
+                }
+                Permit::Allowed if self.is_ignored(user) => {
+                    Permit::Denied(t("Ya ignoras a esta persona").into())
+                }
+                permit => permit.clone(),
+            },
+            unignore: when(
+                &ignores,
+                self.is_ignored(user),
+                t("No ignoras a esta persona"),
+            ),
+            block: when(
+                &blocks,
+                kind != Some(RelationshipKind::Blocked) && Some(user) != self.me,
+                t("Ya bloqueaste a esta persona"),
+            ),
+            unblock: when(
+                &blocks,
+                kind == Some(RelationshipKind::Blocked),
+                t("No bloqueaste a esta persona"),
+            ),
+            message: self.open_direct(user),
+            nickname: when(
+                &self.social_write(
+                    capabilities.friend_nicknames,
+                    t("poner apodos a tus amigos"),
+                ),
+                kind == Some(RelationshipKind::Friend),
+                t("Solo tus amigos pueden tener un apodo"),
+            ),
+        }
+    }
+
+    /// Requests waiting for the account's answer, outside the spam folder.
+    pub fn pending_requests(&self) -> usize {
+        self.relationships.as_ref().map_or(0, |known| {
+            known.values().filter(|r| r.awaits_answer()).count()
+        })
+    }
+
+    /// Whether the provider says who of the account's friends is around.
+    pub fn friends_presence(&self) -> bool {
+        let capabilities = self.capabilities();
+        capabilities.presence || capabilities.friend_presence
+    }
+
+    /// Whether the direct conversation with `user` can be opened: one that
+    /// exists always can; a new one needs the provider and no block.
+    pub fn open_direct(&self, user: UserId) -> Permit {
+        if Some(user) == self.me {
+            Permit::Denied(t("No puedes escribirte a ti").into())
+        } else if self.direct_with(user).is_some() {
+            Permit::Allowed
+        } else if self.blocked(user) {
+            Permit::Denied(t("Bloqueaste a esta persona: desbloquéala para escribirle").into())
+        } else {
+            self.social_write(self.capabilities().open_direct, t("iniciar conversaciones"))
+        }
+    }
+
+    /// A write about people: supported, with an account, connected.
+    pub(crate) fn social_write(&self, supported: bool, what: &str) -> Permit {
+        if !supported {
+            Permit::Denied(tr!("Esta conexión no permite {what}", what))
+        } else if self.me.is_none() {
+            Permit::Denied(t("Conecta una cuenta primero").into())
+        } else if self.from_cache || self.connection != ConnectionState::Connected {
+            Permit::Denied(t("Espera a que la conexión esté disponible").into())
+        } else if self.capabilities().authentication
+            && !matches!(self.authentication, AuthenticationState::SignedIn { .. })
+        {
+            Permit::Denied(t("Inicia sesión primero").into())
+        } else {
+            Permit::Allowed
+        }
+    }
+
+    pub(crate) fn capabilities(&self) -> rustcord_provider::Capabilities {
+        self.provider
+            .as_ref()
+            .map(|info| info.capabilities)
+            .unwrap_or_default()
+    }
+
+    /// The person on the other side of a direct conversation the account
+    /// blocked, if it is one.
+    pub(crate) fn blocked_recipient(&self, channel: ChannelId) -> Option<&User> {
+        let channel = self.channel(channel)?;
+        match channel.recipients[..] {
+            [user] if channel.kind == ChannelKind::Direct && self.blocked(user) => self.user(user),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustcord_model::{Relationship, RelationshipKind, UserId};
+
+    use crate::Store;
+
+    fn relationship(user: u64, kind: RelationshipKind, ignored: bool) -> Relationship {
+        Relationship {
+            user: UserId(user),
+            kind,
+            since: None,
+            nickname: None,
+            spam: false,
+            ignored,
+        }
+    }
+
+    #[test]
+    fn who_is_ignored_is_listed_whatever_else_the_account_has_with_them() {
+        let mut store = Store::new();
+        store.ready_relationships(Some(vec![
+            relationship(1, RelationshipKind::Friend, true),
+            relationship(2, RelationshipKind::None, true),
+            relationship(3, RelationshipKind::Blocked, false),
+            relationship(4, RelationshipKind::None, false),
+        ]));
+        let ignored: Vec<u64> = store.ignored().iter().map(|known| known.user.0).collect();
+        assert_eq!(ignored, [1, 2]);
+        // The friends' and blocks' list keeps its own: nobody without a kind.
+        let listed: Vec<u64> = store
+            .relationships()
+            .unwrap()
+            .iter()
+            .map(|known| known.user.0)
+            .collect();
+        assert_eq!(listed, [1, 3]);
+        assert!(Store::new().ignored().is_empty());
+    }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "rustcord-state"
+description = "Rustcord's central state, changed one provider event at a time"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Interface text in the language the person chose.
+rustcord-i18n.workspace = true
+rustcord-model.workspace = true
+rustcord-provider.workspace = true

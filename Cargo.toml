@@ -1,0 +1,111 @@
+[workspace]
+resolver = "2"
+members = ["apps/desktop", "crates/rustcord-i18n", "crates/rustcord-model", "crates/rustcord-provider", "crates/rustcord-discord", "crates/rustcord-discord-session", "crates/rustcord-login", "crates/rustcord-state", "crates/rustcord-storage", "crates/rustcord-core", "crates/rustcord-media", "crates/rustcord-components", "crates/rustcord-ui", "crates/rustcord-platform", "crates/rustcord-update", "tools/rustcord-release"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+# limn: native UI, with the features of this revision that Rustcord uses:
+# Composer file-drop targets and column sizing, captured paste and indexed
+# input, F-keys, Alt, mouse side buttons, focus regions, fitted surfaces, color
+# emoji artwork over text glyphs, ImageViewer::action (with «Guardar como…» in
+# the viewer), syntax-highlighted fenced code in Markdown,
+# `limn_egui::font_definitions_with` (interface text in a font the person
+# chooses), Element::foreground_gradient (role gradients on names), pictures in
+# a line of text (TextSpan::image and ::surface), faces in a hint
+# (Tooltip::faces), the marks of text (underline, strikethrough, bold italic and
+# subtext in Markdown; hints on a span; a line limit ending in «…»; filled
+# highlights in a text area), a layer that dims under the pointer with the named
+# hover region under it (Element::dim_on_hover, hover_region_id,
+# UiTree::hovered_region), a semibold face, more code languages, surfaces that
+# never grow past their pixels, option hints and an avatar's own color, the
+# options of a hint (delay, title, pointer, fill), a Badge in another corner and
+# size, icons under 16 px and emoji categories, a level on a Slider's track, a
+# Switch of any size, a Select's rows in view and field text, a scrollbar that
+# wakes under the pointer, a Composer whose editor grows beside its controls
+# with richer suggestions, every key with its release and the modifiers held
+# (push to talk and the key recorder without egui, the message bar that widens
+# with Shift), mirrored surfaces (the camera's preview), surfaces in buttons and
+# menu options (animated emoji of apps' parts), images on screen that never
+# evict each other from the texture cache, Element::zoom_view (the zoom view kept
+# around the immersive image viewer), DropdownMenuItem::leading (a server's icon
+# or initial in the profile choice's rows), a menu's check box at the row's edge
+# beside submenus, a hover card that stays open across its row's icons,
+# Cursor::Hidden (the pointer hidden over a stream at rest), RadioGroup's card
+# variant (settings' choices drawn as Discord's), egui and eframe 0.37 with
+# pasted pictures and the other mouse buttons, context menus at the host's
+# density and Discord's person menus, the settings' control measures, submenus 3
+# px clear of their menu, and the media viewer's lightbox layout.
+# The exact revision stays in Cargo.lock; a git dependency keeps workspace fmt
+# from rewriting third-party sources.
+limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-10-31", default-features = false }
+limn-egui = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-10-31", default-features = false }
+# `clipboard`: egui reads the system clipboard on Ctrl+V (text, and a copied
+# picture as a pasted image); without it a paste only saw Rustcord's own copies.
+eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit", "clipboard"] }
+# The core owns async provider sessions, HTTP I/O and the loopback OAuth callback.
+# Async filesystem writes keep explicit attachment downloads off the UI thread.
+tokio = { version = "1.53", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util", "fs"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+# The interface's languages: the active one and the English of its texts.
+rustcord-i18n = { path = "crates/rustcord-i18n" }
+rustcord-model = { path = "crates/rustcord-model" }
+rustcord-provider = { path = "crates/rustcord-provider" }
+# The OAuth identity adapter; selected only by the desktop host.
+rustcord-discord = { path = "crates/rustcord-discord" }
+# Separate, explicitly unofficial adapter for the user's own session.
+rustcord-discord-session = { path = "crates/rustcord-discord-session" }
+# Ephemeral login in a child process; web rendering is an opt-in feature.
+rustcord-login = { path = "crates/rustcord-login" }
+rustcord-state = { path = "crates/rustcord-state" }
+rustcord-storage = { path = "crates/rustcord-storage" }
+rustcord-core = { path = "crates/rustcord-core" }
+# Native system services run independently of the window and account provider.
+rustcord-platform = { path = "crates/rustcord-platform" }
+rustcord-media = { path = "crates/rustcord-media" }
+rustcord-components = { path = "crates/rustcord-components" }
+rustcord-ui = { path = "crates/rustcord-ui" }
+# Rustcord's own signed updates, independent of the window and providers.
+rustcord-update = { path = "crates/rustcord-update" }
+
+[patch.crates-io]
+# DAVE (Discord's call E2EE) on p256 0.14: davey 0.1.5 and the openmls 0.8
+# RustCrypto backend it needs still pull elliptic-curve 0.13 -> crypto-bigint
+# 0.5 (RUSTSEC-2026-0387). These copies move only their elliptic-curve, RNG
+# and hpke-rs 0.8 calls; each one's Rustcord-PATCH.md has the diff and when to
+# remove it.
+davey = { path = "vendor/davey" }
+openmls_rust_crypto = { path = "vendor/openmls_rust_crypto" }
+openmls_basic_credential = { path = "vendor/openmls_basic_credential" }
+# hpke-rs 0.8 builds libcrux-sha3, whose hax-lib pulls the unmaintained
+# proc-macro-error2 (RUSTSEC-2026-0173); this copy computes SHAKE256 with
+# RustCrypto sha3 and drops the libcrux backend; see
+# vendor/hpke-rs/Rustcord-PATCH.md.
+hpke-rs = { path = "vendor/hpke-rs" }
+# CPAL 0.18.2 ignores WASAPI's AUDCLNT_BUFFERFLAGS_SILENT flag and can pass
+# undefined capture data; pin the upstream fix until it ships in a release.
+cpal = { git = "https://github.com/RustAudio/cpal", rev = "c14f262446e74013eced53d47624347bc54c882a" }
+
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+
+[profile.dev]
+debug = "line-tables-only"
+
+# Dependencies are built once, so they can afford to be optimized: an
+# unoptimized renderer drops frames. Workspace crates stay fast to rebuild.
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+[profile.release]
+lto = "thin"
