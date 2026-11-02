@@ -239,7 +239,7 @@ fn profile_banner_requests_follow_open_profiles_not_visible_accounts() {
     host.click("me:status");
     host.click("profile:edit");
     assert_eq!(banners(&host), vec![own]);
-    host.click("profile:close");
+    host.click("us:close");
     host.frame();
     assert!(banners(&host).is_empty());
     let message = host

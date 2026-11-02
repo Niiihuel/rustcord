@@ -1,7 +1,7 @@
 //! The account's profile and status, and the cards of people: the popout
 //! that opens from the account's panel (its status menu, how long a status
 //! lasts, its custom status), the profile
-//! editor over the whole window, and the cards of a member or of a
+//! editor on the settings' «Perfiles» page, and the cards of a member or of a
 //! message's author. Its actions start with `pp:` or `profile:`.
 //!
 //! A status chosen for a while is a timer of this client: once it is due,
@@ -11,7 +11,7 @@
 
 use std::time::{Duration, Instant};
 
-use limn::{Element, Key, UiAction, UiEvent};
+use limn::{Element, Key, Size, UiAction, UiEvent};
 use rustcord_components::chrome::{self, UserPanel};
 use rustcord_components::look::activity_line;
 use rustcord_components::profile::{
@@ -59,7 +59,7 @@ pub struct Profiles {
     pub devices: Option<crate::quick_voice::QuickVoice>,
     /// The custom status dialog, while open.
     pub custom: Option<CustomDraft>,
-    /// The profile editor, while open.
+    /// The profile editor, while the settings show their «Perfiles» page.
     pub editor: Option<Editor>,
     /// A status chosen for a while.
     pub timed: Option<Timed>,
@@ -133,14 +133,14 @@ pub struct Editor {
     /// The custom color field, while open.
     pub hex: Option<String>,
     pub servers_open: bool,
+    /// The per-server tab is the open one.
+    pub servers_tab: bool,
     /// The change left and its answer has not come yet.
     pub saving: bool,
     /// Someone tried to leave with changes: the bar insists.
     pub nudged: bool,
     /// Why the provider refused the last change.
     pub failure: Option<String>,
-    /// The settings page it was opened over, to go back to.
-    back_to: Option<SettingsPage>,
     /// The picture last chosen, whole, to frame it while it is the draft's.
     pub framing: Option<crate::framing::Framing>,
 }
@@ -159,11 +159,11 @@ impl Editor {
     }
 
     /// The same editor on the profile of `server`, or the main one, with
-    /// nothing changed yet.
+    /// nothing changed yet; the tab stays.
     fn on(&self, server: Option<ServerId>) -> Self {
         Self {
             server,
-            back_to: self.back_to,
+            servers_tab: self.servers_tab,
             ..Self::default()
         }
     }
@@ -460,6 +460,7 @@ pub fn card_of(
         role_menu,
         message: message_field(ui, store, user),
         edit_profile: store.me() == Some(user) && edit_denied(store).is_none(),
+        example_button: false,
     })
 }
 
@@ -1279,7 +1280,10 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
     // not create a local draft or a false unsaved-changes guard.
     if edit_denied(store).is_some()
         && (id.starts_with(ids::COLOR)
-            || matches!(id, ids::SERVERS | ids::SERVERS_DISMISS | ids::MAIN_PROFILE))
+            || matches!(
+                id,
+                ids::SERVERS | ids::SERVERS_DISMISS | ids::TAB_MAIN | ids::TAB_SERVERS
+            ))
     {
         return Some(Vec::new());
     }
@@ -1499,14 +1503,24 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
             ui.profiles.menu = None;
             Vec::new()
         }
-        ids::EDITOR_CLOSE => {
-            if leave(ui, store) {
-                vec![Intent::CancelProfileImage]
-            } else {
-                Vec::new()
+        ids::TAB_MAIN => {
+            let intents = edit_scope(ui, store, None);
+            if let Some(editor) = ui.profiles.editor.as_mut().filter(|e| e.server.is_none()) {
+                editor.servers_tab = false;
             }
+            intents
         }
-        ids::MAIN_PROFILE => edit_scope(ui, store, None),
+        // Leaving the account's fields for the servers' waits for them to be saved.
+        ids::TAB_SERVERS => {
+            if let Some(editor) = ui.profiles.editor.as_mut() {
+                if editor.dirty(store) {
+                    editor.nudged = true;
+                } else {
+                    editor.servers_tab = true;
+                }
+            }
+            Vec::new()
+        }
         ids::SERVERS | ids::SERVERS_DISMISS => {
             if let Some(editor) = ui.profiles.editor.as_mut() {
                 editor.servers_open = id == ids::SERVERS && !editor.servers_open;
@@ -1630,47 +1644,69 @@ fn save_custom(ui: &mut Ui) -> Vec<Intent> {
     vec![Intent::Command(command), keep_custom_until(ui)]
 }
 
-/// Open the editor over the whole window; over the settings, it goes back
-/// to them when it closes.
+/// Open the editor on the settings' «Perfiles» page, over the settings when
+/// they are open.
 fn open_editor(ui: &mut Ui, store: &mut Store, now: Instant) -> Vec<Intent> {
-    let Some(me) = store.me_user().cloned() else {
+    if store.me_user().is_none() {
         return Vec::new();
-    };
-    close_floating(ui);
-    let back_to = ui.settings;
-    let mut intents = if back_to.is_some() {
-        settings::clicked(ui, store, "settings:close", now)
-    } else {
-        Vec::new()
-    };
-    ui.profiles.editor = Some(Editor {
-        back_to,
-        ..Editor::default()
-    });
-    if edit_denied(store).is_none() {
-        intents.extend(fill_fields(&me));
     }
-    intents.push(Intent::Focus(ids::EDITOR_CLOSE.into()));
+    close_floating(ui);
+    if ui.settings.is_some() {
+        return settings::clicked(ui, store, "us:page=profiles", now);
+    }
+    let mut intents = settings::open_settings(ui, store, SettingsPage::Profiles);
+    intents.extend(request_own(ui, store));
     intents
 }
 
-/// Close the editor, unless something is not saved. True when a picture
-/// was being chosen: its selector has to be told.
-fn leave(ui: &mut Ui, store: &Store) -> bool {
+/// The account's full profile, which the editor's preview draws with its
+/// badges, effect and banner: asked for as the status popout asks for it.
+pub(crate) fn request_own(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
+    match store.me() {
+        Some(me) => request_profile(ui, store, me, None),
+        None => Vec::new(),
+    }
+}
+
+/// Fill the editor when the settings show their «Perfiles» page, keeping
+/// the one already open.
+pub(crate) fn enter_page(ui: &mut Ui, store: &Store) -> Vec<Intent> {
+    if ui.profiles.editor.is_some() {
+        return Vec::new();
+    }
+    ui.profiles.editor = Some(Editor::default());
+    match store.me_user().filter(|_| edit_denied(store).is_none()) {
+        Some(me) => fill_fields(me),
+        None => Vec::new(),
+    }
+}
+
+/// The settings leave the «Perfiles» page: its editor closes, and a picture
+/// being chosen is cancelled.
+pub(crate) fn leave_page(ui: &mut Ui) -> Vec<Intent> {
+    let picking = ui
+        .profiles
+        .editor
+        .take()
+        .is_some_and(|editor| editor.picking.is_some());
+    if picking {
+        vec![Intent::CancelProfileImage]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Whether the settings may leave the «Perfiles» page: not while something
+/// changed is unsaved; then the bar insists instead.
+pub(crate) fn may_leave(ui: &mut Ui, store: &Store) -> bool {
     let Some(editor) = ui.profiles.editor.as_mut() else {
-        return false;
+        return true;
     };
     if edit_denied(store).is_none() && editor.dirty(store) {
         editor.nudged = true;
         return false;
     }
-    let back_to = editor.back_to;
-    let picking = editor.picking.is_some();
-    ui.profiles.editor = None;
-    if back_to.is_some() {
-        ui.settings = back_to;
-    }
-    picking
+    true
 }
 
 /// Send what the editor changed, if the provider can take it and every field
@@ -1729,9 +1765,9 @@ fn save_profile(ui: &mut Ui, store: &Store) -> Vec<Intent> {
 }
 
 /// Escape closes the innermost menu of the custom status dialog, or of the
-/// editor, else leaves the editor. Over the nickname dialog, or the custom
-/// status dialog without a menu open, the dialog answers it.
-pub fn intercept(ui: &mut Ui, store: &Store, event: &UiEvent) -> Option<Vec<Intent>> {
+/// editor; the settings take the key after that. Over the nickname dialog,
+/// or the custom status dialog without a menu open, the dialog answers it.
+pub fn intercept(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
     if !matches!(
         event,
         UiEvent::Key {
@@ -1748,11 +1784,8 @@ pub fn intercept(ui: &mut Ui, store: &Store, event: &UiEvent) -> Option<Vec<Inte
         return closed.then(Vec::new);
     }
     let editor = ui.profiles.editor.as_mut()?;
-    if editor.hex.take().is_none() && !std::mem::take(&mut editor.servers_open) && leave(ui, store)
-    {
-        return Some(vec![Intent::CancelProfileImage]);
-    }
-    Some(Vec::new())
+    let closed = editor.hex.take().is_some() | std::mem::take(&mut editor.servers_open);
+    closed.then(Vec::new)
 }
 
 /// The account's panel, with its popout and the quick voice panel of its
@@ -1834,11 +1867,11 @@ fn has_presence(store: &Store) -> bool {
         .is_some_and(|info| info.capabilities.presence)
 }
 
-/// The profile editor over the whole window, while open.
-pub fn editor_view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
+/// The profile editor, the content of the settings' «Perfiles» page, laid
+/// out in `size`.
+pub(crate) fn settings_page(ui: &Ui, store: &Store, size: Size, look: &Look) -> Option<Element> {
     let editor = ui.profiles.editor.as_ref()?;
     let user = store.me_user()?;
-    let look = &ui.look();
     let denied = edit_denied(store);
     let abilities = store.profile_abilities(editor.server);
     let unchanged = ProfileEdit::default();
@@ -1852,6 +1885,14 @@ pub fn editor_view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Elem
     let mut preview = card_of(ui, store, editor.server, user.id, look)?;
     // The draft is what this preview shows, even while the read is in flight.
     preview.loading = false;
+    // Its footer is an example here: the editing is the page's own.
+    // The preview is the card as others see it: no note, no field to write,
+    // no full profile to open; its footer is an example button.
+    preview.edit_profile = false;
+    preview.example_button = true;
+    preview.note = None;
+    preview.message = None;
+    preview.full_action = None;
     preview.name = changed.shown_name().to_owned();
     preview.pronouns = changed.pronouns.clone();
     preview.about = changed.about.clone();
@@ -1937,7 +1978,7 @@ pub fn editor_view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Elem
         .provider
         .as_ref()
         .is_some_and(|info| info.kind == rustcord_provider::ProviderKind::Simulated);
-    Some(parts::editor(
+    Some(parts::profiles_page(
         &parts::Editor {
             pictures: EditorPictures {
                 banner: preview.banner.clone(),
@@ -1976,6 +2017,7 @@ pub fn editor_view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Elem
             denied: denied.clone(),
             servers,
             servers_open: editor.servers_open,
+            servers_tab: editor.servers_tab,
             bar: (denied.is_none() && editor.dirty(store)).then_some(UnsavedBar {
                 saving: editor.saving,
                 nudged: editor.nudged,
@@ -1988,7 +2030,7 @@ pub fn editor_view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Elem
             scope,
             picked: crate::color_picker::picked(ui, ids::COLOR),
         },
-        context.window,
+        size,
         look,
     ))
 }

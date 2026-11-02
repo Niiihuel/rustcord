@@ -295,6 +295,7 @@ mod tests {
             role_removals: Vec::new(),
             role_menu: None,
             edit_profile: false,
+            example_button: false,
         };
         let list = Element::column(vec![
             heading(

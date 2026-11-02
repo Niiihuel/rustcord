@@ -81,6 +81,16 @@ const SECTIONS: &[Section] = &[
             es("cambiar de cuenta agregar otra cuenta cuentas recordadas varias gestionar cerrar sesión"),
         )],
     },
+    // The profile's page: found by what it edits; the page itself is the editor.
+    Section {
+        page: Profiles,
+        key: "profiles",
+        title: es("Perfiles"),
+        rows: &[(
+            "profiles",
+            es("perfil nombre para mostrar pronombres biografía sobre mí avatar banner color decoración efecto apodo por servidor"),
+        )],
+    },
     // The device's session, and what this device keeps of its data (Discord's
     // danger row sits here, under the device it is about).
     Section {
@@ -467,6 +477,7 @@ const GROUPS: &[(&str, bool, &[Entry])] = &[
         false,
         &[
             Entry::Page(Account),
+            Entry::Page(Profiles),
             Entry::Page(Privacy),
             Entry::Page(Messaging),
             Entry::Page(Notifications),
@@ -495,6 +506,7 @@ const GROUPS: &[(&str, bool, &[Entry])] = &[
 fn icon_of(page: SettingsPage) -> Icon {
     match page {
         Account => Icon::Custom(parts::PERSON),
+        Profiles => Icon::Custom(parts::PERSON),
         Privacy => Icon::Custom(parts::SHIELD),
         Messaging => Icon::Chat,
         Notifications => Icon::Bell,
@@ -834,6 +846,9 @@ fn log_out(ctx: &Ctx, query: &str) -> Option<Nav> {
 /// The open page's column. While searching it shows what matches there,
 /// unless nothing does: then the page shows whole.
 fn content(ctx: &Ctx, page: SettingsPage) -> Element {
+    if page == Profiles {
+        return profiles(ctx);
+    }
     let query = searching(ctx.ui).unwrap_or("");
     let mut sections = shown(page, query, ctx.ui, ctx.store);
     if sections.is_empty() {
@@ -867,6 +882,20 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
         sections,
         ctx.look,
     )
+}
+
+/// The «Perfiles» page: the profile's editor, as wide as the column and
+/// as tall as the page, centred under the header.
+fn profiles(ctx: &Ctx) -> Element {
+    let height = (ctx.geometry.panel.height - parts::HEADER_HEIGHT - 1.0).max(1.0);
+    let size = Size::new(ctx.geometry.column, height);
+    let page = crate::profile::settings_page(ctx.ui, ctx.store, size, ctx.look)
+        .unwrap_or_else(|| Element::spacer().size(Some(size.width), Some(size.height)));
+    Element::row(vec![
+        Element::spacer().flex(1.0),
+        page.anchor(top(Profiles)),
+        Element::spacer().flex(1.0),
+    ])
 }
 
 /// The preview over the accessibility settings: two messages of the

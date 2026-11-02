@@ -5,6 +5,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sistema ({language})", "System ({language})"),
     // Sections and their search words.
     ("Información de cuenta", "Account info"),
+    ("perfil nombre para mostrar pronombres biografía sobre mí avatar banner color decoración efecto apodo por servidor", "profile display name pronouns bio about me avatar banner color decoration effect nickname per server"),
     ("Tu cuenta", "Your account"),
     ("Mensajes directos", "Direct messages"),
     ("Este dispositivo", "This device"),

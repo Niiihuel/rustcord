@@ -44,6 +44,7 @@ pub(crate) const ZOOMS: [u16; 11] = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175
 pub enum SettingsPage {
     #[default]
     Account,
+    Profiles,
     Privacy,
     Messaging,
     Notifications,
@@ -61,8 +62,9 @@ pub enum SettingsPage {
 
 impl SettingsPage {
     /// In the order of the sidebar's groups.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 14] = [
         Self::Account,
+        Self::Profiles,
         Self::Privacy,
         Self::Messaging,
         Self::Notifications,
@@ -81,6 +83,7 @@ impl SettingsPage {
     pub fn key(self) -> &'static str {
         match self {
             Self::Account => "account",
+            Self::Profiles => "profiles",
             Self::Privacy => "privacy",
             Self::Messaging => "messaging",
             Self::Notifications => "notifications",
@@ -111,6 +114,7 @@ impl SettingsPage {
     pub fn title(self) -> &'static str {
         match self {
             Self::Account => t("Cuenta"),
+            Self::Profiles => t("Perfiles"),
             Self::Privacy => t("Datos y privacidad"),
             Self::Messaging => t("Permisos de mensajes"),
             Self::Notifications => t("Notificaciones"),
@@ -923,7 +927,9 @@ fn open_at(
 pub fn close_settings(ui: &mut Ui) -> Vec<Intent> {
     ui.settings = None;
     ui.settings_state = SettingsState::default();
-    stop_meter(ui)
+    let mut intents = crate::profile::leave_page(ui);
+    intents.extend(stop_meter(ui));
+    intents
 }
 
 pub(crate) fn stop_meter(ui: &mut Ui) -> Vec<Intent> {
@@ -953,7 +959,11 @@ fn go_to_section(
     page: SettingsPage,
     section: Option<&'static str>,
 ) -> Vec<Intent> {
-    let mut intents = Vec::new();
+    let mut intents = if page == SettingsPage::Profiles {
+        crate::profile::enter_page(ui, store)
+    } else {
+        crate::profile::leave_page(ui)
+    };
     if page != SettingsPage::Voice {
         intents.extend(stop_meter(ui));
     } else {
@@ -1224,7 +1234,15 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
             if ui.settings.is_none() {
                 return open_at(ui, store, page, section);
             }
-            return go_to_section(ui, store, page, section);
+            // The profile's editor keeps the page until its changes are saved.
+            if page != SettingsPage::Profiles && !crate::profile::may_leave(ui, store) {
+                return Vec::new();
+            }
+            let mut intents = go_to_section(ui, store, page, section);
+            if page == SettingsPage::Profiles {
+                intents.extend(crate::profile::request_own(ui, store));
+            }
+            return intents;
         }
     }
     if let Some(key) = rest.strip_prefix("jump=") {
@@ -1300,6 +1318,10 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
     ui.settings_state.select = None;
     if let Some(intents) = crate::language::clicked(ui, store, rest) {
         return intents;
+    }
+    // The profile's unsaved changes keep the settings open.
+    if rest == "close" && !crate::profile::may_leave(ui, store) {
+        return Vec::new();
     }
     let prefs = &mut ui.prefs;
     let flip = |value: &mut bool, key: &str| {
@@ -1652,9 +1674,13 @@ pub(crate) fn picker_released(ui: &Ui, store: &Store, action: &UiAction) -> Vec<
 
 /// Esc while the settings are open closes what floats in them first: a
 /// list, the color field, the name being written, the question to sign out;
-/// then the settings.
-pub fn intercept(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
+/// then the settings, unless the profile has changes not saved.
+pub fn intercept(ui: &mut Ui, store: &Store, event: &UiEvent) -> Option<Vec<Intent>> {
     ui.settings?;
+    // A dialog over the settings, such as the nickname's, takes the key.
+    if ui.server_menu.dialog.is_some() {
+        return None;
+    }
     if !matches!(
         event,
         UiEvent::Key {
@@ -1670,6 +1696,9 @@ pub fn intercept(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
         || state.name.take().is_some()
         || std::mem::take(&mut state.log_out_asked)
     {
+        return Some(Vec::new());
+    }
+    if !crate::profile::may_leave(ui, store) {
         return Some(Vec::new());
     }
     Some(close_settings(ui))
