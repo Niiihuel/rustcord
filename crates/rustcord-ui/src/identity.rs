@@ -276,6 +276,16 @@ pub(crate) fn game_mark(ui: &Ui, store: &Store, user: UserId) -> Option<GameMark
     })
 }
 
+/// The name of the first game `user` plays, for the call's header.
+pub(crate) fn playing_game(store: &Store, user: UserId) -> Option<String> {
+    store
+        .presence(user)
+        .activities
+        .iter()
+        .find(|activity| activity.kind == rustcord_model::ActivityKind::Playing)
+        .map(|activity| activity.name.clone())
+}
+
 /// The first activity `user` plays, with the picture it has (the session
 /// fills in its application's when it has none of its own).
 fn game(store: &Store, user: UserId) -> Option<(String, RemoteImage)> {

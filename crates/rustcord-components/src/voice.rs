@@ -9,9 +9,10 @@
 
 use limn::{
     AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox, Color,
-    Component, ComponentPalette, ControlSize, DropdownMenu, DropdownMenuEntry, DropdownMenuItem,
-    Element, FontFamily, Icon, IconButton, LineChart, Modal, PopoverPlacement, RadiusRole,
-    ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement, TooltipSpec,
+    Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
+    DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, PopoverPlacement,
+    RadiusRole, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement,
+    TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{CallPhase, CallQuality, Rgb, ShareKind, StreamQuality};
@@ -96,6 +97,10 @@ pub mod ids {
     pub const FULLSCREEN_EXIT: &str = "vz:fullscreen-exit";
     /// The stage's header: the channel's chat.
     pub const CHAT: &str = "vz:chat";
+    /// The header's warning over a reduced stream, and its quality segment:
+    /// the anchors of their hints.
+    pub const WARNING: &str = "vz:stream-warning";
+    pub const STREAM_QUALITY: &str = "vz:stream-quality";
     /// The pill over the bar that hides the tiles under a stream focused.
     pub const TILES: &str = "call:tiles:toggle";
     /// A person's menu, and their card.
@@ -427,6 +432,12 @@ pub struct StreamTile {
     /// the bar under it too, and the pointer hides over it, as the official
     /// client's (3 s). Only while it takes the stage or the window.
     pub idle: bool,
+    /// The game its streamer plays, named in the stage's header.
+    pub activity: Option<String>,
+    /// Its picture is reduced (the network is slow): the header warns.
+    pub degraded: bool,
+    /// Who watches it: the header's viewers, none drawn yet.
+    pub viewers: Vec<Participant>,
 }
 
 /// Rustcord's own glyphs for «Dejar de ver» and «Ventana aparte».
@@ -2578,43 +2589,67 @@ pub fn stage(view: Stage, look: &Look) -> Element {
             .min_size(80.0, 0.0)
             .shrink_to_fit(),
     ];
-    // The stream focused, after the channel, and how it comes, as the
-    // official client's header: «General · Pantalla de Ana  720p EN VIVO».
+    // The stream focused, after the channel, as the official client's header:
+    // «General · (avatar) Ana está jugando a Juego», then at the right the
+    // warning over a reduced picture and the quality and «EN VIVO» pill.
+    let mut right = Vec::new();
     if let Some(shown) = view.watching.iter().find(|shown| shown.focused) {
-        header.push(line("·", 16.0, look.faint).centered_y());
-        header.push(
-            strong_line(&shown.title, 16.0, look.text)
-                .centered_y()
-                .shrink_to_fit(),
-        );
-        header.push(Element::spacer().flex(1.0));
-        let mut badge = Vec::new();
-        if let Some((_, height)) = shown.frame {
-            // «720p · 30 FPS», as Discord's header; «720p» until the rate is known.
-            let quality = match shown.fps {
-                Some(fps) => format!("{height}p · {fps} FPS"),
-                None => format!("{height}p"),
-            };
-            badge.push(
-                Element::panel(Element::row(vec![
-                    gap(6.0, 0.0),
-                    Element::text(quality)
-                        .font_family(FontFamily::SansBold)
-                        .font_size(13.0)
-                        .foreground(look.text)
-                        .centered_y(),
-                    gap(6.0, 0.0),
-                ]))
-                .size(None, Some(22.0))
-                .radius(4.0)
-                .background(look.menu)
-                .shrink_to_fit(),
-            );
+        header.push(dot(look));
+        let streamer = shown.stream.as_ref().and_then(|stream| {
+            let person = view
+                .people
+                .iter()
+                .find(|person| person.user == stream.owner)?;
+            Some((person, stream))
+        });
+        match streamer {
+            Some((person, stream)) => {
+                header.push(
+                    crate::avatar_with_image(
+                        &person.name,
+                        person.accent,
+                        24.0,
+                        person.image.clone(),
+                    )
+                    .centered_y(),
+                );
+                let label = match &stream.activity {
+                    Some(game) => {
+                        tr!(
+                            "{name} está jugando a {game}",
+                            name = &person.name,
+                            game = game
+                        )
+                    }
+                    None => tr!("Pantalla de {name}", name = &person.name),
+                };
+                header.push(
+                    strong_line(label, 16.0, look.text)
+                        .centered_y()
+                        .shrink_to_fit(),
+                );
+            }
+            None => header.push(
+                strong_line(&shown.title, 16.0, look.text)
+                    .centered_y()
+                    .shrink_to_fit(),
+            ),
         }
-        badge.push(live(22.0, 10.0, look));
-        header.push(Element::row(badge).gap(2.0).centered_y());
+        header.push(Element::spacer().flex(1.0));
+        if shown.stream.as_ref().is_some_and(|stream| stream.degraded) {
+            right.push(warning(look));
+        }
+        // «720p 30 FPS»; «720p» until the rate is known.
+        let quality = shown.frame.map(|(_, height)| match shown.fps {
+            Some(fps) => format!("{height}p {fps} FPS"),
+            None => format!("{height}p"),
+        });
+        right.push(live_pill(quality, look));
     } else {
         header.push(Element::spacer().flex(1.0));
+    }
+    if !right.is_empty() {
+        header.push(Element::row(right).gap(16.0).centered_y());
     }
     if let Some((note, ink)) = note {
         header.push(
@@ -2688,6 +2723,79 @@ pub fn stage(view: Stage, look: &Look) -> Element {
         invitation(&view, look)
     };
     Element::column(vec![header, rule, body.flex(1.0)]).background(look.canvas)
+}
+
+/// The dot between the channel and the streamer in the header.
+fn dot(look: &Look) -> Element {
+    Element::row(vec![
+        gap(4.0, 0.0),
+        Element::panel(Element::spacer())
+            .size(Some(4.0), Some(4.0))
+            .round()
+            .background(look.faint),
+        gap(4.0, 0.0),
+    ])
+    .centered_y()
+}
+
+/// The warning over a stream whose picture is reduced: what it means, on hover.
+fn warning(look: &Look) -> Element {
+    let glyph = icon(Icon::WarningTriangle, look.idle)
+        .size(Some(20.0), Some(20.0))
+        .centered_y();
+    Tooltip::new(
+        glyph,
+        ids::WARNING,
+        t("La transmisión que estás viendo en este momento tiene una calidad de video o audio reducida. Esto puede deberse a las condiciones de la red."),
+        look.menu_palette(),
+    )
+    .max_width(200.0)
+    .render()
+}
+
+/// The stream's quality and «EN VIVO» as one pill: two segments that touch,
+/// round at their outer ends only; alone, «EN VIVO» is round at both.
+fn live_pill(quality: Option<String>, look: &Look) -> Element {
+    const LIVE_RED: Color = Color::rgb(0xD2, 0x2D, 0x39);
+    const QUALITY_GREY: Color = Color::rgb(0x4E, 0x50, 0x58);
+    const RADIUS: f32 = 8.0;
+    let segment = |text: String, background: Color| {
+        Element::panel(Element::row(vec![
+            gap(6.0, 0.0),
+            Element::text(text)
+                .font_family(FontFamily::SansBold)
+                .font_size(12.0)
+                .foreground(OVER_INK)
+                .centered_y(),
+            gap(6.0, 0.0),
+        ]))
+        .size(None, Some(16.0))
+        .background(background)
+        .shrink_to_fit()
+    };
+    let Some(quality) = quality else {
+        return segment(t("EN VIVO").to_owned(), LIVE_RED).radius(RADIUS);
+    };
+    let quality = segment(quality, QUALITY_GREY).corner_radii(CornerRadii {
+        top_left: RADIUS,
+        top_right: 0.0,
+        bottom_right: 0.0,
+        bottom_left: RADIUS,
+    });
+    let quality = Tooltip::new(
+        quality,
+        ids::STREAM_QUALITY,
+        t("Calidad de transmisión"),
+        look.menu_palette(),
+    )
+    .render();
+    let live = segment(t("EN VIVO").to_owned(), LIVE_RED).corner_radii(CornerRadii {
+        top_left: 0.0,
+        top_right: RADIUS,
+        bottom_right: RADIUS,
+        bottom_left: 0.0,
+    });
+    Element::row(vec![quality, live]).centered_y()
 }
 
 /// The tiles, as large as the room above the bar lets them be, and the bar.
@@ -5160,6 +5268,9 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
             }),
             focused,
             card: false,
@@ -6246,6 +6357,9 @@ mod tests {
                 fullscreen: false,
                 over: true,
                 idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
             }),
             focused,
             card: false,
@@ -6427,6 +6541,9 @@ mod tests {
                 fullscreen,
                 over: false,
                 idle,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
             }),
             focused: !fullscreen,
             card: false,
@@ -6513,6 +6630,9 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
             }),
             focused,
             card: false,
@@ -6578,6 +6698,9 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
             }),
             focused,
             card: false,
@@ -6605,11 +6728,11 @@ mod tests {
             camera_panel: None,
             end: 0.0,
         };
-        // Focused with its rate: the header says «720p · 30 FPS», and «720p»
+        // Focused with its rate: the header says «720p 30 FPS», and «720p»
         // until the rate is known; a live stream writes nothing over its picture.
         let (_, laid) = frame(stage(stage_with(vec![stream(Some(30), true)]), &look), size);
         let said = texts(&laid);
-        assert!(said.iter().any(|text| text == "720p · 30 FPS"), "{said:?}");
+        assert!(said.iter().any(|text| text == "720p 30 FPS"), "{said:?}");
         assert!(!said.iter().any(|text| text.starts_with("Resolución")));
         assert!(!said.iter().any(|text| text == "En vivo"), "{said:?}");
         let (_, laid) = frame(stage(stage_with(vec![stream(None, true)]), &look), size);
@@ -6631,8 +6754,197 @@ mod tests {
         };
         let (_, laid) = frame(stage(stage_with(vec![own]), &look), size);
         let said = texts(&laid);
-        assert!(said.iter().any(|text| text == "720p · 30 FPS"), "{said:?}");
+        assert!(said.iter().any(|text| text == "720p 30 FPS"), "{said:?}");
         assert!(!said.iter().any(|text| text.starts_with("Bitrate")));
+    }
+
+    #[test]
+    fn the_header_names_the_streamer_with_their_game_or_their_screen() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let focused = |activity: Option<&str>, degraded: bool| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: Some(30),
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                activity: activity.map(str::to_owned),
+                degraded,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let stage_with = |watching: Vec<Preview>| Stage {
+            channel: "General".into(),
+            phase: Some(CallPhase::Connected),
+            people: vec![
+                person(1, false, false, false),
+                person(2, false, false, false),
+            ],
+            muted: false,
+            deafened: false,
+            simulated: false,
+            join_denied: None,
+            chat: Err("Sin chat".into()),
+            size,
+            card: None,
+            tile_menu: None,
+            more_open: false,
+            video: VideoControls::default(),
+            previews: Vec::new(),
+            watch: Ok(()),
+            watching,
+            tiles_hidden: false,
+            private: None,
+            quick: None,
+            camera_panel: None,
+            end: 0.0,
+        };
+        // With a game: the header names it; the title stays on the picture's pill.
+        let (_, laid) = frame(
+            stage(stage_with(vec![focused(Some("Juego"), false)]), &look),
+            size,
+        );
+        let said = texts(&laid);
+        assert!(
+            said.iter()
+                .any(|text| text == "Persona 2 está jugando a Juego"),
+            "{said:?}"
+        );
+        assert_eq!(
+            said.iter()
+                .filter(|text| *text == "Pantalla de Persona 2")
+                .count(),
+            1
+        );
+        // Without one: the header says «Pantalla de» them, as the pill does.
+        let (_, laid) = frame(stage(stage_with(vec![focused(None, false)]), &look), size);
+        let said = texts(&laid);
+        assert_eq!(
+            said.iter()
+                .filter(|text| *text == "Pantalla de Persona 2")
+                .count(),
+            2
+        );
+        // The warning is there only while the picture is reduced.
+        let warned =
+            |laid: &limn::Frame| laid.regions.iter().any(|region| region.id == ids::WARNING);
+        assert!(!warned(&laid));
+        let (_, laid) = frame(stage(stage_with(vec![focused(None, true)]), &look), size);
+        assert!(warned(&laid));
+    }
+
+    #[test]
+    fn the_quality_and_live_make_one_pill_and_the_quality_waits_for_its_frame() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let quality_grey = Color::rgb(0x4E, 0x50, 0x58);
+        let live_red = Color::rgb(0xD2, 0x2D, 0x39);
+        // The segments have their own corners, so they are drawn with them.
+        let painted = |laid: &limn::Frame, color: Color| -> Vec<limn::Rect> {
+            laid.commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::FillRect {
+                        rect, color: ink, ..
+                    }
+                    | limn::DrawCommand::FillCornerRect {
+                        rect, color: ink, ..
+                    } if *ink == color => Some(*rect),
+                    _ => None,
+                })
+                .collect()
+        };
+        let stream = |frame: Option<(u32, u32)>, fps: Option<u32>| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame,
+            fps,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let stage_with = |watching: Vec<Preview>| Stage {
+            channel: "General".into(),
+            phase: Some(CallPhase::Connected),
+            people: vec![
+                person(1, false, false, false),
+                person(2, false, false, false),
+            ],
+            muted: false,
+            deafened: false,
+            simulated: false,
+            join_denied: None,
+            chat: Err("Sin chat".into()),
+            size,
+            card: None,
+            tile_menu: None,
+            more_open: false,
+            video: VideoControls::default(),
+            previews: Vec::new(),
+            watch: Ok(()),
+            watching,
+            tiles_hidden: false,
+            private: None,
+            quick: None,
+            camera_panel: None,
+            end: 0.0,
+        };
+        // With the quality known, two touching segments: the quality, then «EN VIVO».
+        let (_, laid) = frame(
+            stage(stage_with(vec![stream(Some((1280, 720)), Some(30))]), &look),
+            size,
+        );
+        let said = texts(&laid);
+        assert!(said.iter().any(|text| text == "720p 30 FPS"), "{said:?}");
+        assert!(said.iter().any(|text| text == "EN VIVO"), "{said:?}");
+        let quality = painted(&laid, quality_grey);
+        let live = painted(&laid, live_red);
+        assert_eq!((quality.len(), live.len()), (1, 1));
+        assert!(
+            (quality[0].x + quality[0].width - live[0].x).abs() < 0.5,
+            "they touch"
+        );
+        // Without the rate, only the resolution; without the frame, no quality at all.
+        let (_, laid) = frame(
+            stage(stage_with(vec![stream(Some((1280, 720)), None)]), &look),
+            size,
+        );
+        assert!(texts(&laid).iter().any(|text| text == "720p"));
+        let (_, laid) = frame(stage(stage_with(vec![stream(None, None)]), &look), size);
+        let said = texts(&laid);
+        assert!(!said.iter().any(|text| text.contains("720p")), "{said:?}");
+        assert!(said.iter().any(|text| text == "EN VIVO"), "{said:?}");
+        assert!(painted(&laid, quality_grey).is_empty());
     }
 
     /// Someone called `name`, for the VOICE row.

@@ -145,6 +145,12 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Medido por el proveedor.", "Measured by the provider."),
     ("Vista previa simulada", "Simulated preview"),
     ("EN VIVO", "LIVE"),
+    ("{name} está jugando a {game}", "{name} playing {game}"),
+    (
+        "La transmisión que estás viendo en este momento tiene una calidad de video o audio reducida. Esto puede deberse a las condiciones de la red.",
+        "The stream you're watching has reduced video or audio quality. This may be due to network conditions.",
+    ),
+    ("Calidad de transmisión", "Stream quality"),
     ("Silenciado por el servidor", "Server muted"),
     ("Ensordecido por el servidor", "Server deafened"),
     ("Ensordecido", "Deafened"),

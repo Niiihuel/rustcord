@@ -818,6 +818,9 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         fullscreen: ui.video.focus == Some(owner),
         idle: idle(ui, store, now),
         over: ended,
+        activity: crate::identity::playing_game(store, owner),
+        degraded: matches!(watching.phase, StreamPhase::Reconnecting),
+        viewers: Vec::new(),
     };
     let live = ui
         .video
