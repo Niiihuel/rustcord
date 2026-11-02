@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use limn::{Element, Key, UiAction, UiEvent};
 use rustcord_components::chrome::{self, UserPanel};
+use rustcord_components::identity::Plate;
 use rustcord_components::look::activity_line;
 use rustcord_components::profile::{
     self as parts, ids, CardMenu, ClearAfter, CustomStatusDialog, EditorErrors, EditorPictures,
@@ -25,8 +26,8 @@ use rustcord_components::voice::MenuEntry;
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
 use rustcord_model::{
-    MessageId, RelationshipKind, Restriction, Rgb, ServerId, Status, Timestamp, User, UserId,
-    UserProfile,
+    ActivityKind, MessageId, RelationshipKind, Restriction, Rgb, ServerId, Status, Timestamp, User,
+    UserId, UserProfile,
 };
 use rustcord_provider::{
     Command, Created, Failure, ProfileEdit, ProfileImage, ProfileImageKind, ServerProfileEdit,
@@ -1789,6 +1790,17 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
                 look,
             )
         });
+    // The account's frame and nameplate, as a member's row takes them. Its
+    // plate keeps its still artwork: the pointer does not move it.
+    let marks = me
+        .map(|me| crate::identity::marks(ui, store, None, me, look))
+        .unwrap_or_default();
+    // While it shares its screen, the line says so, or the game it streams.
+    let sharing = crate::video::sending(ui, store).is_some();
+    let game = presence
+        .activities
+        .first()
+        .filter(|activity| activity.kind == ActivityKind::Playing && !activity.is_spotify());
     // What the server holds in the call the account is in.
     let held = store.my_voice().filter(|state| {
         store
@@ -1798,13 +1810,24 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
     chrome::user_panel(
         UserPanel {
             image: user.and_then(|user| ui.picture(user.picture())),
+            decoration: marks.decoration,
+            plate: marks.plate.map(|plate| Plate {
+                animated: None,
+                chosen: false,
+                ..plate
+            }),
             name: user
                 .map(|user| user.shown_name().to_owned())
                 .unwrap_or_default(),
             handle: user.map(|user| user.name.clone()).unwrap_or_default(),
             accent: user.map_or(look.faint, |user| look.ink(user.accent)),
             status: has_presence(store).then(|| look.status(presence.status)),
-            status_label: if has_presence(store) {
+            status_label: if sharing {
+                match game {
+                    Some(game) => tr!("Transmitiendo {name}", name = game.name.as_str()),
+                    None => t("Compartiendo su pantalla").into(),
+                }
+            } else if has_presence(store) {
                 presence
                     .custom
                     .clone()

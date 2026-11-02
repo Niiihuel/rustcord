@@ -3406,13 +3406,52 @@ impl App {
         ctx.request_repaint();
     }
 
-    /// A deferred capture action: `app:{custom_id}`, `app-pick:{n}:{custom_id}`
-    /// and `app-close:{custom_id}` act on the newest message of the open
-    /// conversation with that part of an app; `click:{id}` clicks; `{field}={text}`
-    /// writes; `reveal:{id}` scrolls to a control; `open:{name}` opens a conversation by
-    /// its name; `press:{id}` and
-    /// `move:{id}` drag; anything else clicks its id.
+    /// The account's share goes live as the flow does once the screen shows:
+    /// the share begins, the provider says it is live, and the screen has a
+    /// frame. Needs the call, so it can run after `after:`.
+    fn capture_own_stream(&mut self, ctx: &egui::Context, now: Instant) {
+        let (Some(channel), Some(me)) =
+            (self.store.call().map(|call| call.channel), self.store.me())
+        else {
+            return;
+        };
+        self.ui.video.screen = rustcord_ui::Share {
+            on: true,
+            live: rustcord_ui::Live::Showing(1920, 1080, None),
+            ..Default::default()
+        };
+        self.store.begin_share(channel);
+        if let Some(capture) = self.capture.as_mut() {
+            capture.fake_screen = true;
+        }
+        let event = rustcord_provider::Event::StreamPhase {
+            channel,
+            owner: me,
+            phase: StreamPhase::Live,
+        };
+        let applied = self.store.apply(event, now);
+        let intents = rustcord_ui::on_applied(&mut self.ui, &mut self.store, &applied, now);
+        self.run(ctx, intents);
+    }
+
+    /// A deferred capture action: `own-stream` (see [`Self::capture_own_stream`]);
+    /// `app:{custom_id}`, `app-pick:{n}:{custom_id}` and `app-close:{custom_id}`
+    /// act on the newest message of the open conversation with that part of an
+    /// app; `click:{id}` clicks; `{field}={text}` writes; `reveal:{id}` scrolls to
+    /// a control; `open:{name}` opens a conversation by its name; `press:{id}`
+    /// and `move:{id}` drag; anything else clicks its id.
     fn capture_later(&mut self, ctx: &egui::Context, id: &str, now: Instant) {
+        if id == "own-stream" {
+            self.capture_own_stream(ctx, now);
+            return;
+        }
+        // `click:{id}` once laid out, such as a control the call adds.
+        if let Some(id) = id.strip_prefix("click:") {
+            let action = limn::UiAction::Clicked { id: id.into() };
+            let intents = rustcord_ui::update(&mut self.ui, &mut self.store, &action, now);
+            self.run(ctx, intents);
+            return;
+        }
         if let Some(target) = id.strip_prefix("reveal:") {
             self.tree.reveal_at_start(target, 16.0);
             return;
@@ -3757,28 +3796,7 @@ impl App {
                 // once the screen shows: the share begins, the provider says it is
                 // live, and the screen has a frame (for captures of the own card).
                 if id == "own-stream" {
-                    if let (Some(channel), Some(me)) =
-                        (self.store.call().map(|call| call.channel), self.store.me())
-                    {
-                        self.ui.video.screen = rustcord_ui::Share {
-                            on: true,
-                            live: rustcord_ui::Live::Showing(1920, 1080, None),
-                            ..Default::default()
-                        };
-                        self.store.begin_share(channel);
-                        if let Some(capture) = self.capture.as_mut() {
-                            capture.fake_screen = true;
-                        }
-                        let event = rustcord_provider::Event::StreamPhase {
-                            channel,
-                            owner: me,
-                            phase: StreamPhase::Live,
-                        };
-                        let applied = self.store.apply(event, now);
-                        let intents =
-                            rustcord_ui::on_applied(&mut self.ui, &mut self.store, &applied, now);
-                        self.run(ctx, intents);
-                    }
+                    self.capture_own_stream(ctx, now);
                     continue;
                 }
                 // `file:{path}` prepares a file for the open conversation or

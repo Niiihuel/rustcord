@@ -11,8 +11,8 @@ use limn::{
     Access, AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox,
     Color, Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
     DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, Point,
-    PopoverPlacement, RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip,
-    TooltipPlacement, TooltipSpec,
+    PopoverPlacement, RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Switch,
+    Tooltip, TooltipPlacement, TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{CallPhase, CallQuality, Rgb, ShareKind, StreamQuality};
@@ -85,6 +85,13 @@ pub mod ids {
     pub const STOP_CAMERA: &str = "vz:stop-camera";
     /// «Dejar de transmitir» on the panel's streaming row.
     pub const STREAM_STOP: &str = "vz:stream-stop";
+    /// The wave beside the hang-up: the noise suppression popout, its switch
+    /// (the settings' own noise action), its dismissal and the voice settings.
+    pub const NOISE: &str = "vz:noise";
+    pub const NOISE_DISMISS: &str = "vz:noise:dismiss";
+    pub const NOISE_SWITCH: &str = "us:noise";
+    pub const NOISE_SETTINGS: &str = "us:page=voice";
+    /// The action row's two buttons Rustcord cannot act on yet.
     /// The surfaces the host presents the previews' frames on.
     pub const SCREEN_SURFACE: &str = "video:screen";
     pub const CAMERA_SURFACE: &str = "video:camera";
@@ -377,8 +384,12 @@ fn video_buttons(
                 )
                 .render(),
         };
-        match edge.filter(|_| on) {
-            Some(edge) => rendered.border(edge, 1.0),
+        // The panel's buttons are outlined in both states: the lit ones in `edge`.
+        // The outline follows the wrapper's own radius, so it matches the button's.
+        match edge {
+            Some(lit) => rendered
+                .radius(RadiusRole::Card.px())
+                .border(if on { lit } else { look.border }, 1.0),
             None => rendered,
         }
     };
@@ -1333,17 +1344,23 @@ pub struct Panel {
     /// The account shares its screen while the stage is not open: the
     /// subtitle says «Estás en directo».
     pub live: bool,
-    /// The source the account streams, while it does: a row above the title
+    /// The source the account streams, while it does: a card above the panel
     /// with it and a button to stop.
     pub stream_source: Option<String>,
+    /// The stream's size and rate, as the card words them: «720p 30 FPS».
+    pub stream_quality: Option<String>,
+    /// The microphone's noise suppression is on.
+    pub noise_suppression: bool,
+    /// The noise suppression popout, open over its button.
+    pub noise_open: bool,
 }
 
 /// The voice section above the account's panel, in the same card: the signal
 /// (its hint the latency, a click its details, tinted as the title's color
-/// while connected), how far the call got and where, and the way to hang up;
-/// then the camera and the screen, lit while on. While it failed, the reason
-/// and a way to try again. The clock is in the details. `details` floats over
-/// the signal while open.
+/// while connected), how far the call got and where, the noise suppression
+/// and the way to hang up; then the camera and the screen. While it failed, the reason and a way to try
+/// again. The clock is in the details. `details` floats over the signal while
+/// open. While the account streams, its card goes above the panel.
 pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     let (title, ink) = phase_title(&view.phase, view.simulated, look);
     let connected = view.phase.is_connected();
@@ -1414,24 +1431,61 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     )
     .hover_region()
     .accessibility_label(t("Detalles de voz"));
-    let mut first = vec![signal.centered_y(), summary.flex(1.0).centered_y()];
-    first.push(
-        IconButton::new(ids::LEAVE, Icon::HangUp, look.sidebar_palette())
-            .variant(ButtonVariant::Ghost)
-            .sizing(ButtonSizing {
-                height: PANEL_BUTTON,
-                font_size: 14.0,
-                icon_size: 20.0,
-                horizontal_padding: 9.0,
-                inner_spacing: 6.0,
-            })
-            .radius(RadiusRole::Card)
-            .ink(look.muted)
-            .hover_ink(look.text)
-            .tooltip(t("Desconectar de voz"))
-            .render()
-            .centered_y(),
-    );
+    let wave = IconButton::new(
+        ids::NOISE,
+        Icon::Custom(crate::glyphs::NOISE),
+        look.sidebar_palette(),
+    )
+    .variant(ButtonVariant::Ghost)
+    .sizing(ButtonSizing {
+        height: PANEL_BUTTON,
+        font_size: 14.0,
+        icon_size: 20.0,
+        horizontal_padding: 9.0,
+        inner_spacing: 6.0,
+    })
+    .radius(RadiusRole::Card)
+    .ink(if view.noise_suppression {
+        look.text
+    } else {
+        look.muted
+    })
+    .hover_ink(look.text)
+    .tooltip(t("Supresión de ruido"))
+    .render()
+    .centered_y();
+    let wave = if view.noise_open {
+        Element::popover(
+            wave,
+            noise_popout(view.noise_suppression, look),
+            ids::NOISE_DISMISS,
+            PopoverPlacement::TopEnd,
+        )
+        .popover_gap(10.0)
+    } else {
+        wave
+    };
+    let hang_up = IconButton::new(ids::LEAVE, Icon::HangUp, look.sidebar_palette())
+        .variant(ButtonVariant::Ghost)
+        .sizing(ButtonSizing {
+            height: PANEL_BUTTON,
+            font_size: 14.0,
+            icon_size: 20.0,
+            horizontal_padding: 9.0,
+            inner_spacing: 6.0,
+        })
+        .radius(RadiusRole::Card)
+        .ink(look.muted)
+        .hover_ink(look.text)
+        .tooltip(t("Desconectar de voz"))
+        .render()
+        .centered_y();
+    // The wave and the hang-up 4 apart, as Discord's.
+    let first = vec![
+        signal.centered_y(),
+        summary.flex(1.0).centered_y(),
+        Element::row(vec![wave, hang_up]).gap(4.0).centered_y(),
+    ];
     let second = if let CallPhase::Failed { .. } = view.phase {
         Element::row(vec![Button::new(
             ids::RETRY,
@@ -1450,54 +1504,56 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
         .render()
         .flex(1.0)])
     } else {
-        Element::row(
-            video_buttons(
-                &view.video,
-                PANEL_BUTTON,
-                (look.hover, look.selected),
-                (Look::alpha(look.online, 31), Look::alpha(look.online, 61)),
-                Some(Look::alpha(look.online, 31)),
-                look,
-            )
-            .map(|button| button.flex(1.0))
-            .into(),
+        let actions = video_buttons(
+            &view.video,
+            PANEL_BUTTON,
+            (look.hover, look.selected),
+            (Look::alpha(look.online, 31), Look::alpha(look.online, 61)),
+            Some(Look::alpha(look.online, 31)),
+            look,
         )
-        .gap(PANEL_GAP)
+        .into_iter()
+        .map(|button| button.flex(1.0))
+        .collect();
+        Element::row(actions).gap(PANEL_GAP)
     };
-    // The card's two rows: the header of 32 and the buttons; while the
-    // account streams, its row and a rule above them.
-    let mut rows = Vec::new();
-    let height = match &view.stream_source {
-        Some(source) => {
-            rows.push(streaming_row(source, look));
-            rows.push(
-                Element::panel(Element::spacer())
-                    .size(None, Some(1.0))
-                    .background(look.border),
-            );
-            PANEL_HEIGHT + STREAMING_ROWS
-        }
-        None => PANEL_HEIGHT,
-    };
-    rows.push(Element::row(first).gap(8.0).size(None, Some(PANEL_BUTTON)));
-    rows.push(second.size(None, Some(PANEL_BUTTON)));
-    Element::panel(Element::column(rows).gap(PANEL_INSET).padding(PANEL_INSET))
-        .size(None, Some(height))
+    let rows = vec![
+        Element::row(first).gap(8.0).size(None, Some(PANEL_BUTTON)),
+        second.size(None, Some(PANEL_BUTTON)),
+    ];
+    let card = Element::panel(Element::column(rows).gap(PANEL_INSET).padding(PANEL_INSET))
+        .size(None, Some(PANEL_HEIGHT));
+    match &view.stream_source {
+        Some(source) => Element::column(vec![
+            stream_card(source, view.stream_quality.as_deref(), look),
+            Element::panel(Element::spacer())
+                .size(None, Some(1.0))
+                .background(look.border),
+            card,
+        ])
+        .size(None, Some(STREAM_CARD + 1.0 + PANEL_HEIGHT)),
+        None => card,
+    }
 }
 
-/// The streaming row above the card's title, with its rule: 32 high, and the
-/// rule 1 high, each between the card's gaps.
-const STREAMING_ROWS: f32 = PANEL_BUTTON + 1.0 + 2.0 * PANEL_INSET;
+/// The stream card above the panel, 56 high: its tile, the source's name and
+/// quality, and the button to stop.
+const STREAM_CARD: f32 = PANEL_BUTTON + 2.0 * PANEL_INSET;
 
-/// The account's stream in the voice card: a green tile with the screen's
-/// glyph, the source's name and a button to stop sharing (Discord's row).
-fn streaming_row(source: &str, look: &Look) -> Element {
+/// The account's stream, as Discord's card above the voice panel: a green
+/// tile with the screen's glyph, the source's name over its quality, and a
+/// button to stop sharing.
+fn stream_card(source: &str, quality: Option<&str>, look: &Look) -> Element {
     let tile = Element::panel(centered(
         icon(Icon::Screen, Color::rgb(255, 255, 255)).size(Some(20.0), Some(20.0)),
     ))
     .size(Some(PANEL_BUTTON), Some(PANEL_BUTTON))
     .radius(8.0)
     .background(look.online);
+    let mut names = vec![strong_line(source, 14.0, look.text).shrink_to_fit()];
+    if let Some(quality) = quality {
+        names.push(strong_line(quality, 11.0, look.muted));
+    }
     let stop = IconButton::new(
         ids::STREAM_STOP,
         Icon::Custom(SCREEN_STOP),
@@ -1517,16 +1573,57 @@ fn streaming_row(source: &str, look: &Look) -> Element {
     .tooltip(t("Dejar de transmitir"))
     .render()
     .centered_y();
-    Element::row(vec![
-        tile,
-        strong_line(source, 15.0, look.text)
-            .flex(1.0)
-            .centered_y()
-            .shrink_to_fit(),
-        stop,
-    ])
-    .gap(PANEL_GAP)
-    .size(None, Some(PANEL_BUTTON))
+    Element::panel(
+        Element::row(vec![
+            tile,
+            Element::column(names).flex(1.0).centered_y(),
+            stop,
+        ])
+        .gap(PANEL_GAP)
+        .padding(PANEL_INSET),
+    )
+    .size(None, Some(STREAM_CARD))
+    .background(look.raised)
+    .corner_radii(limn::CornerRadii {
+        top_left: 8.0,
+        top_right: 8.0,
+        bottom_left: 0.0,
+        bottom_right: 0.0,
+    })
+}
+
+/// The noise suppression popout over its button: its switch, what it does,
+/// and a way to the voice settings.
+fn noise_popout(on: bool, look: &Look) -> Element {
+    let link = Element::clickable(
+        ids::NOISE_SETTINGS,
+        line(t("Ajustes de voz"), 12.0, look.accent),
+    )
+    .hover_region();
+    Element::panel(
+        Element::column(vec![
+            Element::row(vec![
+                strong_line(t("Supresión de ruido"), 14.0, look.text).flex(1.0),
+                Switch::new(ids::NOISE_SWITCH, on, look.palette()).render(),
+            ])
+            .gap(8.0)
+            .centered_y(),
+            text(
+                t("Filtra el ruido de fondo de tu micrófono."),
+                12.0,
+                look.muted,
+            ),
+            link,
+        ])
+        .gap(8.0)
+        .padding(16.0),
+    )
+    .size(Some(244.0), None)
+    .background(look.menu)
+    .border(look.border, 1.0)
+    .radius(4.0)
+    .shadow(look.shadow, limn::Point::new(0.0, 8.0), 20.0, 0.0)
+    .clip_children()
 }
 
 /// The connection's details, as its popover shows them.
@@ -4529,11 +4626,23 @@ mod tests {
             simulated: true,
             live: false,
             stream_source: None,
+            stream_quality: None,
+            noise_suppression: false,
+            noise_open: false,
             video: VideoControls {
                 denied: Some(NO_VIDEO.into()),
                 ..Default::default()
             },
         }
+    }
+
+    fn rect_of(frame: &limn::Frame, id: &str) -> limn::Rect {
+        frame
+            .regions
+            .iter()
+            .find(|region| region.id == id)
+            .map(|region| region.rect)
+            .unwrap()
     }
 
     #[test]
@@ -4586,37 +4695,67 @@ mod tests {
     }
 
     #[test]
-    fn a_streaming_account_shows_its_source_and_a_stop_above_the_title() {
+    fn a_streaming_account_shows_its_card_above_the_panel_with_a_stop() {
         let look = Look::DARK;
         let streaming = Panel {
             stream_source: Some("Una ventana, pantalla o aplicación".into()),
+            stream_quality: Some("720p 30 FPS".into()),
             ..connected()
         };
         let (_, laid) = frame(panel(&streaming, None, &look), Size::new(357.5, 300.0));
-        assert!(texts(&laid)
+        let shown = texts(&laid);
+        assert!(shown
             .iter()
             .any(|text| text == "Una ventana, pantalla o aplicación"));
+        assert!(shown.iter().any(|text| text == "720p 30 FPS"));
         assert!(controls(&laid).contains(&ids::STREAM_STOP.to_owned()));
-        // Its row sits above the title's, and the card is the taller for it.
-        let rect = |id: &str| {
-            laid.regions
-                .iter()
-                .find(|region| region.id == id)
-                .map(|region| region.rect)
-                .unwrap()
-        };
-        assert!(rect(ids::STREAM_STOP).y < rect(ids::DETAILS).y);
-        assert_eq!(rect(ids::STREAM_STOP).height, PANEL_BUTTON);
-        // The row starts at the card's inset; the title's row comes after it and its rule.
-        let row = rect(ids::STREAM_STOP);
-        assert_eq!(row.y, PANEL_INSET);
+        // The card is 56 high, its rule 1 more, and the panel's title comes under both.
+        let stop = rect_of(&laid, ids::STREAM_STOP);
+        assert!(stop.y < rect_of(&laid, ids::DETAILS).y);
+        assert_eq!((stop.y, stop.height), (PANEL_INSET, PANEL_BUTTON));
         assert_eq!(
-            rect(ids::DETAILS).y,
-            row.y + PANEL_BUTTON + 1.0 + 2.0 * PANEL_INSET
+            rect_of(&laid, ids::DETAILS).y,
+            STREAM_CARD + 1.0 + PANEL_INSET
         );
-        // Not streaming: no row, no stop, the card as before.
+        // Not streaming: no card, no stop, the panel as before.
         let (_, idle) = frame(panel(&connected(), None, &look), Size::new(357.5, 300.0));
         assert!(!controls(&idle).contains(&ids::STREAM_STOP.to_owned()));
+        assert_eq!(rect_of(&idle, ids::DETAILS).y, PANEL_INSET);
+    }
+
+    #[test]
+    fn the_action_row_has_two_equal_buttons_eight_apart() {
+        let look = Look::DARK;
+        let local = Panel {
+            video: VideoControls::default(),
+            ..connected()
+        };
+        let (_, laid) = frame(panel(&local, None, &look), Size::new(357.5, 300.0));
+        let (camera, screen) = (rect_of(&laid, ids::CAMERA), rect_of(&laid, ids::SCREEN));
+        // 357.5 less the card's 12 on each side, two buttons and a gap of 8.
+        let width = (357.5 - 2.0 * PANEL_INSET - PANEL_GAP) / 2.0;
+        assert!((camera.width - width).abs() < 0.01, "{}", camera.width);
+        assert!((screen.width - width).abs() < 0.01, "{}", screen.width);
+        assert!((screen.x - (camera.x + camera.width + PANEL_GAP)).abs() < 0.01);
+    }
+
+    #[test]
+    fn the_wave_sits_beside_the_hang_up_and_opens_the_noise_popout() {
+        let look = Look::DARK;
+        let (_, laid) = frame(panel(&connected(), None, &look), Size::new(357.5, 300.0));
+        let (wave, leave) = (rect_of(&laid, ids::NOISE), rect_of(&laid, ids::LEAVE));
+        assert_eq!(wave.y, leave.y);
+        assert!((wave.x + wave.width + 4.0 - leave.x).abs() < 0.01);
+        assert!(!controls(&laid).contains(&ids::NOISE_SWITCH.to_owned()));
+        // The popout lays out over the panel, so its content is checked alone.
+        let (_, popped) = frame(noise_popout(true, &look), Size::new(244.0, 300.0));
+        let ids_now = controls(&popped);
+        assert!(ids_now.contains(&ids::NOISE_SWITCH.to_owned()));
+        assert!(ids_now.contains(&ids::NOISE_SETTINGS.to_owned()));
+        // The sentence wraps in 212 px at 7 px a character.
+        assert!(texts(&popped)
+            .iter()
+            .any(|text| text.starts_with("Filtra el ruido")));
     }
 
     #[test]
@@ -4641,9 +4780,12 @@ mod tests {
             panel(&simulated, None, &Look::DARK),
             Size::new(357.5, 300.0),
         );
+        // The wave takes its width from the title: at this width it is cut short.
         let shown = texts(&laid);
         assert!(
-            shown.contains(&"Esperando a los demás (simulada)".to_owned()),
+            shown
+                .iter()
+                .any(|text| text.starts_with("Esperando a los demás (simul")),
             "{shown:?}"
         );
         // So does the stage.

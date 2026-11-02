@@ -17,6 +17,8 @@ pub const MEGAPHONE: &str = glyph!("megaphone");
 pub const FORUM: &str = glyph!("forum");
 pub const THREAD: &str = glyph!("thread");
 pub const STAGE: &str = glyph!("stage");
+/// The voice card's noise suppression.
+pub const NOISE: &str = glyph!("noise");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

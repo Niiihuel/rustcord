@@ -8,6 +8,9 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Nivel de entrada", "Input Level"),
     ("Servidor silenciado", "Server Muted"),
     ("Servidor ensordecido", "Server Deafened"),
+    // The account's card: its noise popout and its stream.
+    ("Filtra el ruido de fondo de tu micrófono.", "Filters background noise from your microphone."),
+    ("{height}p {fps} FPS", "{height}p {fps} FPS"),
     // The camera's panel.
     ("Todos los ajustes de voz", "All voice settings"),
     ("Dispositivo no disponible", "Device unavailable"),
