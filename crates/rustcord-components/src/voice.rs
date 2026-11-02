@@ -10,7 +10,7 @@
 use limn::{
     AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox, Color,
     Component, ComponentPalette, ControlSize, DropdownMenu, DropdownMenuEntry, DropdownMenuItem,
-    Element, FontFamily, Icon, IconButton, LineChart, Modal, PopoverPlacement, RadiusRole,
+    Element, FontFamily, Icon, IconButton, LineChart, Modal, Point, PopoverPlacement, RadiusRole,
     ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement, TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
@@ -234,6 +234,15 @@ pub mod ids {
         format!("vz:stream-more:{user}")
     }
 
+    /// «Acercar» and «Alejar» on the focused `user`'s stream.
+    pub fn zoom_in(user: u64) -> String {
+        format!("vz:zoom-in:{user}")
+    }
+
+    pub fn zoom_out(user: u64) -> String {
+        format!("vz:zoom-out:{user}")
+    }
+
     /// «Enfocar» `user`'s stream, or «Volver a la grilla» while it is.
     pub fn spotlight(user: u64) -> String {
         format!("vz:spotlight:{user}")
@@ -400,6 +409,78 @@ pub struct Preview {
     pub card: bool,
 }
 
+/// The zoom of a focused stream's picture, from 1× (the fit) to 5×, by
+/// quarters with the buttons, as the official client's.
+pub const ZOOM_MIN: f32 = 1.0;
+pub const ZOOM_MAX: f32 = 5.0;
+pub const ZOOM_STEP: f32 = 0.25;
+
+/// A zoomed picture: its level, and how far its middle is from the middle of
+/// its tile, in pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Zoom {
+    pub level: f32,
+    pub pan: (f32, f32),
+}
+
+impl Zoom {
+    /// The picture as it fits its tile.
+    pub const FIT: Zoom = Zoom {
+        level: ZOOM_MIN,
+        pan: (0.0, 0.0),
+    };
+}
+
+/// A frame as it fits a tile, at 1×.
+pub fn fitted(frame: (u32, u32), room: Size) -> Size {
+    let scale = (room.width / frame.0 as f32).min(room.height / frame.1 as f32);
+    Size::new(frame.0 as f32 * scale, frame.1 as f32 * scale)
+}
+
+/// `zoom` at `level` about `pivot` (from the tile's middle, so the point of
+/// the picture under it stays there), then moved by `by`. A picture larger
+/// than its tile never leaves the tile's edges bare.
+pub fn zoom_to(
+    zoom: Zoom,
+    level: f32,
+    pivot: (f32, f32),
+    by: (f32, f32),
+    picture: Size,
+    room: Size,
+) -> Zoom {
+    let level = level.clamp(ZOOM_MIN, ZOOM_MAX);
+    let ratio = level / zoom.level;
+    let moved = |at: f32, pan: f32, by: f32| at - (at - pan) * ratio + by;
+    let reach = |picture: f32, room: f32| ((picture * level - room) / 2.0).max(0.0);
+    let (x, y) = (
+        reach(picture.width, room.width),
+        reach(picture.height, room.height),
+    );
+    Zoom {
+        level,
+        pan: (
+            moved(pivot.0, zoom.pan.0, by.0).clamp(-x, x),
+            moved(pivot.1, zoom.pan.1, by.1).clamp(-y, y),
+        ),
+    }
+}
+
+/// The zoomed picture of a frame on a surface, moved by its pan from the
+/// middle of the tile; the tile clips what goes past it.
+fn zoomed_surface(view: &Preview, frame: (u32, u32), size: Size, zoom: Zoom) -> Element {
+    let fit = fitted(frame, size);
+    let (width, height) = (fit.width * zoom.level, fit.height * zoom.level);
+    Element::column(vec![Element::row(vec![Element::surface(
+        view.surface.clone(),
+        view.title.clone(),
+    )
+    .size(Some(width), Some(height))
+    .translate(Point::new(
+        (size.width - width) / 2.0 + zoom.pan.0,
+        (size.height - height) / 2.0 + zoom.pan.1,
+    ))])])
+}
+
 /// A stream watched, as its tile offers it, as in the
 /// official client: a click focuses it, a double click shows it full
 /// screen. Its name goes in a pill at the bottom left and its controls,
@@ -430,11 +511,32 @@ pub struct StreamTile {
     /// the bar under it too, and the pointer hides over it, as the official
     /// client's (3 s). Only while it takes the stage or the window.
     pub idle: bool,
+    /// Its picture's zoom, while it takes the stage or the window: its
+    /// buttons are shown then.
+    pub zoom: Option<Zoom>,
 }
 
 /// Rustcord's own glyphs for «Dejar de ver» and «Ventana aparte».
 const SCREEN_STOP: &str = crate::glyphs::glyph!("screen-stop");
 const POP_OUT: &str = crate::glyphs::glyph!("pop-out");
+const ZOOM_IN: &str = crate::glyphs::glyph!("add");
+const ZOOM_OUT: &str = crate::glyphs::glyph!("minus");
+
+/// The level of a zoom as a percentage, «150 %», in a pill as the name's.
+fn zoom_level(level: f32) -> Element {
+    let percent = (level * 100.0).round() as u32;
+    Element::panel(Element::row(vec![
+        gap(10.0, 0.0),
+        strong_line(tr!("{percent} %", percent), 14.0, OVER_INK)
+            .centered_y()
+            .shrink_to_fit(),
+        gap(10.0, 0.0),
+    ]))
+    .size(None, Some(OVER_BUTTON))
+    .radius(OVER_BUTTON / 2.0)
+    .background(OVER)
+    .shrink_to_fit()
+}
 
 /// What is drawn over a picture, as the official client's chips: black at
 /// 60 %, 80 % under the pointer, with white on it whatever the theme.
@@ -457,12 +559,25 @@ fn over_button(
     fill: Color,
     look: &Look,
 ) -> Element {
+    over_button_at(id, glyph, hint, fill, true, look)
+}
+
+/// [`over_button`], or off when `enabled` is false: what it does is not
+/// possible now, as «Acercar» at the largest zoom.
+fn over_button_at(
+    id: impl Into<String>,
+    glyph: Icon,
+    hint: &str,
+    fill: Color,
+    enabled: bool,
+    look: &Look,
+) -> Element {
     let hover = if fill == OVER {
         OVER_HOVER
     } else {
         lighter(fill, 18)
     };
-    IconButton::new(id, glyph, filled(fill, hover, look))
+    let button = IconButton::new(id, glyph, filled(fill, hover, look))
         .variant(ButtonVariant::Raised)
         .sizing(ButtonSizing {
             height: OVER_BUTTON,
@@ -476,8 +591,12 @@ fn over_button(
         .ink(OVER_INK)
         .hover_ink(OVER_INK)
         .tooltip(hint)
-        .accessibility_label(hint)
-        .render()
+        .accessibility_label(hint);
+    if enabled {
+        button.render()
+    } else {
+        button.disabled().render()
+    }
 }
 
 /// A preview's title in a pill at its bottom left; a stream's is its
@@ -533,14 +652,17 @@ pub fn preview(view: &Preview, size: Size, look: &Look) -> Element {
 /// picture and its title only.
 fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Element {
     let picture = match view.frame {
-        Some((width, height)) => {
-            let scale = (size.width / width as f32).min(size.height / height as f32);
-            centered(
-                Element::surface(view.surface.clone(), view.title.clone())
-                    .surface_mirrored(view.surface == ids::CAMERA_SURFACE)
-                    .size(Some(width as f32 * scale), Some(height as f32 * scale)),
-            )
-        }
+        Some((width, height)) => match view.stream.as_ref().and_then(|stream| stream.zoom) {
+            Some(zoom) => zoomed_surface(view, (width, height), size, zoom),
+            None => {
+                let scale = (size.width / width as f32).min(size.height / height as f32);
+                centered(
+                    Element::surface(view.surface.clone(), view.title.clone())
+                        .surface_mirrored(view.surface == ids::CAMERA_SURFACE)
+                        .size(Some(width as f32 * scale), Some(height as f32 * scale)),
+                )
+            }
+        },
         // A stream over says so, and offers to be watched again or closed.
         None => match &view.stream {
             Some(stream) if stream.over => {
@@ -842,6 +964,28 @@ fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
                 look,
             )
         });
+    }
+    // The focused stream's zoom: «Alejar» and the level once zoomed, then
+    // «Acercar», off at the largest zoom.
+    if let Some(zoom) = stream.zoom {
+        if zoom.level > ZOOM_MIN {
+            buttons.push(over_button(
+                ids::zoom_out(stream.owner),
+                Icon::Custom(ZOOM_OUT),
+                t("Alejar"),
+                OVER,
+                look,
+            ));
+            buttons.push(zoom_level(zoom.level));
+        }
+        buttons.push(over_button_at(
+            ids::zoom_in(stream.owner),
+            Icon::Custom(ZOOM_IN),
+            t("Acercar"),
+            OVER,
+            zoom.level < ZOOM_MAX,
+            look,
+        ));
     }
     let open = stream.menu.is_some();
     let more = DropdownMenu::new(
@@ -5166,6 +5310,7 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle: false,
+                zoom: None,
             }),
             focused,
             card: false,
@@ -6258,6 +6403,7 @@ mod tests {
                 fullscreen: false,
                 over: true,
                 idle: false,
+                zoom: None,
             }),
             focused,
             card: false,
@@ -6440,6 +6586,7 @@ mod tests {
                 fullscreen,
                 over: false,
                 idle,
+                zoom: None,
             }),
             focused: !fullscreen,
             card: false,
@@ -6527,6 +6674,7 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle,
+                zoom: None,
             }),
             focused,
             card: false,
@@ -6593,6 +6741,7 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle: false,
+                zoom: None,
             }),
             focused,
             card: false,
@@ -6672,6 +6821,7 @@ mod tests {
                 fullscreen: false,
                 over: false,
                 idle: false,
+                zoom: None,
             }),
             focused: true,
             card: false,
@@ -6684,6 +6834,78 @@ mod tests {
         let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
         // Only the pill says the name alone: the strip shows the other person.
         assert!(texts(&laid).contains(&"Persona 2".to_owned()));
+    }
+
+    #[test]
+    fn a_zoom_keeps_the_point_under_the_pointer_and_never_bares_the_tile() {
+        let room = Size::new(400.0, 225.0);
+        let picture = fitted((1600, 900), room);
+        assert_eq!((picture.width, picture.height), (400.0, 225.0));
+        // Twice as large, about a point right of the middle: the picture point
+        // under it stays under it, so the middle moves left by as much.
+        let twice = zoom_to(Zoom::FIT, 2.0, (100.0, 0.0), (0.0, 0.0), picture, room);
+        assert_eq!((twice.level, twice.pan), (2.0, (-100.0, 0.0)));
+        // Panned past an edge, it stops where the picture meets the tile's.
+        let edge = zoom_to(twice, 2.0, (0.0, 0.0), (1_000.0, 0.0), picture, room);
+        assert_eq!(edge.pan, (200.0, 0.0));
+        // The levels stop at 1× and 5×, and at the fit there is nothing to pan.
+        assert_eq!(
+            zoom_to(Zoom::FIT, 9.0, (0.0, 0.0), (0.0, 0.0), picture, room).level,
+            ZOOM_MAX
+        );
+        assert_eq!(
+            zoom_to(twice, 0.5, (0.0, 0.0), (0.0, 0.0), picture, room).level,
+            ZOOM_MIN
+        );
+        let fit = zoom_to(Zoom::FIT, 1.0, (50.0, 0.0), (30.0, 0.0), picture, room);
+        assert_eq!(fit.pan, (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_focused_stream_zooms_by_its_buttons_and_says_the_level() {
+        let look = Look::ONYX;
+        let size = Size::new(640.0, 360.0);
+        let stream = |zoom: Option<Zoom>| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1600, 900)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                zoom,
+            }),
+            focused: true,
+            card: false,
+        };
+        let shown = |zoom| {
+            let (_, laid) = frame(preview(&stream(zoom), size, &look), size);
+            (controls(&laid), texts(&laid), laid)
+        };
+        // At the fit, only «Acercar»; the picture fills the tile.
+        let (fit, _, _) = shown(Some(Zoom::FIT));
+        assert!(fit.contains(&ids::zoom_in(2)) && !fit.contains(&ids::zoom_out(2)));
+        // Zoomed, «Alejar» and the level too.
+        let (zoomed, said, _) = shown(Some(Zoom {
+            level: 2.0,
+            pan: (0.0, 0.0),
+        }));
+        assert!(zoomed.contains(&ids::zoom_out(2)));
+        assert!(said.contains(&"200 %".to_owned()), "{said:?}");
+        // Not a stream that does not take the stage: no zoom.
+        let (none, _, _) = shown(None);
+        assert!(!none.contains(&ids::zoom_in(2)));
     }
 
     fn named(name: &str, user: u64) -> Participant {

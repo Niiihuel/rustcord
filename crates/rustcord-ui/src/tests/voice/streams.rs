@@ -783,3 +783,34 @@ fn a_persons_tile_takes_the_color_of_their_avatar_and_their_accent_without_one()
     );
     assert_ne!(tile(&host), before);
 }
+
+#[test]
+fn the_zoom_buttons_and_the_wheel_zoom_the_focused_stream_and_a_new_focus_starts_fitted() {
+    let mut host = Host::new();
+    let owner = host.tr_focused();
+    let level = |host: &Host| host.ui.video.zoom.map(|(_, zoom)| zoom.level);
+    // «Acercar» steps by a quarter; «Alejar» steps back.
+    host.click(&ids::zoom_in(owner.0));
+    assert_eq!(level(&host), Some(1.25));
+    host.click(&ids::zoom_out(owner.0));
+    assert_eq!(level(&host), Some(1.0));
+    // The wheel zooms about the pointer: a step of 100 px is a level.
+    host.click(&ids::zoom_in(owner.0));
+    let tile = host.vz_rect(&ids::stream_tile(owner.0));
+    let middle = limn::Point::new(tile.x + tile.width / 2.0, tile.y + tile.height / 2.0);
+    host.send(limn::UiEvent::Scroll {
+        position: middle,
+        delta_y: 100.0,
+    });
+    assert_eq!(level(&host), Some(2.25));
+    // Unfocused, the zoom goes at the next layout; focused again, the stream
+    // starts fitted.
+    host.click(&ids::stream_tile(owner.0));
+    assert_eq!(host.ui.video.spotlight, None);
+    host.vz_rect(&ids::stream_tile(owner.0));
+    assert_eq!(level(&host), None);
+    host.click(&ids::stream_tile(owner.0));
+    host.vz_rect(&ids::stream_tile(owner.0));
+    assert_eq!(host.ui.video.spotlight, Some(owner));
+    assert_eq!(level(&host), None);
+}

@@ -4,4 +4,7 @@
 pub(super) const ENTRIES: super::Entries = &[
     ("Enfocar", "Focus"),
     ("Volver a la grilla", "Back to the grid"),
+    ("Acercar", "Zoom in"),
+    ("Alejar", "Zoom out"),
+    ("{percent} %", "{percent}%"),
 ];

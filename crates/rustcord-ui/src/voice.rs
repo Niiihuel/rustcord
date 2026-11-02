@@ -457,6 +457,12 @@ pub(crate) fn update(
     if let Some(user) = number(id, "vz:live:watch:") {
         return Some(crate::voice_live::watch(ui, store, UserId(user), now));
     }
+    if let Some(user) = number(id, "vz:zoom-in:") {
+        return Some(video::zoom_step(ui, UserId(user), parts::ZOOM_STEP));
+    }
+    if let Some(user) = number(id, "vz:zoom-out:") {
+        return Some(video::zoom_step(ui, UserId(user), -parts::ZOOM_STEP));
+    }
     if let Some(user) = number(id, "vz:fullscreen:") {
         return Some(video::focus(ui, UserId(user)));
     }
