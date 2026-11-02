@@ -1069,6 +1069,8 @@ pub struct PipView {
     /// Its controls at the bottom right, then «Desconectar» last.
     pub buttons: Vec<PipButton>,
     pub corner: PipCorner,
+    /// How far a drag in progress has carried it from its corner.
+    pub offset: limn::Point,
 }
 
 /// One of the picture-in-picture's round buttons.
@@ -1170,6 +1172,7 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
         .hover_region()
         .draggable_in_place()
         .shadow(look.shadow, limn::Point::new(0.0, 8.0), 24.0, 0.0)
+        .translate(view.offset)
         .accessibility_label(view.title.clone());
     // Its corner: the host puts it where the pointer let go, nearest corner.
     let (above, below) = if view.corner.bottom {
@@ -5588,6 +5591,7 @@ mod tests {
                 bottom: false,
                 right: true,
             },
+            offset: limn::Point::new(0.0, 0.0),
         };
         let window = Size::new(1280.0, 800.0);
         let (_, laid) = frame(pip(&view, &Look::DARK), window);

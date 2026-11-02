@@ -1,8 +1,9 @@
 //! The picture-in-picture: the stream the account watches, or its own
 //! share, floating over the window while the call's stage is not on screen
 //! (the person is reading a conversation). A click on it, or its channel's
-//! name, returns to the call; it can be dragged to another corner, where
-//! it stays until the next drag (memory only). Cameras are not shown here.
+//! name, returns to the call; it follows the pointer while dragged and
+//! settles in the corner nearest where it is let go, where it stays until
+//! the next drag (memory only). Cameras are not shown here.
 
 use limn::{Element, Point, Size, UiAction};
 use rustcord_components::voice::{self as parts, ids, PipButton, PipCorner, PipGlyph, PipView};
@@ -13,10 +14,19 @@ use rustcord_state::Store;
 
 use crate::{video, Intent, Ui};
 
-/// Where the picture-in-picture was last let go, in the window.
+/// Where the picture-in-picture was last let go, in the window, and the
+/// drag in progress: where it began and where the pointer is.
 #[derive(Debug, Default)]
 pub struct Pip {
     dropped: Option<Point>,
+    drag: Option<(Point, Point)>,
+}
+
+/// How far the drag in progress has carried it from its corner.
+fn offset(ui: &Ui) -> Point {
+    ui.pip.drag.map_or(Point::new(0.0, 0.0), |(from, to)| {
+        Point::new(to.x - from.x, to.y - from.y)
+    })
 }
 
 /// The corner nearest where it was let go: top right until it is moved.
@@ -96,6 +106,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
                 leave,
             ],
             corner,
+            offset: offset(ui),
         });
     }
     video::sending(ui, store)?;
@@ -115,6 +126,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
             leave,
         ],
         corner,
+        offset: offset(ui),
     })
 }
 
@@ -134,15 +146,23 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
             ui.voice.card = None;
             Some(Vec::new())
         }
-        UiAction::Dropped { id, position, .. } if id == ids::PIP => {
-            ui.pip.dropped = Some(*position);
+        UiAction::DragStarted { id, position } if id == ids::PIP => {
+            ui.pip.drag = Some((*position, *position));
             Some(Vec::new())
         }
-        UiAction::DragStarted { id, .. }
-        | UiAction::DragMoved { id, .. }
-        | UiAction::DragCancelled { id }
-            if id == ids::PIP =>
-        {
+        UiAction::DragMoved { id, position, .. } if id == ids::PIP => {
+            if let Some((_, to)) = &mut ui.pip.drag {
+                *to = *position;
+            }
+            Some(Vec::new())
+        }
+        UiAction::Dropped { id, position, .. } if id == ids::PIP => {
+            ui.pip.dropped = Some(*position);
+            ui.pip.drag = None;
+            Some(Vec::new())
+        }
+        UiAction::DragCancelled { id } if id == ids::PIP => {
+            ui.pip.drag = None;
             Some(Vec::new())
         }
         _ => None,

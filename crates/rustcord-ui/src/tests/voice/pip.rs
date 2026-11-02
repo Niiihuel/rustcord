@@ -89,6 +89,34 @@ fn let_go_in_another_corner_the_picture_in_picture_stays_there() {
     let owner = host.tr_streamers(room, 4, 1)[0];
     host.tr_watch(room, owner);
     host.open_channel("general");
+    // While dragged it follows the pointer from where it was picked up.
+    let before = at_corner(&mut host);
+    let drag = |host: &mut Host, action| crate::pip::update(&mut host.ui, &host.store, &action);
+    drag(
+        &mut host,
+        UiAction::DragStarted {
+            id: ids::PIP.into(),
+            position: Point::new(1100.0, 120.0),
+        },
+    );
+    drag(
+        &mut host,
+        UiAction::DragMoved {
+            id: ids::PIP.into(),
+            position: Point::new(700.0, 420.0),
+            over: None,
+        },
+    );
+    let moved = at_corner(&mut host);
+    assert_eq!((moved.x, moved.y), (before.x - 400.0, before.y + 300.0));
+    // A cancelled drag puts it back in its corner.
+    drag(
+        &mut host,
+        UiAction::DragCancelled {
+            id: ids::PIP.into(),
+        },
+    );
+    assert_eq!(at_corner(&mut host), before);
     // Let go in the bottom left: the nearest corner, and it stays there.
     crate::pip::update(
         &mut host.ui,
