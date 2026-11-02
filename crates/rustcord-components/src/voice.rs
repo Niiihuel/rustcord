@@ -2868,13 +2868,9 @@ fn call(view: &Stage, look: &Look) -> Element {
     let focus = previews.iter().position(|shown| shown.focused);
     // The pill over the bar offers to hide the tiles, when there are some.
     let hideable = focus.is_some() && previews.len() + people.len() + streams + ringing.len() > 1;
-    // The bar, and the pill over it on its own line, under the tiles.
-    let pill_room = if hideable {
-        TILES_PILL_HEIGHT + BAR_GAP
-    } else {
-        0.0
-    };
-    let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP + pill_room;
+    // The bar's room under the tiles; the pill over the strip or the bar
+    // takes none of its own.
+    let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP;
     let area = Size::new(
         view.size.width - 2.0 * AREA_SIDE,
         view.size.height - crate::sidebar::HEADER - 1.0 - AREA_TOP - below,
@@ -2913,6 +2909,8 @@ fn call(view: &Stage, look: &Look) -> Element {
             })
             .collect()
     };
+    // The strip's height, when shown: the pill over the bar lifts onto its top edge.
+    let mut strip_height = 0.0;
     let tiles = match (voice, focus) {
         (true, _) => {
             let row: Vec<(&Participant, bool)> = people
@@ -2936,6 +2934,7 @@ fn call(view: &Stage, look: &Look) -> Element {
                 0.0
             };
             let strip = if view.tiles_hidden { 0.0 } else { strip };
+            strip_height = strip;
             // 16:9 as the official client's tiles, so what is over the
             // stream sits on its picture rather than on black bars.
             let room = Size::new(area.width, area.height - strip - TILE_GAP.min(strip));
@@ -2966,15 +2965,19 @@ fn call(view: &Stage, look: &Look) -> Element {
                     Element::spacer().flex(1.0),
                 ]),
             ];
+            // The strip sits at the bottom, under the spacer that centres the
+            // stream above it.
             if strip > 0.0 {
                 column.push(gap(0.0, TILE_GAP));
+                column.push(Element::spacer().flex(1.0));
                 column.push(Element::row(vec![
                     Element::spacer().flex(1.0),
                     Element::row(rest).gap(TILE_GAP),
                     Element::spacer().flex(1.0),
                 ]));
+            } else {
+                column.push(Element::spacer().flex(1.0));
             }
-            column.push(Element::spacer().flex(1.0));
             column.push(gap(0.0, below));
             Element::column(column)
         }
@@ -3032,56 +3035,76 @@ fn call(view: &Stage, look: &Look) -> Element {
         Some(stream) if stream.idle => (Element::spacer(), None),
         Some(_) => (
             bar(view, look).animate_presence(ids::BAR),
-            hideable.then(|| tiles_pill(view.tiles_hidden)),
+            hideable.then(|| tiles_pill(view.tiles_hidden, look)),
         ),
         None => (bar(view, look), None),
     };
-    let mut over = vec![Element::spacer().flex(1.0)];
+    let mut layers = vec![
+        tiles,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            bar.size(None, Some(BAR_HEIGHT)),
+            gap(0.0, BAR_BOTTOM),
+        ]),
+    ];
+    // Centred, half over the strip's top edge while the strip shows; else
+    // just above the bar.
     if let Some(pill) = pill {
-        over.push(
+        let lift = if strip_height > 0.0 {
+            strip_height - TILES_PILL_HEIGHT / 2.0
+        } else {
+            0.0
+        };
+        layers.push(Element::column(vec![
+            Element::spacer().flex(1.0),
             Element::row(vec![
                 Element::spacer().flex(1.0),
                 pill,
                 Element::spacer().flex(1.0),
             ])
             .size(None, Some(TILES_PILL_HEIGHT)),
-        );
-        over.push(gap(0.0, BAR_GAP));
+            gap(0.0, below + lift),
+        ]));
     }
-    over.push(bar.size(None, Some(BAR_HEIGHT)));
-    over.push(gap(0.0, BAR_BOTTOM));
-    Element::stack(vec![tiles, Element::column(over)])
+    Element::stack(layers)
 }
 
 const TILES_PILL_HEIGHT: f32 = 24.0;
 
-/// The pill over the bar, as the official client's: a chevron and the people,
-/// over a stream focused. Up shows the tiles, down hides them.
-fn tiles_pill(hidden: bool) -> Element {
+/// The pill over the strip's top edge or the bar, as the official client's: a
+/// chevron and the people. Up shows the strip, down hides it; its label says
+/// what it does.
+fn tiles_pill(hidden: bool, look: &Look) -> Element {
     let (chevron, hint) = if hidden {
-        (Icon::ChevronUp, t("Mostrar participantes"))
+        (Icon::ChevronUp, t("Mostrar miembros"))
     } else {
-        (Icon::ChevronDown, t("Ocultar participantes"))
+        (Icon::ChevronDown, t("Ocultar miembros"))
     };
-    Element::clickable(
+    let pill = Element::clickable(
         ids::TILES,
         Element::panel(Element::row(vec![
-            gap(8.0, 0.0),
+            gap(4.0, 0.0),
             icon(chevron, OVER_INK)
                 .size(Some(12.0), Some(12.0))
                 .centered_y(),
-            gap(6.0, 0.0),
+            gap(4.0, 0.0),
             icon(Icon::Users, OVER_INK)
                 .size(Some(16.0), Some(16.0))
                 .centered_y(),
-            gap(8.0, 0.0),
+            gap(4.0, 0.0),
         ]))
-        .size(Some(50.0), Some(TILES_PILL_HEIGHT))
+        .size(None, Some(TILES_PILL_HEIGHT))
+        .shrink_to_fit()
         .radius(TILES_PILL_HEIGHT / 2.0)
-        .background(OVER),
+        .background(look.menu)
+        .hover_background(PILL_HOVER),
     )
-    .accessibility_label(hint)
+    .accessibility_label(hint);
+    Tooltip::new(pill, ids::TILES, hint, look.palette()).render()
 }
+
+/// The strip's pill a step darker under the pointer.
+const PILL_HOVER: Color = Color::rgb(35, 36, 40);
 
 /// The bar under the tiles: the microphone, the sound and the camera; the
 /// screen and «Más opciones»; hanging up.
@@ -6906,6 +6929,71 @@ mod tests {
         // Not a stream that does not take the stage: no zoom.
         let (none, _, _) = shown(None);
         assert!(!none.contains(&ids::zoom_in(2)));
+    }
+
+    #[test]
+    fn the_strip_pill_sits_on_the_strips_top_edge_and_says_what_it_does() {
+        let watched = Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                zoom: Some(Zoom::FIT),
+            }),
+            focused: true,
+            card: false,
+        };
+        let size = Size::new(980.0, 762.0);
+        let at = |tiles_hidden: bool| {
+            let view = Stage {
+                people: vec![person(1, false, false, false)],
+                watching: vec![watched.clone()],
+                tiles_hidden,
+                ..picker_stage(VideoControls::default())
+            };
+            let (_, laid) = frame(stage(view, &Look::ONYX), size);
+            laid
+        };
+        // Shown: the pill is centred on the strip's top edge, half over it.
+        let shown = at(false);
+        let region = |laid: &limn::Frame, id: &str| {
+            laid.regions
+                .iter()
+                .rev()
+                .find(|region| region.id == id)
+                .map(|region| region.rect)
+        };
+        let pill = region(&shown, ids::TILES).expect("the pill is laid out");
+        let strip = region(&shown, &ids::tile(1)).expect("the strip shows the other person");
+        assert!(
+            (pill.y + pill.height / 2.0 - strip.y).abs() <= 1.0,
+            "{pill:?} {strip:?}"
+        );
+        let named = |laid: &limn::Frame| {
+            laid.access
+                .iter()
+                .find(|node| node.id == ids::TILES)
+                .map(|node| node.name.clone())
+        };
+        assert_eq!(named(&shown).as_deref(), Some("Ocultar miembros"));
+        // Hidden: no strip, and the pill says it shows them again.
+        let hidden = at(true);
+        assert!(region(&hidden, &ids::tile(1)).is_none());
+        assert_eq!(named(&hidden).as_deref(), Some("Mostrar miembros"));
     }
 
     fn named(name: &str, user: u64) -> Participant {
