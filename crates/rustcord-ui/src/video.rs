@@ -808,6 +808,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
     let owner = watching.owner;
     // What its tile offers, as the official client's.
     let sound = owner.0 | rustcord_media::mixer::STREAM_SOUND;
+    let look = ui.look();
     let tile = rustcord_components::voice::StreamTile {
         owner: owner.0,
         sound,
@@ -820,7 +821,11 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         over: ended,
         activity: crate::identity::playing_game(store, owner),
         degraded: matches!(watching.phase, StreamPhase::Reconnecting),
-        viewers: Vec::new(),
+        viewers: store
+            .stream_viewers(owner)
+            .iter()
+            .map(|viewer| crate::voice::participant(ui, store, server, *viewer, &look))
+            .collect(),
     };
     let live = ui
         .video

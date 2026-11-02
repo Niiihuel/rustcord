@@ -8,10 +8,10 @@
 //! fail: with no video, the camera and the screen say so.
 
 use limn::{
-    AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox, Color,
-    Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
+    Access, AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox,
+    Color, Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
     DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, PopoverPlacement,
-    RadiusRole, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement,
+    RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement,
     TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
@@ -101,6 +101,20 @@ pub mod ids {
     /// the anchors of their hints.
     pub const WARNING: &str = "vz:stream-warning";
     pub const STREAM_QUALITY: &str = "vz:stream-quality";
+    /// The spectators of `owner`'s stream on the header, and the dismissal of
+    /// the list their hover opens.
+    pub fn viewers(owner: u64) -> String {
+        format!("vz:viewers:{owner}")
+    }
+
+    pub fn viewers_dismiss(owner: u64) -> String {
+        format!("vz:viewers:dismiss:{owner}")
+    }
+
+    /// One spectator's picture in that stack, named for them.
+    pub fn viewer(owner: u64, user: u64) -> String {
+        format!("vz:viewer:{owner}:{user}")
+    }
     /// The pill over the bar that hides the tiles under a stream focused.
     pub const TILES: &str = "call:tiles:toggle";
     /// The bar's invitation to the call's channel.
@@ -2634,8 +2648,13 @@ pub fn stage(view: Stage, look: &Look) -> Element {
             ),
         }
         header.push(Element::spacer().flex(1.0));
-        if shown.stream.as_ref().is_some_and(|stream| stream.degraded) {
-            right.push(warning(look));
+        if let Some(stream) = &shown.stream {
+            if !stream.viewers.is_empty() {
+                right.push(viewers_stack(stream.owner, &stream.viewers, look));
+            }
+            if stream.degraded {
+                right.push(warning(look));
+            }
         }
         // «720p 30 FPS»; «720p» until the rate is known.
         let quality = shown.frame.map(|(_, height)| match shown.fps {
@@ -2734,6 +2753,112 @@ fn dot(look: &Look) -> Element {
         gap(4.0, 0.0),
     ])
     .centered_y()
+}
+
+/// Pictures of the spectators in the header: 24 across, 22 apart (so two
+/// under each other), each in a ring of the header's ground.
+const VIEWER_FACE: f32 = 24.0;
+const VIEWER_STEP: f32 = 22.0;
+const VIEWER_RING: f32 = 28.0;
+/// Past this many, the stack shows this many pictures and a «+N» for the rest.
+const VIEWERS_SHOWN: usize = 5;
+const VIEWERS_CARD_WIDTH: f32 = 200.0;
+
+/// Who watches a stream, in the header: their pictures overlapping, each
+/// named for its accessibility. Hovered, the list opens under it.
+fn viewers_stack(owner: u64, viewers: &[Participant], look: &Look) -> Element {
+    let heading = tr!("Espectadores: {n}", n = viewers.len());
+    let past = viewers.len() > VIEWERS_SHOWN;
+    let shown = if past {
+        VIEWERS_SHOWN - 1
+    } else {
+        viewers.len()
+    };
+    let slot = |index: usize, content: Element| {
+        Element::row(vec![gap(index as f32 * VIEWER_STEP, 0.0), content])
+            .size(None, Some(VIEWER_RING))
+    };
+    let mut items: Vec<Element> = viewers
+        .iter()
+        .take(shown)
+        .enumerate()
+        .map(|(index, person)| {
+            let picture = crate::avatar_with_image(
+                &person.name,
+                person.accent,
+                VIEWER_FACE,
+                person.image.clone(),
+            );
+            let ring = Element::panel(centered(picture))
+                .size(Some(VIEWER_RING), Some(VIEWER_RING))
+                .round()
+                .background(look.canvas);
+            slot(index, ring).accessible(
+                Access::new(Role::Image)
+                    .id(ids::viewer(owner, person.user))
+                    .name(person.name.clone()),
+            )
+        })
+        .collect();
+    if past {
+        let rest = format!("+{}", viewers.len() - shown);
+        let chip = Element::panel(Element::row(vec![
+            gap(8.0, 0.0),
+            Element::text(rest)
+                .font_family(FontFamily::SansBold)
+                .font_size(12.0)
+                .foreground(look.muted)
+                .centered_y(),
+            gap(8.0, 0.0),
+        ]))
+        .size(None, Some(VIEWER_FACE))
+        .round()
+        .background(look.raised)
+        .shrink_to_fit()
+        .centered_y();
+        items.push(slot(shown, chip));
+    }
+    let stack = Element::clickable(ids::viewers(owner), Element::stack(items))
+        .size(None, Some(VIEWER_RING))
+        .accessibility_label(heading);
+    Element::popover(
+        stack,
+        viewers_card(viewers, look),
+        ids::viewers_dismiss(owner),
+        PopoverPlacement::BottomEnd,
+    )
+    .popover_on_hover()
+}
+
+/// The list of a stream's spectators, under their stack: its heading, then
+/// each one's picture and name.
+fn viewers_card(viewers: &[Participant], look: &Look) -> Element {
+    let heading = tr!("Espectadores: {n}", n = viewers.len());
+    let mut rows = vec![strong_line(heading.clone(), 12.0, look.muted)];
+    for person in viewers {
+        rows.push(
+            Element::row(vec![
+                crate::avatar_with_image(
+                    &person.name,
+                    person.accent,
+                    VIEWER_FACE,
+                    person.image.clone(),
+                ),
+                gap(8.0, 0.0),
+                strong_line(person.name.clone(), 14.0, look.text)
+                    .centered_y()
+                    .shrink_to_fit(),
+            ])
+            .centered_y(),
+        );
+    }
+    Element::panel(Element::column(rows).gap(8.0).padding(12.0))
+        .size(Some(VIEWERS_CARD_WIDTH), None)
+        .background(look.menu)
+        .border(look.border, 1.0)
+        .radius(8.0)
+        .shadow(look.shadow, limn::Point::new(0.0, 9.0), 22.0, 0.0)
+        .accessibility_label(heading)
 }
 
 /// The warning over a stream whose picture is reduced: what it means, on hover.
@@ -7169,6 +7294,115 @@ mod tests {
         let shown = controls(&laid);
         assert!(shown.contains(&ids::FULLSCREEN_EXIT.to_owned()));
         assert!(shown.contains(&ids::window(2)));
+    }
+
+    #[test]
+    fn the_header_shows_who_watches_as_pictures_and_past_five_a_count() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let stream = |viewers: Vec<Participant>| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: Some(30),
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                activity: None,
+                degraded: false,
+                viewers,
+            }),
+            focused: true,
+            card: false,
+        };
+        let laid = |viewers: Vec<Participant>| {
+            let view = Stage {
+                channel: "General".into(),
+                phase: Some(CallPhase::Connected),
+                people: vec![
+                    person(1, false, false, false),
+                    person(2, false, false, false),
+                ],
+                muted: false,
+                deafened: false,
+                simulated: false,
+                join_denied: None,
+                chat: Err("Sin chat".into()),
+                size,
+                card: None,
+                tile_menu: None,
+                more_open: false,
+                video: VideoControls::default(),
+                previews: Vec::new(),
+                watch: Ok(()),
+                watching: vec![stream(viewers)],
+                tiles_hidden: false,
+                private: None,
+                quick: None,
+                camera_panel: None,
+                end: 0.0,
+                invite: false,
+            };
+            frame(stage(view, &look), size).1
+        };
+        let names = ["Ana", "Beto", "Cami", "Dani", "Eva", "Fede", "Gus"];
+        let people = |count: usize| -> Vec<Participant> {
+            names[..count]
+                .iter()
+                .enumerate()
+                .map(|(index, name)| Participant {
+                    name: (*name).into(),
+                    ..person(10 + index as u64, false, false, false)
+                })
+                .collect()
+        };
+        // The pictures of the stack, each a node named for its viewer.
+        let pictured = |laid: &limn::Frame| {
+            laid.access
+                .iter()
+                .filter(|node| node.id.starts_with("vz:viewer:2:"))
+                .count()
+        };
+        let stack = ids::viewers(2);
+        let heading = |laid: &limn::Frame| {
+            laid.access
+                .iter()
+                .find(|node| node.id == stack)
+                .map(|node| node.name.clone())
+        };
+        // Three: three pictures, and the heading names how many.
+        let three = laid(people(3));
+        assert_eq!(pictured(&three), 3);
+        assert_eq!(heading(&three).as_deref(), Some("Espectadores: 3"));
+        assert!(!texts(&three).iter().any(|text| text.starts_with('+')));
+        // Seven: four pictures and «+3» for the rest.
+        let seven = laid(people(7));
+        assert_eq!(pictured(&seven), 4);
+        assert!(
+            texts(&seven).contains(&"+3".to_owned()),
+            "{:?}",
+            texts(&seven)
+        );
+        assert_eq!(heading(&seven).as_deref(), Some("Espectadores: 7"));
+        // None: nothing, not even the stack.
+        let none = laid(Vec::new());
+        assert_eq!(pictured(&none), 0);
+        assert!(heading(&none).is_none());
+        // The list their hover opens: its heading, then each one by name.
+        let card = frame(viewers_card(&people(3), &look), Size::new(200.0, 400.0)).1;
+        let said = texts(&card);
+        assert!(said.contains(&"Espectadores: 3".to_owned()), "{said:?}");
+        assert!(said.contains(&"Beto".to_owned()));
     }
 
     /// Someone called `name`, for the VOICE row.

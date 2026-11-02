@@ -154,6 +154,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Invitar", "Invite"),
     ("Invitar a transmisión", "Invite to Stream"),
     ("Abrir en otra ventana", "Pop Out"),
+    ("Espectadores: {n}", "Spectators: {n}"),
     ("Silenciado por el servidor", "Server muted"),
     ("Ensordecido por el servidor", "Server deafened"),
     ("Ensordecido", "Deafened"),

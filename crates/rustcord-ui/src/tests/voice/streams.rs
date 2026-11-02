@@ -773,3 +773,40 @@ fn a_persons_tile_takes_the_color_of_their_avatar_and_their_accent_without_one()
     );
     assert_ne!(tile(&host), before);
 }
+
+#[test]
+fn the_header_names_who_watches_the_stream_focused() {
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    host.click(&format!("voice:{room}"));
+    let owners = host.tr_streamers(room, 4, 1);
+    let owner = owners[0];
+    host.tr_watch(room, owner);
+    // The provider says who watches: the account and one more of the room.
+    let me = host.vz_me();
+    let other = host
+        .store
+        .voice_in(room)
+        .into_iter()
+        .map(|state| state.user)
+        .find(|user| *user != me && *user != owner)
+        .unwrap();
+    host.event(Event::StreamViewers {
+        channel: room,
+        owner,
+        viewers: vec![me, other],
+    });
+    let frame = host.frame();
+    let stack = frame
+        .access
+        .iter()
+        .find(|node| node.id == ids::viewers(owner.0))
+        .expect("the header shows who watches");
+    assert_eq!(stack.name, "Espectadores: 2");
+    let pictures = frame
+        .access
+        .iter()
+        .filter(|node| node.id.starts_with(&format!("vz:viewer:{}:", owner.0)))
+        .count();
+    assert_eq!(pictures, 2);
+}
