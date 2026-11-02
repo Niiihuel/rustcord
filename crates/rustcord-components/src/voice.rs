@@ -103,6 +103,8 @@ pub mod ids {
     pub const STREAM_QUALITY: &str = "vz:stream-quality";
     /// The pill over the bar that hides the tiles under a stream focused.
     pub const TILES: &str = "call:tiles:toggle";
+    /// The bar's invitation to the call's channel.
+    pub const INVITE: &str = "vz:invite";
     /// A person's menu, and their card.
     pub const MENU_DISMISS: &str = "vz:menu:dismiss";
     pub const CARD_DISMISS: &str = "vz:card:dismiss";
@@ -2542,6 +2544,8 @@ pub struct Stage {
     pub camera_panel: Option<Element>,
     /// Room kept free at the header's end for the window's own buttons.
     pub end: f32,
+    /// The account may invite people to the channel: the bar offers it.
+    pub invite: bool,
 }
 
 /// The stage of a voice channel: its header, and its tiles over the bar of
@@ -3216,10 +3220,31 @@ fn bar(view: &Stage, look: &Look) -> Element {
     .hover_ink(Color::rgb(255, 255, 255))
     .tooltip(hint)
     .render();
+    // The invitation at the left, as the official client's call bar; the
+    // stream's controls take the right end. Both ends are the same width, so
+    // the groups stay centered whatever is at them. The pointer on the
+    // invitation keeps the bar from hiding too.
+    let invite = (view.invite && view.size.width > INVITE_MIN_WIDTH).then(|| {
+        let hint = if focused.is_some() {
+            t("Invitar a transmisión")
+        } else {
+            t("Invitar")
+        };
+        IconButton::new(ids::INVITE, Icon::Invite, look.palette())
+            .variant(ButtonVariant::Ghost)
+            .sizing(sizing)
+            .width(BAR_BUTTON)
+            .tooltip(hint)
+            .render()
+            .centered_y()
+            .hover_region_id(ids::BAR)
+    });
+    let left = Element::row(invite.into_iter().collect()).size(Some(BAR_SIDE), Some(BAR_HEIGHT));
     // Centered in the stage. Its own window and full screen are over the
     // stream focused, with its other controls. The pointer on it keeps
     // it from hiding.
     Element::row(vec![
+        left,
         Element::spacer().flex(1.0),
         Element::row(vec![
             group(vec![microphone, sound, camera]),
@@ -3229,9 +3254,15 @@ fn bar(view: &Stage, look: &Look) -> Element {
         .gap(BAR_GAP)
         .hover_region_id(ids::BAR),
         Element::spacer().flex(1.0),
+        Element::spacer().size(Some(BAR_SIDE), Some(BAR_HEIGHT)),
     ])
     .size(None, Some(BAR_HEIGHT))
 }
+
+/// Each end of the bar, as wide as the other: the centered groups stay put.
+const BAR_SIDE: f32 = 136.0;
+/// Narrower than this the stage's bar has no room for the invitation.
+const INVITE_MIN_WIDTH: f32 = 650.0;
 
 /// The Go Live modal over `button`, as Discord's: what to
 /// share, the stream's quality and its options in the footer, and going
@@ -4287,6 +4318,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         for (simulated, said) in [
             (false, "Nadie más en la llamada"),
@@ -4410,6 +4442,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         let scroll = laid
@@ -4493,6 +4526,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         // Three tiles: the person, their stream after them, and the first one.
@@ -4548,6 +4582,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         // The camera's arrow opens its panel over the bar.
         let open = Stage {
@@ -4604,6 +4639,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         }
     }
 
@@ -4783,6 +4819,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
             previews: vec![
                 Preview {
                     surface: ids::SCREEN_SURFACE.into(),
@@ -4898,6 +4935,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
         let shown = texts(&laid);
@@ -4930,6 +4968,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         // The tiles' rectangles, grouped by row: how many sit in each.
         let rows = |count: u64| -> Vec<usize> {
@@ -5044,6 +5083,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let look = Look::ONYX;
         let (_, laid) = frame(stage(view, &look), Size::new(980.0, 762.0));
@@ -5086,6 +5126,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let look = Look::ONYX;
         let (_, laid) = frame(
@@ -5302,6 +5343,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let surfaces = |laid: &limn::Frame| -> Vec<(String, limn::Rect)> {
             laid.commands
@@ -5431,6 +5473,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         let at = |id: &str| {
@@ -5574,6 +5617,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let look = Look::ONYX;
         let surfaces = |laid: &limn::Frame| -> Vec<(String, limn::Rect)> {
@@ -5621,6 +5665,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         for open in [false, true] {
             let (_, laid) = frame(stage(view(Ok(open)), &Look::ONYX), Size::new(600.0, 600.0));
@@ -6399,6 +6444,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let look = Look::ONYX;
         let size = Size::new(980.0, 762.0);
@@ -6662,6 +6708,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         let look = Look::ONYX;
         let size = Size::new(980.0, 762.0);
@@ -6727,6 +6774,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         // Focused with its rate: the header says «720p 30 FPS», and «720p»
         // until the rate is known; a live stream writes nothing over its picture.
@@ -6812,6 +6860,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         // With a game: the header names it; the title stays on the picture's pill.
         let (_, laid) = frame(
@@ -6918,6 +6967,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            invite: false,
         };
         // With the quality known, two touching segments: the quality, then «EN VIVO».
         let (_, laid) = frame(
@@ -6945,6 +6995,52 @@ mod tests {
         assert!(!said.iter().any(|text| text.contains("720p")), "{said:?}");
         assert!(said.iter().any(|text| text == "EN VIVO"), "{said:?}");
         assert!(painted(&laid, quality_grey).is_empty());
+    }
+
+    #[test]
+    fn the_bar_invites_only_where_the_stage_is_wide_enough_and_the_account_may() {
+        let look = Look::ONYX;
+        let laid = |invite: bool, width: f32| {
+            let view = Stage {
+                channel: "General".into(),
+                phase: Some(CallPhase::Connected),
+                people: vec![person(1, false, false, false)],
+                muted: false,
+                deafened: false,
+                simulated: false,
+                join_denied: None,
+                chat: Err("Sin chat".into()),
+                size: Size::new(width, 762.0),
+                card: None,
+                tile_menu: None,
+                more_open: false,
+                video: VideoControls::default(),
+                previews: Vec::new(),
+                watch: Ok(()),
+                watching: Vec::new(),
+                tiles_hidden: false,
+                private: None,
+                quick: None,
+                camera_panel: None,
+                end: 0.0,
+                invite,
+            };
+            frame(stage(view, &look), Size::new(width, 762.0)).1
+        };
+        let wide = laid(true, 980.0);
+        assert!(controls(&wide).contains(&ids::INVITE.to_owned()));
+        assert!(!controls(&laid(true, 640.0)).contains(&ids::INVITE.to_owned()));
+        assert!(!controls(&laid(false, 980.0)).contains(&ids::INVITE.to_owned()));
+        // The groups stay where they are, with the invitation or without it.
+        let mute = |laid: &limn::Frame| {
+            laid.regions
+                .iter()
+                .find(|region| region.id == ids::MUTE)
+                .unwrap()
+                .rect
+                .x
+        };
+        assert_eq!(mute(&wide), mute(&laid(false, 980.0)));
     }
 
     /// Someone called `name`, for the VOICE row.

@@ -214,7 +214,11 @@ pub(crate) fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) ->
         return change_notify_for(ui, store, server, change, now);
     }
     if let Some(server) = number("sm:invite:") {
-        return invite(ui, store, ServerId(server), now);
+        let server = ServerId(server);
+        let Some(channel) = invite_channels(store, server).first().copied() else {
+            return Vec::new();
+        };
+        return invite(ui, store, server, channel, now);
     }
     if let Some(server) = number("sm:profile:") {
         let server = ServerId(server);
@@ -575,8 +579,15 @@ fn save_nick(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     })]
 }
 
-/// An invitation to `server` from its menu: its link is copied once made.
-fn invite(ui: &mut Ui, store: &Store, server: ServerId, now: Instant) -> Vec<Intent> {
+/// An invitation to `channel` of `server`, from a server's menu or the call's
+/// bar: its link is copied once made.
+pub(crate) fn invite(
+    ui: &mut Ui,
+    store: &Store,
+    server: ServerId,
+    channel: ChannelId,
+    now: Instant,
+) -> Vec<Intent> {
     let Some(abilities) = store.server_abilities(server) else {
         return Vec::new();
     };
@@ -589,9 +600,6 @@ fn invite(ui: &mut Ui, store: &Store, server: ServerId, now: Instant) -> Vec<Int
         );
         return Vec::new();
     }
-    let Some(channel) = invite_channels(store, server).first().copied() else {
-        return Vec::new();
-    };
     let request = ui.fresh_request();
     ui.server_menu.pending.insert(request, Pending::Invite);
     vec![Intent::Command(Command::CreateInvite {

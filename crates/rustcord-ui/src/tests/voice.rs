@@ -610,6 +610,35 @@ fn the_room_s_chat_shows_beside_the_stage_and_hides_back_to_the_conversation() {
 }
 
 #[test]
+fn the_call_bar_invites_to_its_channel_when_the_stage_is_wide_enough() {
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    host.click(&format!("voice:{room}"));
+    let shown = |host: &mut Host, width: f32| {
+        host.vz_frame_at(Size::new(width, 800.0))
+            .regions
+            .iter()
+            .any(|region| region.id == ids::INVITE && region.kind == limn::HitKind::Button)
+    };
+    assert!(shown(&mut host, 1280.0));
+    assert!(
+        !shown(&mut host, 900.0),
+        "a narrow stage has no room for it"
+    );
+    // Made as the server's menu makes one, for this channel.
+    let from = host.sent.len();
+    host.click(ids::INVITE);
+    assert!(
+        host.sent[from..].iter().any(|command| matches!(
+            command,
+            Command::CreateInvite { channel, .. } if *channel == room
+        )),
+        "{:?}",
+        &host.sent[from..]
+    );
+}
+
+#[test]
 fn a_narrow_window_keeps_the_stage_alone_and_says_why() {
     let mut host = Host::new();
     let room = host.vz_join("Sala común");

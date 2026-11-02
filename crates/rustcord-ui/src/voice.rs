@@ -21,6 +21,7 @@ use rustcord_provider::{Command, VoiceSupport};
 use rustcord_state::{Applied, Store};
 
 use crate::person_menu::Place;
+use crate::server_menu;
 use crate::{editor_id, profile, settings, video, Intent, SettingsPage, Ui, ViewContext};
 
 /// How many measures of the connection its details keep.
@@ -553,6 +554,7 @@ pub(crate) fn update(
         }
         ids::VOICE_SETTINGS => settings::open_settings(ui, store, SettingsPage::Voice),
         ids::CHAT => toggle_chat(ui, store),
+        ids::INVITE => invite_call(ui, store, now),
         parts::ids::TILES => {
             ui.voice.tiles_hidden = !ui.voice.tiles_hidden;
             Vec::new()
@@ -567,6 +569,18 @@ pub(crate) fn update(
         ids::MENU_DISMISS | ids::MORE_DISMISS => Vec::new(),
         _ => return None,
     })
+}
+
+/// «Invitar» on the call's bar: an invitation to the channel the account is in,
+/// made as the server's menu makes one.
+fn invite_call(ui: &mut Ui, store: &Store, now: Instant) -> Vec<Intent> {
+    let Some(channel) = store.call().map(|call| call.channel) else {
+        return Vec::new();
+    };
+    let Some(server) = store.channel(channel).and_then(|found| found.server) else {
+        return Vec::new();
+    };
+    server_menu::invite(ui, store, server, channel, now)
 }
 
 /// A secondary click on someone in a voice channel opens their menu there:
@@ -999,6 +1013,11 @@ pub(crate) fn stage_of(
     } else {
         0.0
     };
+    // Invitations are a server's: a conversation's call has none on its bar.
+    let invite = private.is_none()
+        && store
+            .abilities(channel)
+            .is_some_and(|abilities| abilities.create_invite.allowed());
     Some(parts::stage(
         Stage {
             channel: if private.is_some() {
@@ -1038,6 +1057,7 @@ pub(crate) fn stage_of(
             quick: crate::quick_voice::view(ui, store, look, true),
             camera_panel: crate::quick_voice::camera_view(ui, store, look),
             end,
+            invite,
         },
         look,
     ))

@@ -151,6 +151,8 @@ pub(super) const ENTRIES: super::Entries = &[
         "The stream you're watching has reduced video or audio quality. This may be due to network conditions.",
     ),
     ("Calidad de transmisión", "Stream quality"),
+    ("Invitar", "Invite"),
+    ("Invitar a transmisión", "Invite to Stream"),
     ("Silenciado por el servidor", "Server muted"),
     ("Ensordecido por el servidor", "Server deafened"),
     ("Ensordecido", "Deafened"),

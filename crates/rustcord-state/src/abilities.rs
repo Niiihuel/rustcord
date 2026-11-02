@@ -161,6 +161,8 @@ pub struct Abilities {
     pub share_screen: Permit,
     /// Watch someone's shared screen in the account's call there.
     pub watch_stream: Permit,
+    /// Make an invitation to this channel: the provider's and the channel's own.
+    pub create_invite: Permit,
     /// See the cameras of the others in the account's call there.
     pub watch_camera: Permit,
     /// Rename, describe, move or delete the channel.
@@ -727,6 +729,11 @@ pub fn abilities(channel: &Channel, capabilities: Capabilities) -> Abilities {
             t("ver cámaras"),
             Permissions::VIEW | Permissions::CONNECT,
         ),
+        create_invite: both(
+            capabilities.create_invites && channel.server.is_some(),
+            t("crear invitaciones"),
+            Permissions::CREATE_INVITE,
+        ),
         // The local preview needs nothing from the provider; sending does.
         send_video: if voice && !capabilities.video {
             Permit::Denied(t(NO_VIDEO_SENDING).into())
@@ -1170,6 +1177,22 @@ mod tests {
             Some("Este proveedor no permite adjuntar archivos")
         );
         assert!(!abilities.delete_others.allowed());
+    }
+
+    #[test]
+    fn an_invitation_to_a_voice_channel_needs_the_provider_and_the_channel() {
+        let with = channel(
+            ChannelKind::Voice,
+            Permissions::MEMBER | Permissions::CREATE_INVITE,
+        );
+        let invites = Capabilities {
+            create_invites: true,
+            ..everything()
+        };
+        assert!(abilities(&with, invites).create_invite.allowed());
+        let without = channel(ChannelKind::Voice, Permissions::MEMBER);
+        assert!(!abilities(&without, invites).create_invite.allowed());
+        assert!(!abilities(&with, everything()).create_invite.allowed());
     }
 
     #[test]
