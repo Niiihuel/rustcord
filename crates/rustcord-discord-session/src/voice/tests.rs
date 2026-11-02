@@ -1763,6 +1763,71 @@ async fn watching_asks_the_gateway_connects_to_the_stream_s_server_and_ends_with
     assert!(left.channel.is_none() && left.stream_keys().is_empty());
 }
 
+#[test]
+fn a_stream_lists_its_viewers_on_create_and_update_and_skips_malformed_ids() {
+    let (port, _link) = voice_link();
+    let mut calls = Calls::new(Some(port));
+    let mut snapshot = snapshot();
+    calls.dispatch(
+        &mut snapshot,
+        "VOICE_STATE_UPDATE",
+        &json!({
+            "guild_id": GUILD.to_string(), "channel_id": CHANNEL.to_string(),
+            "user_id": BOB.to_string(), "self_stream": true,
+        }),
+    );
+    calls
+        .join(&snapshot, ChannelId(CHANNEL), false, false)
+        .unwrap();
+    let listed = |viewers: Value| json!({"stream_key": "guild:40:30:2", "viewer_ids": viewers});
+    let viewers = |events: Option<Vec<Event>>| {
+        events
+            .unwrap()
+            .into_iter()
+            .filter_map(|event| match event {
+                Event::StreamViewers {
+                    channel,
+                    owner,
+                    viewers,
+                } => Some((channel, owner, viewers)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let events = calls.dispatch(&mut snapshot, "STREAM_CREATE", &listed(json!(["3", "4"])));
+    assert_eq!(
+        viewers(events),
+        [(ChannelId(CHANNEL), UserId(BOB), vec![UserId(3), UserId(4)])]
+    );
+    // Ids that are not ids are skipped; the rest of the list stands.
+    let events = calls.dispatch(
+        &mut snapshot,
+        "STREAM_UPDATE",
+        &listed(json!(["3", "not-an-id", 5, "0", "6"])),
+    );
+    assert_eq!(
+        viewers(events),
+        [(
+            ChannelId(CHANNEL),
+            UserId(BOB),
+            vec![UserId(3), UserId(5), UserId(6)]
+        )]
+    );
+    // An update without a list says nothing of who watches, and an end says nothing either.
+    let events = calls.dispatch(
+        &mut snapshot,
+        "STREAM_UPDATE",
+        &json!({"stream_key": "guild:40:30:2", "paused": false}),
+    );
+    assert!(viewers(events).is_empty());
+    let events = calls.dispatch(
+        &mut snapshot,
+        "STREAM_DELETE",
+        &json!({"stream_key": "guild:40:30:2", "reason": "user_requested"}),
+    );
+    assert!(viewers(events).is_empty());
+}
+
 #[tokio::test]
 async fn several_streams_are_watched_at_once_up_to_their_bound_each_on_its_own() {
     use rustcord_model::StreamPhase;

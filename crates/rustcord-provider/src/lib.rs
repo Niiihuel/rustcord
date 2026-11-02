@@ -2128,6 +2128,13 @@ pub enum Event {
         owner: UserId,
         phase: StreamPhase,
     },
+    /// Who watches `owner`'s stream in `channel` now: the whole list each
+    /// time, the account among them while it watches.
+    StreamViewers {
+        channel: ChannelId,
+        owner: UserId,
+        viewers: Vec<UserId>,
+    },
     /// The command `failure` names could not be carried out. `ambiguous`
     /// says it may have happened anyway: it left, but no answer came back.
     /// The core reports these too, for a command that could not be queued

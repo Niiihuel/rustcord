@@ -1192,8 +1192,38 @@ impl Calls {
             _ => Vec::new(),
         };
         let mut events = rewatched;
+        events.extend(self.stream_viewers(kind, data));
         events.extend(self.stream_of(kind, data));
         events
+    }
+
+    /// Who watches the stream a create or an update names, whether or not
+    /// the account watches it. Malformed ids are skipped; without a list
+    /// there is no event, so an update that lacks one changes nothing.
+    fn stream_viewers(&self, kind: &str, data: &Value) -> Vec<Event> {
+        if !matches!(kind, "STREAM_CREATE" | "STREAM_UPDATE") {
+            return Vec::new();
+        }
+        let (Some(call), Some(key), Some(ids)) = (
+            self.call.as_ref(),
+            data["stream_key"].as_str(),
+            data["viewer_ids"].as_array(),
+        ) else {
+            return Vec::new();
+        };
+        let Some(owner) = key.rsplit(':').next().and_then(|id| id.parse().ok()) else {
+            return Vec::new();
+        };
+        let viewers = ids
+            .iter()
+            .filter_map(|id| wire::id(id).ok())
+            .map(UserId)
+            .collect();
+        vec![Event::StreamViewers {
+            channel: call.channel,
+            owner: UserId(owner),
+            viewers,
+        }]
     }
 
     fn stream_of(&mut self, kind: &str, data: &Value) -> Vec<Event> {
