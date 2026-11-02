@@ -1868,6 +1868,119 @@ fn a_watched_stream_waits_while_its_owner_is_not_streaming_and_connects_again_wh
 }
 
 #[test]
+fn the_viewers_of_a_watched_stream_are_listed_while_it_streams_in_the_channel() {
+    use rustcord_model::StreamPhase;
+    let mut store = ready();
+    let now = Instant::now();
+    let (first, second, third) = (UserId(3), UserId(4), UserId(5));
+    let voice = |channel, streaming| VoiceState {
+        user: ADA,
+        channel,
+        muted: false,
+        deafened: false,
+        speaking: false,
+        streaming,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        suppressed: false,
+        speak_request: None,
+    };
+    store.begin_call(VOICE, false, false);
+    store.begin_watch(VOICE, ADA);
+    store.apply(Event::VoiceChanged(voice(VOICE, true)), now);
+    store.apply(
+        Event::StreamPhase {
+            channel: VOICE,
+            owner: ADA,
+            phase: StreamPhase::Live,
+        },
+        now,
+    );
+    assert!(store.stream_viewers(ADA).is_empty());
+    let viewers = |owner, viewers: Vec<UserId>| Event::StreamViewers {
+        channel: VOICE,
+        owner,
+        viewers,
+    };
+    store.apply(viewers(ADA, vec![first, second]), now);
+    assert_eq!(store.stream_viewers(ADA), [first, second]);
+    // A list changed is the whole list; someone else's is not this stream's.
+    store.apply(viewers(ADA, vec![first, second, third]), now);
+    assert_eq!(store.stream_viewers(ADA), [first, second, third]);
+    store.apply(viewers(UserId(99), vec![first]), now);
+    assert!(store.stream_viewers(UserId(99)).is_empty());
+    // Its owner stopped: waiting, no viewers until they stream again.
+    store.apply(Event::VoiceChanged(voice(VOICE, false)), now);
+    assert!(store.stream_viewers(ADA).is_empty());
+    store.apply(Event::VoiceChanged(voice(VOICE, true)), now);
+    store.apply(
+        Event::StreamPhase {
+            channel: VOICE,
+            owner: ADA,
+            phase: StreamPhase::Ended(Some("Terminó.".into())),
+        },
+        now,
+    );
+    assert!(store.stream_viewers(ADA).is_empty());
+}
+
+#[test]
+fn the_viewers_go_when_the_owner_leaves_the_channel_or_the_account_leaves_the_call() {
+    use rustcord_model::StreamPhase;
+    let mut store = ready();
+    let now = Instant::now();
+    let voice = |channel| VoiceState {
+        user: ADA,
+        channel,
+        muted: false,
+        deafened: false,
+        speaking: false,
+        streaming: true,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        suppressed: false,
+        speak_request: None,
+    };
+    let listed = |store: &mut Store| {
+        store.apply(Event::VoiceChanged(voice(VOICE)), now);
+        store.apply(
+            Event::StreamPhase {
+                channel: VOICE,
+                owner: ADA,
+                phase: StreamPhase::Live,
+            },
+            now,
+        );
+        store.apply(
+            Event::StreamViewers {
+                channel: VOICE,
+                owner: ADA,
+                viewers: vec![UserId(3)],
+            },
+            now,
+        );
+        assert_eq!(store.stream_viewers(ADA), [UserId(3)]);
+    };
+    store.begin_call(VOICE, false, false);
+    store.begin_watch(VOICE, ADA);
+    listed(&mut store);
+    // Its owner moves to another channel.
+    store.apply(Event::VoiceChanged(voice(GENERAL)), now);
+    assert!(store.stream_viewers(ADA).is_empty());
+    // Stopping the watch lets go of them too.
+    store.apply(Event::VoiceChanged(voice(VOICE)), now);
+    store.stop_watch(ADA);
+    assert!(store.stream_viewers(ADA).is_empty());
+    store.begin_watch(VOICE, ADA);
+    listed(&mut store);
+    // The account leaves the call.
+    store.end_call();
+    assert!(store.stream_viewers(ADA).is_empty());
+}
+
+#[test]
 fn the_own_screen_is_tracked_apart_from_the_stream_watched_and_goes_with_the_call() {
     use rustcord_model::StreamPhase;
     let mut store = ready();

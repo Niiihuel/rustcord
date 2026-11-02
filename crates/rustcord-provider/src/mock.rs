@@ -898,8 +898,11 @@ impl Session {
             Command::WatchStream { channel, owner } => {
                 self.later(latency * 2, move |world| world.watch_stream(channel, owner))
             }
-            // Nothing to release: the frames were never real.
-            Command::StopWatching { .. } => {}
+            // Nothing to release: the frames were never real. The viewers go on
+            // without the account.
+            Command::StopWatching { channel, owner } => self.later(Duration::ZERO, move |world| {
+                world.stop_watching(channel, owner)
+            }),
             // Its own connection too; nothing leaves this machine.
             Command::StartStream { channel, .. } => {
                 self.later(latency * 2, move |world| world.share(channel, true))
@@ -1290,6 +1293,8 @@ struct World {
     channels: Vec<Channel>,
     members: Vec<Member>,
     voice: Vec<VoiceState>,
+    /// The simulated streams the account watches, by channel and owner.
+    watched_streams: Vec<(ChannelId, UserId)>,
     sims: HashMap<ChannelId, ChannelSim>,
     read: HashMap<ChannelId, ReadCursor>,
     /// The message each nonce made, so a nonce sent again makes no second one.
@@ -1663,6 +1668,7 @@ impl World {
             channels: Vec::new(),
             members: Vec::new(),
             voice: Vec::new(),
+            watched_streams: Vec::new(),
             sims: HashMap::new(),
             read: HashMap::new(),
             sent: HashMap::new(),
@@ -2860,11 +2866,54 @@ impl World {
                 t("Esa persona no está transmitiendo en tu llamada.").into(),
             ))
         };
-        vec![Event::StreamPhase {
+        let live = matches!(phase, StreamPhase::Live);
+        let mut events = vec![Event::StreamPhase {
             channel,
             owner,
             phase,
-        }]
+        }];
+        if live {
+            if !self.watched_streams.contains(&(channel, owner)) {
+                self.watched_streams.push((channel, owner));
+            }
+            events.push(self.stream_viewers(channel, owner));
+        }
+        events
+    }
+
+    /// The account stopped watching `owner`'s stream: its viewers go on without it.
+    fn stop_watching(&mut self, channel: ChannelId, owner: UserId) -> Vec<Event> {
+        let known = (channel, owner);
+        if !self.watched_streams.contains(&known) {
+            return Vec::new();
+        }
+        self.watched_streams.retain(|watched| *watched != known);
+        vec![self.stream_viewers(channel, owner)]
+    }
+
+    /// Who watches `owner`'s stream in `channel`: two others of the room who
+    /// are not streaming, and the account while it watches.
+    fn stream_viewers(&self, channel: ChannelId, owner: UserId) -> Event {
+        let mut viewers: Vec<UserId> = self
+            .voice
+            .iter()
+            .filter(|state| {
+                state.channel == channel
+                    && !state.streaming
+                    && state.user != owner
+                    && state.user != ME
+            })
+            .take(2)
+            .map(|state| state.user)
+            .collect();
+        if self.watched_streams.contains(&(channel, owner)) {
+            viewers.push(ME);
+        }
+        Event::StreamViewers {
+            channel,
+            owner,
+            viewers,
+        }
     }
 
     /// The account's screen, «shared» in its call in `channel` or not.
@@ -2958,6 +3007,8 @@ impl World {
         });
         // Private calls: with nobody left in it, a conversation's call is over.
         if let Some(channel) = left {
+            self.watched_streams
+                .retain(|(watched, _)| *watched != channel);
             events.extend(self.call_over_if_empty(channel));
         }
         events
@@ -3574,6 +3625,52 @@ mod tests {
         }
         assert_eq!(phases[0], (streamer, StreamPhase::Live));
         assert!(matches!(phases[1], (owner, StreamPhase::Ended(Some(_))) if owner == quiet));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_watched_simulated_stream_lists_two_of_the_room_and_the_account_while_it_watches() {
+        let mut session = Session::start(MockProvider::new(config())).await;
+        let channel = session.channel("Pair programming");
+        let streamer = session
+            .snapshot
+            .voice
+            .iter()
+            .find(|state| state.channel == channel && state.streaming)
+            .unwrap()
+            .user;
+        session
+            .send(Command::JoinVoice {
+                channel,
+                muted: true,
+                deafened: false,
+            })
+            .await;
+        session
+            .send(Command::WatchStream {
+                channel,
+                owner: streamer,
+            })
+            .await;
+        let watching = loop {
+            if let Event::StreamViewers { owner, viewers, .. } = session.next().await {
+                break (owner, viewers);
+            }
+        };
+        assert_eq!(watching.0, streamer);
+        assert_eq!(watching.1.len(), 3);
+        assert!(!watching.1.contains(&streamer) && watching.1.last() == Some(&ME));
+        session
+            .send(Command::StopWatching {
+                channel,
+                owner: streamer,
+            })
+            .await;
+        let stopped = loop {
+            if let Event::StreamViewers { viewers, .. } = session.next().await {
+                break viewers;
+            }
+        };
+        assert_eq!(stopped, watching.1[..2]);
     }
 
     #[tokio::test(start_paused = true)]

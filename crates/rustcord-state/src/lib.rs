@@ -491,6 +491,9 @@ pub struct Store {
             Option<std::time::Duration>,
         ),
     >,
+    /// Who watches each stream, by its owner, with its channel, as the
+    /// provider last reported it. Read through [`Store::stream_viewers`].
+    stream_viewers: HashMap<UserId, (ChannelId, Vec<UserId>)>,
     /// Messages being sent, by nonce, and where they are shown meanwhile.
     pending: HashMap<u64, (ChannelId, MessageId)>,
     pending_files: HashMap<u64, uploads::PendingFiles>,
@@ -884,6 +887,14 @@ impl Store {
                     _ => Applied::Nothing,
                 }
             }
+            Event::StreamViewers {
+                channel,
+                owner,
+                viewers,
+            } => {
+                self.stream_viewers.insert(owner, (channel, viewers));
+                Applied::Call
+            }
             Event::CallEnded { channel, reason } => {
                 if self
                     .call
@@ -894,6 +905,7 @@ impl Store {
                     self.call_connected = None;
                     self.watching.clear();
                     self.sharing = None;
+                    self.stream_viewers.clear();
                     self.desktop_call_ended();
                 }
                 Applied::CallEnded { reason }
@@ -1654,6 +1666,7 @@ impl Store {
         self.call_reported = None;
         self.watching.clear();
         self.sharing = None;
+        self.stream_viewers.clear();
         self.private_call_begun(channel);
     }
 
@@ -1664,6 +1677,7 @@ impl Store {
         self.call_connected = None;
         self.watching.clear();
         self.sharing = None;
+        self.stream_viewers.clear();
     }
 
     /// Start watching `owner`'s stream in `channel`, besides the others,
@@ -1733,6 +1747,39 @@ impl Store {
     /// asked for again, when its latest answer had none because of that.
     pub fn stream_preview_retry(&self, owner: UserId) -> Option<std::time::Duration> {
         self.stream_previews.get(&owner)?.2
+    }
+
+    /// Who watches `owner`'s stream, as the provider last said: empty when
+    /// unknown, or once the stream is not connecting, live, paused or
+    /// reconnecting, its owner left its channel, or the call ended.
+    pub fn stream_viewers(&self, owner: UserId) -> &[UserId] {
+        let Some((channel, viewers)) = self.stream_viewers.get(&owner) else {
+            return &[];
+        };
+        let streaming = self
+            .watching
+            .iter()
+            .chain(self.sharing.iter())
+            .any(|stream| {
+                stream.owner == owner
+                    && stream.channel == *channel
+                    && matches!(
+                        stream.phase,
+                        StreamPhase::Connecting
+                            | StreamPhase::Live
+                            | StreamPhase::Paused
+                            | StreamPhase::Reconnecting
+                    )
+            });
+        let in_channel = self
+            .voice
+            .iter()
+            .any(|state| state.user == owner && state.channel == *channel);
+        if streaming && in_channel {
+            viewers
+        } else {
+            &[]
+        }
     }
 
     /// Start sharing the account's screen in `channel`, before the provider
