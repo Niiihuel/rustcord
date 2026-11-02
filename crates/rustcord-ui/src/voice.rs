@@ -461,6 +461,18 @@ pub(crate) fn update(
     if let Some(user) = number(id, "vz:live:watch:") {
         return Some(crate::voice_live::watch(ui, store, UserId(user), now));
     }
+    // The help under a stream that failed to start: Discord's article, in the
+    // interface's language.
+    if id == parts::ids::STREAM_HELP {
+        let language = if ui.language() == rustcord_i18n::Language::Spanish {
+            "es"
+        } else {
+            "en-us"
+        };
+        return Some(vec![Intent::OpenUrl(format!(
+            "https://support.discord.com/hc/{language}/articles/360040816151"
+        ))]);
+    }
     if let Some(user) = number(id, "vz:zoom-in:") {
         return Some(video::zoom_step(ui, UserId(user), parts::ZOOM_STEP));
     }
@@ -475,14 +487,6 @@ pub(crate) fn update(
     }
     if let Some(user) = number(id, ids::STOP_WATCHING).or_else(|| number(id, ids::CLOSE_STREAM)) {
         return Some(video::stop_watching(ui, store, UserId(user)));
-    }
-    // «Reintentar» on a stream that failed: watched again, from the start.
-    if let Some(user) = id
-        .strip_prefix("stream:")
-        .and_then(|rest| rest.strip_suffix(":retry"))
-        .and_then(|user| user.parse().ok())
-    {
-        return Some(video::watch(ui, store, UserId(user), now));
     }
     if let Some(source) = id.strip_prefix(ids::SOURCE) {
         return Some(video::choose_source(ui, source));

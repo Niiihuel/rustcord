@@ -11,4 +11,13 @@ pub(super) const ENTRIES: super::Entries = &[
         "Comienza a ver múltiples transmisiones",
         "Start watching multiple streams",
     ),
+    (
+        "No se pudo iniciar la transmisión :(",
+        "Stream failed to start :(",
+    ),
+    (
+        "¿Tienes problemas con tu transmisión?",
+        "Having issues with your stream?",
+    ),
+    ("Déjanos ayudarte.", "Let us help you."),
 ];

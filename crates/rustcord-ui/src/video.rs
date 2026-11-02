@@ -788,14 +788,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         ),
         // Stopped by its owner: it is over for now, and the stage says so.
         StreamPhase::Waiting => (t("Detenida"), t("Esta transmisión ha finalizado.").into()),
-        StreamPhase::Failed(reason) => (
-            t("Sin conexión"),
-            format!(
-                "{} {}",
-                t("No se pudo conectar a la transmisión."),
-                t(reason)
-            ),
-        ),
+        StreamPhase::Failed(reason) => (t("Sin conexión"), t(reason).into()),
         // Over while its owner still streams: never «Terminó».
         StreamPhase::Ended(reason) if streaming => (
             t("Sin conexión"),
@@ -816,7 +809,9 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         watching.phase,
         StreamPhase::Ended(_) | StreamPhase::Waiting | StreamPhase::Failed(_)
     );
-    let failed = matches!(watching.phase, StreamPhase::Failed(_));
+    // A watch that failed, or ended while its owner still streams, says so.
+    let failed = matches!(watching.phase, StreamPhase::Failed(_))
+        || (streaming && matches!(watching.phase, StreamPhase::Ended(_)));
     let owner = watching.owner;
     // What its tile offers, as the official client's.
     let sound = owner.0 | rustcord_media::mixer::STREAM_SOUND;
@@ -831,6 +826,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         fullscreen: ui.video.focus == Some(owner),
         idle: idle(ui, store, now),
         over: ended,
+        failed,
         zoom: (ui.video.spotlight == Some(owner) || ui.video.focus == Some(owner))
             .then(|| zoom_of(ui, owner)),
     };
@@ -862,11 +858,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
             },
         ),
         note,
-        actions: if failed {
-            vec![(ids::retry_watching(watching.owner.0), t("Reintentar"))]
-        } else {
-            Vec::new()
-        },
+        actions: Vec::new(),
         stream: Some(tile),
         focused: ui.video.spotlight == Some(owner),
         card: false,

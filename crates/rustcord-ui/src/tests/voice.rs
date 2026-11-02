@@ -1932,26 +1932,35 @@ fn a_stream_that_failed_is_watched_again_by_its_button_and_never_ended_while_its
             })
             .collect()
     };
-    // Failed: the picture says why, with «Reintentar» (watched again) and «Cerrar transmisión».
+    // Failed: the picture says why, with the help and «Cerrar transmisión»,
+    // and no retry: closed, its tile watches it again.
     host.event(Event::StreamPhase {
         channel: room,
         owner: other,
         phase: StreamPhase::Failed("Discord no respondió a tiempo.".into()),
     });
-    let retry = ids::retry_watching(other.0);
-    assert!(host.vz_usable(&retry) && host.vz_usable(&ids::stop_watching(other.0)));
+    assert!(host.vz_usable(&ids::close_stream(other.0)));
+    assert!(!host.vz_shows(&format!("stream:{}:retry", other.0)));
     let shown = texts(&mut host);
     assert!(
-        shown.iter().any(|text| text == "Reintentar")
-            && shown.iter().any(|text| text == "Cerrar transmisión"),
+        shown
+            .iter()
+            .any(|text| text == "No se pudo iniciar la transmisión :(")
+            && shown.iter().any(|text| text == "Cerrar transmisión")
+            && shown.iter().any(|text| text == "Déjanos ayudarte."),
         "{shown:?}"
     );
     assert!(shown
         .iter()
-        .any(|text| text.starts_with("No se pudo conectar a la transmisión.")));
-    // Watched again: let go of the failed one first, then watched.
+        .any(|text| text == "Discord no respondió a tiempo."));
+    // Closed, the stream is no longer watched: its tile offers to watch it.
     let from = host.sent.len();
-    host.click(&retry);
+    host.click(&ids::close_stream(other.0));
+    assert!(matches!(
+        host.sent[from..].last(),
+        Some(Command::StopWatching { owner, .. }) if *owner == other
+    ));
+    host.click(&ids::watch(other.0));
     assert!(matches!(
         host.sent[from..].last(),
         Some(Command::WatchStream { channel, owner }) if *channel == room && *owner == other

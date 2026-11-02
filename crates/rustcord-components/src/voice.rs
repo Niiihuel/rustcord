@@ -197,10 +197,8 @@ pub mod ids {
         format!("{CLOSE_STREAM}{user}")
     }
 
-    /// «Reintentar» on `user`'s stream that failed: watched again.
-    pub fn retry_watching(user: u64) -> String {
-        format!("stream:{user}:retry")
-    }
+    /// «Déjanos ayudarte.» under a stream that failed to start: the help article.
+    pub const STREAM_HELP: &str = "vz:stream-help";
 
     /// «Pantalla completa» on `user`'s stream: alone, the window full screen.
     pub fn fullscreen(user: u64) -> String {
@@ -513,6 +511,9 @@ pub struct StreamTile {
     /// It is over for now (stopped, ended or failed): the stage says so with
     /// a picture at rest in place of the stream, and no note.
     pub over: bool,
+    /// It failed to start, or ended while its owner still streams: the title
+    /// says so, and `waiting` is the reason. Else `waiting` is the title.
+    pub failed: bool,
     /// The pointer rested on it a while: what is drawn over it fades out,
     /// the bar under it too, and the pointer hides over it, as the official
     /// client's (3 s). Only while it takes the stage or the window.
@@ -672,11 +673,7 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
         },
         // A stream over says so, and offers to be watched again or closed.
         None => match &view.stream {
-            Some(stream) if stream.over => {
-                let wide = (size.width * 0.22).clamp(180.0, 320.0);
-                let picture = (size.height >= OVER_PICTURE_HEIGHT && !compact).then_some(wide);
-                over_picture(view, picture, look)
-            }
+            Some(stream) if stream.over => over_picture(view, look),
             // The account's own stream before its first frame: the screen's glyph.
             None if view.card => {
                 centered(icon(Icon::Screen, look.faint).size(Some(48.0), Some(48.0)))
@@ -739,16 +736,10 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
             .padding(12.5)
         }
     };
-    // A stream over, with no picture left, stands on a dark gradient.
     let backdrop = Element::panel(picture)
         .size(Some(size.width), Some(size.height))
-        .radius(TILE_RADIUS);
-    let ended = view.frame.is_none() && view.stream.as_ref().is_some_and(|stream| stream.over);
-    let backdrop = if ended {
-        backdrop.vertical_gradient(vec![ENDED_TOP, ENDED_BOTTOM])
-    } else {
-        backdrop.background(Color::rgb(0, 0, 0))
-    };
+        .radius(TILE_RADIUS)
+        .background(Color::rgb(0, 0, 0));
     let shown = Element::stack(vec![backdrop.clip_children(), over]);
     match &view.stream {
         Some(stream) => {
@@ -807,60 +798,41 @@ fn own_over(view: &Preview, title: Element, look: &Look) -> Element {
     .padding(12.5)
 }
 
-/// Rustcord's own picture of a stream at rest: a screen in a muted gray with the
-/// mark over it in red (`assets/illustrations/stream-ended-mark.svg`).
-const ENDED_SCREEN_INK: Color = Color::rgb(58, 58, 66);
-const ENDED_MARK: &str = include_str!("../../../assets/illustrations/stream-ended-mark.svg");
-/// The stage's backdrop when a stream is over: dark purple top, near black below.
-const ENDED_TOP: Color = Color::rgb(44, 26, 74);
-const ENDED_BOTTOM: Color = Color::rgb(12, 12, 14);
-/// The picture needs this much height of a tile, else it stays out.
-// shortcut: the grid's tiles are too short for the picture; only the stage shows it, upgrade if tiles grow
-const OVER_PICTURE_HEIGHT: f32 = 220.0;
-
-/// What a stream over shows in its place: its picture at rest when `width`
-/// is set (the picture is 0.6 as high), what happened and the ways out, all
-/// centred. The picture and the text are 16 apart, the buttons 12 under.
-fn over_picture(view: &Preview, width: Option<f32>, look: &Look) -> Element {
-    let mut head = Vec::new();
-    if let Some(width) = width {
-        let height = width * 0.6;
-        // limn draws an icon square, up to 128: the mark is a quarter of the picture.
-        head.push(
-            Element::stack(vec![
-                Element::panel(Element::spacer())
-                    .size(Some(width), Some(height))
-                    .radius(10.0)
-                    .background(ENDED_SCREEN_INK),
-                Element::icon(Icon::Custom(ENDED_MARK))
-                    .large_icon((width * 0.25).min(128.0))
-                    .foreground(Color::rgba(214, 45, 45, 115))
-                    .size(Some(width), Some(height)),
-            ])
-            .size(Some(width), Some(height)),
-        );
+/// What a stream over shows, centred on its tile, with no picture: a failure's
+/// title, its reason under it and the line to the help; an ended stream's
+/// wording as its title. «Cerrar transmisión» comes 16 px under.
+fn over_picture(view: &Preview, look: &Look) -> Element {
+    let failed = view.stream.as_ref().is_some_and(|stream| stream.failed);
+    let mut text = Vec::new();
+    if failed {
+        text.push(strong_line(
+            t("No se pudo iniciar la transmisión :("),
+            16.0,
+            OVER_INK,
+        ));
+        text.push(strong_line(view.waiting.clone(), 14.0, look.muted));
+        text.push(help_line(look));
+    } else {
+        text.push(strong_line(view.waiting.clone(), 16.0, OVER_INK));
     }
-    head.push(line(&view.waiting, 16.0, look.text));
-    let mut buttons: Vec<Element> = view
-        .actions
-        .iter()
-        .map(|(id, label)| stream_text_button(id, t(label), ButtonVariant::Default, look))
-        .collect();
-    buttons.push(stream_text_button(
-        &view.stop.0,
-        t(view.stop.1),
-        ButtonVariant::Secondary,
-        look,
-    ));
-    let column = vec![
-        Element::column(head).gap(16.0),
-        Element::row(buttons).gap(8.0),
-    ];
-    centered(Element::column(column).gap(12.0))
+    let close = stream_text_button(&view.stop.0, t(view.stop.1), ButtonVariant::Secondary, look);
+    centered(Element::column(vec![Element::column(text).gap(4.0), close]).gap(16.0))
 }
 
-/// A text button on a stream that is over: «Cerrar transmisión» secondary,
-/// «Reintentar» the light primary.
+/// «¿Tienes problemas con tu transmisión? Déjanos ayudarte.», where the last
+/// words open the help article.
+fn help_line(look: &Look) -> Element {
+    Element::row(vec![
+        line(t("¿Tienes problemas con tu transmisión?"), 14.0, look.muted),
+        Element::clickable(
+            ids::STREAM_HELP,
+            line(t("Déjanos ayudarte."), 14.0, look.accent),
+        ),
+    ])
+    .gap(4.0)
+}
+
+/// A text button on a stream that is over: «Cerrar transmisión», secondary.
 fn stream_text_button(id: &str, label: &str, variant: ButtonVariant, look: &Look) -> Element {
     Button::new(id, label, look.sidebar_palette())
         .variant(variant)
@@ -5376,6 +5348,7 @@ mod tests {
                 over: false,
                 idle: false,
                 zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6470,6 +6443,7 @@ mod tests {
                 over: true,
                 idle: false,
                 zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6520,14 +6494,7 @@ mod tests {
         // Its own ID: the call bar's red button keeps `stop_watching`.
         assert!(controls(&ended).contains(&ids::close_stream(2)));
         assert!(said.contains(&"Cerrar transmisión".to_owned()));
-        // Its picture is wide (180 at least), and «Cerrar transmisión» is not danger.
-        let screen = ended.commands.iter().find_map(|command| match command {
-            limn::DrawCommand::FillRect { rect, color, .. } if *color == ENDED_SCREEN_INK => {
-                Some(rect.width)
-            }
-            _ => None,
-        });
-        assert!(screen.is_some_and(|width| width >= 180.0));
+        // No picture, and «Cerrar transmisión» is not danger.
         assert!(!ended.commands.iter().any(|command| matches!(
             command,
             limn::DrawCommand::FillRect { color, .. } | limn::DrawCommand::FillCornerRect { color, .. }
@@ -6653,6 +6620,7 @@ mod tests {
                 over: false,
                 idle,
                 zoom: None,
+                failed: false,
             }),
             focused: !fullscreen,
             card: false,
@@ -6741,6 +6709,7 @@ mod tests {
                 over: false,
                 idle,
                 zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6808,6 +6777,7 @@ mod tests {
                 over: false,
                 idle: false,
                 zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6888,6 +6858,7 @@ mod tests {
                 over: false,
                 idle: false,
                 zoom: None,
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -6951,6 +6922,7 @@ mod tests {
                 over: false,
                 idle: false,
                 zoom,
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -6996,6 +6968,7 @@ mod tests {
                 over: false,
                 idle: false,
                 zoom: Some(Zoom::FIT),
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -7057,6 +7030,56 @@ mod tests {
         let narrow = Size::new(120.0, 67.5);
         let said = texts(&frame(watch_tile(&streamer, narrow, &Ok(()), true, &look), narrow).1);
         assert!(said.contains(&"Ver".to_owned()), "{said:?}");
+    }
+
+    #[test]
+    fn a_stream_that_failed_says_why_and_offers_the_help_and_closing_only() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let over = |failed: bool, waiting: &str| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: None,
+            fps: None,
+            waiting: waiting.into(),
+            stop: (ids::close_stream(2), "Cerrar transmisión"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: true,
+                failed,
+                idle: false,
+                zoom: None,
+            }),
+            focused: true,
+            card: false,
+        };
+        let shown = |view: Preview| {
+            let (_, laid) = frame(preview(&view, size, &look), size);
+            (texts(&laid), controls(&laid))
+        };
+        // A failure: its title, the reason, the line to the help and one way out.
+        let (said, ids_shown) = shown(over(true, "Discord no respondió a tiempo."));
+        assert!(said.contains(&"No se pudo iniciar la transmisión :(".to_owned()));
+        assert!(said.contains(&"Discord no respondió a tiempo.".to_owned()));
+        assert!(said.contains(&"¿Tienes problemas con tu transmisión?".to_owned()));
+        assert!(said.contains(&"Déjanos ayudarte.".to_owned()));
+        assert!(ids_shown.contains(&ids::STREAM_HELP.to_owned()));
+        assert!(ids_shown.contains(&ids::close_stream(2)));
+        assert!(!ids_shown.iter().any(|id| id.contains("retry")));
+        // An ended stream: its wording is the title, and no help is offered.
+        let (ended, ended_ids) = shown(over(false, "Esta transmisión ha finalizado."));
+        assert!(ended.contains(&"Esta transmisión ha finalizado.".to_owned()));
+        assert!(!ended.contains(&"Déjanos ayudarte.".to_owned()));
+        assert!(!ended_ids.contains(&ids::STREAM_HELP.to_owned()));
+        assert!(ended_ids.contains(&ids::close_stream(2)));
     }
 
     fn named(name: &str, user: u64) -> Participant {
