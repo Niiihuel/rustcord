@@ -15,7 +15,7 @@ use zbus::{
     Connection, MatchRule, Message, MessageStream,
 };
 
-use super::{Shortcut, ShortcutError, ShortcutEvent};
+use super::{Shortcut, ShortcutError, ShortcutEvent, APP_ID};
 use crate::portal::{token, DESKTOP, DESTINATION, REQUEST};
 
 const GLOBAL_SHORTCUTS: &str = "org.freedesktop.portal.GlobalShortcuts";
@@ -74,6 +74,19 @@ async fn run(
     .await
     .map_err(|_| ShortcutError::NO_PORTAL)?
     .map_err(|_| ShortcutError::NO_PORTAL)?;
+    // Name the app before anything else on this connection: a program started
+    // outside its own systemd scope (a terminal, the session) otherwise has no
+    // id or another program's, and the desktop names the shortcuts after it.
+    // Portals older than 1.19, and connections already named, refuse: harmless.
+    let _ = connection
+        .call_method(
+            Some(DESTINATION),
+            DESKTOP,
+            Some("org.freedesktop.host.portal.Registry"),
+            "Register",
+            &(APP_ID, HashMap::<&str, Value>::new()),
+        )
+        .await;
     // Activates the portal; a portal without the interface has no version.
     connection
         .call_method(

@@ -1332,7 +1332,8 @@ impl App {
                 let wake = ctx.clone();
                 Arc::new(move || wake.request_repaint())
             }),
-            global_ptt: ptt::GlobalPushToTalk::default(),
+            // A Lua config takes binds while Rustcord runs: it makes its own.
+            global_ptt: ptt::GlobalPushToTalk::new(ptt::hyprland() && ptt::hyprland_lua()),
             pressed: Vec::new(),
             held_buttons: Vec::new(),
             alerts: alerts::Alerts::new({

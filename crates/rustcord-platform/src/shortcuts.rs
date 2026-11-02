@@ -64,6 +64,10 @@ impl fmt::Display for ShortcutError {
 
 impl std::error::Error for ShortcutError {}
 
+/// The id of `rustcord.desktop`: the desktop names Rustcord's shortcuts
+/// after it (`rustcord:push-to-talk`).
+pub const APP_ID: &str = "rustcord";
+
 /// One portal session. Dropping it closes the session and releases the keys.
 pub struct GlobalShortcuts {
     events: mpsc::Receiver<ShortcutEvent>,
