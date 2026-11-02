@@ -15,7 +15,7 @@ use rustcord_components::voice::{
     self as parts, ids, Details, MenuEntry, Panel, Participant, Stage,
 };
 use rustcord_components::Look;
-use rustcord_i18n::t;
+use rustcord_i18n::{t, tr};
 use rustcord_model::{CallPhase, CallQuality, ChannelId, ServerId, ShareKind, Timestamp, UserId};
 use rustcord_provider::{Command, VoiceSupport};
 use rustcord_state::{Applied, Store};
@@ -36,6 +36,8 @@ pub struct Voice {
     pub preview: Option<ChannelId>,
     /// The connection's details are open over the panel.
     pub details: bool,
+    /// The noise suppression popout is open over the panel's wave.
+    pub noise: bool,
     /// «Más opciones» of the stage's bar is open.
     pub more: bool,
     /// The tiles under a stream focused are hidden; kept for the session.
@@ -172,6 +174,7 @@ pub(crate) fn join(
     ui.voice.preview = None;
     ui.voice.samples.clear();
     ui.voice.details = false;
+    ui.voice.noise = false;
     if let Some(abilities) = &abilities {
         if let Some(reason) = abilities.speak.reason() {
             // Listening only: the microphone stays closed in this channel.
@@ -214,10 +217,12 @@ fn channel_clicked(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<In
         ui.voice.preview = None;
         ui.voice.card = None;
         ui.voice.details = false;
+        ui.voice.noise = false;
     } else {
         ui.voice.preview = Some(channel);
         ui.voice.card = None;
         ui.voice.details = false;
+        ui.voice.noise = false;
     }
     intents
 }
@@ -246,6 +251,7 @@ fn leave(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
     intents.extend(keeping_stage(ui, |ui| hide_chat(ui, store)));
     ui.voice.stage = None;
     ui.voice.details = false;
+    ui.voice.noise = false;
     ui.voice.samples.clear();
     if let Some(channel) = ui.channel() {
         intents.push(Intent::Focus(editor_id(channel)));
@@ -560,6 +566,14 @@ pub(crate) fn update(
         }
         ids::DETAILS_DISMISS => {
             ui.voice.details = false;
+            Vec::new()
+        }
+        ids::NOISE => {
+            ui.voice.noise = !ui.voice.noise;
+            Vec::new()
+        }
+        ids::NOISE_DISMISS => {
+            ui.voice.noise = false;
             Vec::new()
         }
         ids::MORE => {
@@ -953,6 +967,16 @@ pub(crate) fn panel(
             video: video::controls(ui, store),
             live: video::sending(ui, store).is_some() && ui.voice.stage != Some(call.channel),
             stream_source: video::sending(ui, store).map(|_| video::source_name(ui)),
+            stream_quality: video::sending(ui, store).map(|quality| {
+                tr!(
+                    "{height}p {fps} FPS",
+                    height = quality.height,
+                    fps = quality.fps
+                )
+            }),
+            noise_suppression: ui.prefs.effective_processing().suppression
+                != rustcord_media::ProcessingMode::Off,
+            noise_open: ui.voice.noise,
         },
         details,
         look,

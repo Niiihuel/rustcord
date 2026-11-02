@@ -236,6 +236,10 @@ fn search_box(keys: Option<&str>, look: &Look) -> Element {
 pub struct UserPanel {
     pub name: String,
     pub image: Option<limn::RasterImage>,
+    /// The frame over the picture, a fifth larger than it.
+    pub decoration: Option<limn::RasterImage>,
+    /// The artwork behind the whole box, as a member's row takes it.
+    pub plate: Option<crate::identity::Plate>,
     pub handle: String,
     pub accent: Color,
     /// No indicator when the provider does not publish presence.
@@ -369,11 +373,25 @@ fn split_button(
 /// settings. The box around it is the column's.
 pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
     let palette = look.sidebar_palette();
-    let face = crate::avatar_with_image(&panel.name, panel.accent, 32.0, panel.image);
-    let face = match panel.status {
-        Some(status) => with_status(face, 32.0, status, look.rail),
-        None => face,
+    // The frame's box is a fifth larger than the 32 px picture, centred on it.
+    let box_size = if panel.decoration.is_some() {
+        38.4
+    } else {
+        32.0
     };
+    let inset = (box_size - 32.0) / 2.0;
+    let face = crate::identity::decorated(
+        |side| {
+            let face =
+                crate::avatar_with_image(&panel.name, panel.accent, side, panel.image.clone());
+            match panel.status {
+                Some(status) => with_status(face, side, status, look.rail),
+                None => face,
+            }
+        },
+        box_size,
+        panel.decoration.clone(),
+    );
     let second = Element::stack(vec![
         line(&panel.status_label, 12.0, look.muted).conceal_on_hover("me:line:status"),
         line(&panel.handle, 12.0, look.muted).reveal_on_hover("me:line:handle"),
@@ -381,9 +399,9 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
     let account = Element::clickable(
         "me:status",
         Element::row(vec![
-            gap(4.0, 0.0),
+            gap(4.0 - inset, 0.0),
             face.centered_y(),
-            gap(10.5, 0.0),
+            gap(10.5 - inset, 0.0),
             Element::column(vec![strong_line(&panel.name, 14.0, look.text), second])
                 .gap(1.0)
                 .flex(1.0)
@@ -470,6 +488,8 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
     }
     controls.extend([settings.centered_y(), gap(8.0, 0.0)]);
     let body = Element::panel(Element::row(controls)).size(None, Some(USER_PANEL_HEIGHT));
+    // The plate spans the box; its artwork is the still one, as it stays under the pointer.
+    let body = crate::identity::on_plate(body, USER_PANEL_HEIGHT, panel.plate.as_ref(), "me");
     // The popout opens above the whole box, its left edge on the box's.
     crate::profile::popout(
         body,

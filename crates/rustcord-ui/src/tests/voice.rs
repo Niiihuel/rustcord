@@ -2025,3 +2025,46 @@ fn a_stream_that_failed_is_watched_again_by_its_button_and_never_ended_while_its
         "{shown:?}"
     );
 }
+
+#[test]
+fn the_wave_opens_the_noise_popout_whose_switch_flips_the_suppression_and_escape_closes_it() {
+    let mut host = Host::new();
+    host.vz_join("Sala común");
+    let before = host.ui.prefs.effective_processing().suppression;
+    host.click(ids::NOISE);
+    assert!(host.ui.voice.noise && host.vz_shows(ids::NOISE_SWITCH));
+    host.click(ids::NOISE_SWITCH);
+    assert_ne!(host.ui.prefs.effective_processing().suppression, before);
+    host.click(ids::NOISE_SWITCH);
+    assert_eq!(host.ui.prefs.effective_processing().suppression, before);
+    host.key(Key::Escape, false, false);
+    assert!(!host.ui.voice.noise, "Escape closes the popout");
+}
+
+// Screen sharing is Linux's and Windows'.
+#[cfg(any(target_os = "linux", windows))]
+#[test]
+fn the_account_bar_says_it_shares_its_screen_while_it_does() {
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    host.click(ids::SCREEN);
+    host.click(ids::SHARE);
+    // The system's dialog answers with frames, then the provider confirms the stream.
+    let started = crate::video_screen_ready(&host.ui, &mut host.store, true);
+    host.run(started);
+    let me = host.vz_me();
+    host.event(Event::StreamPhase {
+        channel: room,
+        owner: me,
+        phase: rustcord_model::StreamPhase::Live,
+    });
+    let painted = host.painted();
+    // The account's line is cut short by the column's width.
+    assert!(
+        painted
+            .iter()
+            .any(|text| text.starts_with("Compartiendo su panta")),
+        "{painted:?}"
+    );
+    assert!(host.vz_shows(ids::STREAM_STOP));
+}
