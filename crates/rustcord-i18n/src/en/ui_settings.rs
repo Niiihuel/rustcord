@@ -124,8 +124,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("retraso al soltar pulsar para hablar demora ptt", "release delay push to talk ptt"),
     (
-        "supresión reducción de ruido fondo krisp rnnoise webrtc estándar teclado ventilador",
-        "noise suppression reduction background krisp rnnoise webrtc standard keyboard fan",
+        "supresión reducción de ruido fondo krisp rnnoise deepfilternet webrtc estándar teclado ventilador",
+        "noise suppression reduction background krisp rnnoise deepfilternet webrtc standard keyboard fan",
     ),
     (
         "cancelación de eco acople altavoces parlantes referencia",
@@ -646,7 +646,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Por ejemplo, cuando escribes :), Rustcord lo convierte a 🙂. El código y los enlaces no cambian.", "For example, when you type :), Rustcord converts it to 🙂. Code and links don't change."),
     ("Predeterminado", "Default"),
     ("Quita el ruido de fondo. Lo elige el perfil; cambiar algo aquí lo pasa a Personalizar.", "Removes background noise. The profile chooses it; changing it here switches to Custom."),
-    ("RNNoise quita también el teclado y los ruidos que cambian; WebRTC es más liviano, para ruido constante como un ventilador.", "RNNoise also removes keyboard and changing noises; WebRTC is lighter, for constant noise such as a fan."),
+    ("RNNoise quita también el teclado y los ruidos que cambian; DeepFilterNet deja la voz más limpia con ruido constante, pero deja pasar más el teclado y usa más procesador, con 20 ms más de retraso; WebRTC es más liviano, para ruido constante como un ventilador.", "RNNoise also removes keyboard and changing noises; DeepFilterNet leaves the voice cleaner under constant noise, but lets more typing through and uses more CPU, with 20 ms more delay; WebRTC is lighter, for constant noise such as a fan."),
     ("Reduce la cantidad y la intensidad de las animaciones, los efectos al pasar el cursor y otros efectos en movimiento.", "Reduces the amount and intensity of animations, hover effects, and other moving effects."),
     ("Selecciona un idioma", "Select a Language"),
     ("Sensibilidad de la entrada", "Input Sensitivity"),

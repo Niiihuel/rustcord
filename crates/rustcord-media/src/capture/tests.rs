@@ -533,6 +533,7 @@ fn identical_requests_do_not_reopen_and_mode_mute_changes_share_one_stream() {
     for (mode, gain) in [
         (ProcessingMode::WebRtc, false),
         (ProcessingMode::RnNoise, true),
+        (ProcessingMode::DeepFilter, false),
         (ProcessingMode::Off, false),
     ] {
         desired.mode = mode;

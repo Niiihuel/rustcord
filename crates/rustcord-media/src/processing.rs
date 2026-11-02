@@ -9,8 +9,8 @@
 //!
 //! The chain, each stage only when chosen: input volume, then echo
 //! cancellation (Sonora's AEC3), then Sonora's high-pass filter and WebRTC
-//! noise suppression, then RNNoise, then automatic gain, then the speech
-//! gate. The canceller goes first: it needs the microphone linear in what
+//! noise suppression, then RNNoise or DeepFilterNet, then automatic gain,
+//! then the speech gate. The canceller goes first: it needs the microphone linear in what
 //! the output played. It is its own stage so that what restarts the rest (a
 //! mute, a gap, another suppressor) keeps what it learned of the echo path.
 //! RNNoise comes before the gain, so the gain is not set by noise RNNoise
@@ -20,6 +20,8 @@
 
 use std::time::Instant;
 
+use df::tract::{DfParams, DfTract, RuntimeParams};
+use ndarray::Array2;
 use nnnoiseless::DenoiseState;
 use rustcord_i18n::t;
 use sonora::config::{
@@ -34,7 +36,8 @@ use crate::{dbfs, meter_position, rms, MediaError, PLAYBACK_RATE};
 /// of mono at [`PLAYBACK_RATE`].
 pub const REFERENCE_FRAME: usize = PLAYBACK_RATE as usize / 100;
 
-/// The only rate RNNoise works at; its frames are 10 ms there.
+/// The only rate RNNoise and DeepFilterNet work at; their frames are 10 ms
+/// there.
 pub const RNNOISE_RATE: u32 = 48_000;
 
 /// The loudest input volume: twice what the microphone gives, as Discord's.
@@ -65,6 +68,13 @@ pub enum ProcessingMode {
     /// keyboard and other non-stationary noise. It runs at [`RNNOISE_RATE`]
     /// only; a microphone at another rate gets [`Self::WebRtc`] instead.
     RnNoise,
+    /// DeepFilterNet3, a larger neural network: a cleaner voice under steady
+    /// noise (a fan, hiss) than RNNoise, though more of a keyboard gets
+    /// through, for more processing and 20 ms more delay (it looks two
+    /// frames ahead). At [`RNNOISE_RATE`]
+    /// only; a microphone at another rate, or a model that does not load,
+    /// gets [`Self::WebRtc`] instead.
+    DeepFilter,
 }
 
 /// Levels use Rustcord's logarithmic meter scale (0 = floor, 1 = 0 dBFS).
@@ -94,6 +104,10 @@ pub struct CaptureProcessor {
     /// The high-pass filter and WebRTC's suppressor, when chosen.
     engine: Option<AudioProcessing>,
     denoiser: Option<Box<DenoiseState<'static>>>,
+    deep: Option<Box<DeepFilter>>,
+    /// DeepFilterNet's model did not load: not tried again until the mode
+    /// changes.
+    deep_failed: bool,
     leveler: Option<AudioProcessing>,
     gate: Option<SpeechGate>,
     output: Vec<f32>,
@@ -153,19 +167,23 @@ impl CaptureProcessor {
                 t("el procesamiento admite frecuencias de 8 a 192 kHz divisibles por 100").into(),
             ));
         }
-        Ok(Self {
+        let mut processor = Self {
             sample_rate,
             mode,
             gain: false,
             volume: 1.0,
             canceller: None,
-            engine: engine(sample_rate, mode),
-            denoiser: denoiser(sample_rate, mode),
+            engine: None,
+            denoiser: None,
+            deep: None,
+            deep_failed: false,
             leveler: None,
             gate: None,
             output: vec![0.0; (sample_rate / 100) as usize],
             rendered: vec![0.0; REFERENCE_FRAME],
-        })
+        };
+        processor.reset();
+        Ok(processor)
     }
 
     /// Exact number of mono samples required by each call to [`Self::process`].
@@ -178,6 +196,7 @@ impl CaptureProcessor {
     pub fn set_mode(&mut self, mode: ProcessingMode) {
         if self.mode != mode {
             self.mode = mode;
+            self.deep_failed = false;
             self.reset();
         }
     }
@@ -186,6 +205,13 @@ impl CaptureProcessor {
     #[cfg(test)]
     pub fn rnnoise(&self) -> bool {
         self.denoiser.is_some()
+    }
+
+    /// Whether DeepFilterNet runs: chosen, loaded, and the microphone is at
+    /// [`RNNOISE_RATE`].
+    #[cfg(test)]
+    pub fn deep_filter(&self) -> bool {
+        self.deep.is_some()
     }
 
     /// Turns echo cancellation on or off; off discards what it learned.
@@ -254,10 +280,19 @@ impl CaptureProcessor {
 
     /// Discards adaptive/filter history, e.g. after a gap or a mute transition,
     /// except the echo canceller's: the echo path did not change, and
-    /// relearning it lets the others hear themselves for a moment. This may
-    /// allocate; run it on the worker before consuming new capture.
+    /// relearning it lets the others hear themselves for a moment. Nor
+    /// DeepFilterNet's model, which takes a moment to build: it is built once
+    /// when chosen and kept while it is. This may allocate; run it on the
+    /// worker before consuming new capture.
     pub fn reset(&mut self) {
-        self.engine = engine(self.sample_rate, self.mode);
+        let deep = self.mode == ProcessingMode::DeepFilter && self.sample_rate == RNNOISE_RATE;
+        if !deep {
+            self.deep = None;
+        } else if self.deep.is_none() && !self.deep_failed {
+            self.deep = DeepFilter::load();
+            self.deep_failed = self.deep.is_none();
+        }
+        self.engine = engine(self.sample_rate, self.mode, self.deep.is_some());
         self.denoiser = denoiser(self.sample_rate, self.mode);
         self.leveler = leveler(self.sample_rate, self.gain);
         if let Some(gate) = self.gate.as_mut() {
@@ -266,7 +301,8 @@ impl CaptureProcessor {
         self.output.fill(0.0);
     }
 
-    /// Sanitizes and processes one frame without allocating.
+    /// Sanitizes and processes one frame, without allocating except in
+    /// DeepFilterNet's inference.
     ///
     /// Non-finite samples become silence and samples outside [-1, 1] are clamped
     /// in every mode. Incorrect frame lengths return an error without changing
@@ -311,6 +347,15 @@ impl CaptureProcessor {
             sanitize(frame);
             self.output.fill(0.0);
         }
+        if let Some(deep) = self.deep.as_mut() {
+            if !deep.process(frame) {
+                frame.fill(0.0);
+                return Err(MediaError(
+                    t("falló el procesamiento local del audio").into(),
+                ));
+            }
+            sanitize(frame);
+        }
         if let Some(leveler) = self.leveler.as_mut() {
             run(leveler, frame, &mut self.output)?;
         }
@@ -320,6 +365,7 @@ impl CaptureProcessor {
         let processed = self.canceller.is_some()
             || self.engine.is_some()
             || self.denoiser.is_some()
+            || self.deep.is_some()
             || self.leveler.is_some();
         Ok(ProcessingMetrics {
             raw_level,
@@ -352,11 +398,18 @@ fn run(
     Ok(())
 }
 
-fn engine(sample_rate: u32, mode: ProcessingMode) -> Option<AudioProcessing> {
-    // shortcut: RNNoise only runs at 48 kHz, other rates get WebRTC's
-    // suppressor; resample around it if such microphones turn out common.
-    let denoise = mode == ProcessingMode::WebRtc
-        || (mode == ProcessingMode::RnNoise && sample_rate != RNNOISE_RATE);
+/// WebRTC's suppressor when chosen, or in place of a neural one that cannot
+/// run: at another rate, or DeepFilterNet without its model (`deep` false).
+fn engine(sample_rate: u32, mode: ProcessingMode, deep: bool) -> Option<AudioProcessing> {
+    // shortcut: RNNoise and DeepFilterNet only run at 48 kHz, other rates get
+    // WebRTC's suppressor; resample around them if such microphones turn out
+    // common.
+    let denoise = match mode {
+        ProcessingMode::Off => false,
+        ProcessingMode::WebRtc => true,
+        ProcessingMode::RnNoise => sample_rate != RNNOISE_RATE,
+        ProcessingMode::DeepFilter => !deep,
+    };
     denoise.then(|| {
         sonora_with(
             Config {
@@ -402,6 +455,50 @@ fn denoiser(sample_rate: u32, mode: ProcessingMode) -> Option<Box<DenoiseState<'
         state.process_frame(&mut primed, &[0.0; DenoiseState::FRAME_SIZE]);
         state
     })
+}
+
+/// DeepFilterNet3's model, built in, and its one-frame buffers.
+struct DeepFilter {
+    model: DfTract,
+    input: Array2<f32>,
+    output: Array2<f32>,
+}
+
+impl DeepFilter {
+    /// The model, unpacked and optimized: a moment's work. `None` when it
+    /// does not load, or its frames are not 10 ms.
+    fn load() -> Option<Box<Self>> {
+        // The thresholds of its real-time plugin: a frame is zeroed as noise
+        // only under -15 dB of local SNR, and left alone over 35 dB.
+        let params = RuntimeParams::default_with_ch(1).with_thresholds(-15.0, 35.0, 35.0);
+        let model = DfTract::new(DfParams::default(), &params).ok()?;
+        let hop = model.hop_size;
+        (hop == DenoiseState::FRAME_SIZE).then(|| {
+            Box::new(Self {
+                model,
+                input: Array2::zeros((1, hop)),
+                output: Array2::zeros((1, hop)),
+            })
+        })
+    }
+
+    /// One frame in place; false when the inference failed.
+    fn process(&mut self, frame: &mut [f32]) -> bool {
+        for (to, sample) in self.input.iter_mut().zip(frame.iter()) {
+            *to = *sample;
+        }
+        if self
+            .model
+            .process(self.input.view(), self.output.view_mut())
+            .is_err()
+        {
+            return false;
+        }
+        for (sample, from) in frame.iter_mut().zip(self.output.iter()) {
+            *sample = *from;
+        }
+        true
+    }
 }
 
 /// AGC2's adaptive digital gain alone: up to 20 dB, starting from none, so
@@ -808,6 +905,32 @@ mod tests {
             assert_eq!(processor.rnnoise(), rnnoise, "{mode:?}");
             assert_eq!(processor.engine.is_some(), webrtc, "{mode:?}");
         }
+    }
+
+    #[test]
+    fn deep_filter_net_runs_alone_at_48_khz_keeps_its_model_and_removes_noise() {
+        let mut processor = CaptureProcessor::new(48_000, ProcessingMode::DeepFilter).unwrap();
+        assert!(processor.deep_filter());
+        assert!(processor.engine.is_none() && !processor.rnnoise());
+        let ratio = noise_ratio(&mut processor);
+        assert!(
+            ratio < 0.5,
+            "DeepFilterNet stationary noise RMS ratio: {ratio}"
+        );
+        // A mute's reset keeps the model; it is built once per choice.
+        let model = processor.deep.as_deref().map(std::ptr::from_ref);
+        processor.reset();
+        assert_eq!(processor.deep.as_deref().map(std::ptr::from_ref), model);
+        // No speech probability: the speech gate stays out of it.
+        processor.set_speech_gate(true);
+        let mut frame = vec![0.25; processor.frame_len()];
+        assert_eq!(processor.process(&mut frame).unwrap().speech, None);
+        // At another rate WebRTC stands in, as for RNNoise.
+        let other = CaptureProcessor::new(44_100, ProcessingMode::DeepFilter).unwrap();
+        assert!(!other.deep_filter() && other.engine.is_some());
+        // Another choice lets the model go.
+        processor.set_mode(ProcessingMode::RnNoise);
+        assert!(!processor.deep_filter() && processor.rnnoise());
     }
 
     #[test]

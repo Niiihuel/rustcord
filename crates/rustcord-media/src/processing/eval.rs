@@ -698,6 +698,21 @@ fn suppression_table() {
             gate: Gate::Off,
             ..AFTER
         },
+        Chain {
+            gate: Gate::Off,
+            ..Chain::new(
+                "DeepFilterNet solo, sin ninguna compuerta",
+                ProcessingMode::DeepFilter,
+            )
+        },
+        Chain {
+            automatic_gain: true,
+            gate: Gate::Sustained,
+            ..Chain::new(
+                "DeepFilterNet con ganancia, compuerta por nivel (la llamada)",
+                ProcessingMode::DeepFilter,
+            )
+        },
     ];
     println!(
         "eco que queda con la cadena por defecto (AEC3 + RNNoise + compuerta): {:.1} dB",

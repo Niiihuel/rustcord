@@ -360,6 +360,7 @@ fn suppression_key(mode: rustcord_media::ProcessingMode) -> &'static str {
         rustcord_media::ProcessingMode::Off => "off",
         rustcord_media::ProcessingMode::WebRtc => "webrtc",
         rustcord_media::ProcessingMode::RnNoise => "rnnoise",
+        rustcord_media::ProcessingMode::DeepFilter => "deepfilter",
     }
 }
 
@@ -611,6 +612,7 @@ impl Prefs {
                 // Before profiles it was a switch for WebRTC's suppressor.
                 Some("webrtc" | "true") => rustcord_media::ProcessingMode::WebRtc,
                 Some("rnnoise") => rustcord_media::ProcessingMode::RnNoise,
+                Some("deepfilter") => rustcord_media::ProcessingMode::DeepFilter,
                 _ => usual.processing.suppression,
             },
             echo_cancellation: flag("echo_cancellation", usual.processing.echo_cancellation),
@@ -1378,10 +1380,14 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
         }),
         "echo-cancellation" => prefs.edit_processing(|it| it.echo_cancellation ^= true),
         "automatic-gain" => prefs.edit_processing(|it| it.automatic_gain ^= true),
-        "suppression=off" | "suppression=webrtc" | "suppression=rnnoise" => {
+        "suppression=off"
+        | "suppression=webrtc"
+        | "suppression=rnnoise"
+        | "suppression=deepfilter" => {
             let mode = match rest {
                 "suppression=webrtc" => rustcord_media::ProcessingMode::WebRtc,
                 "suppression=rnnoise" => rustcord_media::ProcessingMode::RnNoise,
+                "suppression=deepfilter" => rustcord_media::ProcessingMode::DeepFilter,
                 _ => rustcord_media::ProcessingMode::Off,
             };
             prefs.edit_processing(|it| it.suppression = mode)
