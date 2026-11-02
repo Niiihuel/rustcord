@@ -194,7 +194,9 @@ pub fn fallbacks(character: char, limit: usize) -> Vec<(String, u32)> {
 fn candidates(printed: &str, limit: usize) -> Vec<(String, u32)> {
     let lines: Vec<&str> = printed.lines().collect();
     lines
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter_map(|pair| {
             let file = pair[0].trim();
             let index: u32 = pair[1].trim().parse().ok()?;

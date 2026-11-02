@@ -39,9 +39,9 @@ jobs:
       # The checkout leaves the pushed tag lightweight; its annotation holds
       # the notes and the word «obligatoria».
       - run: git fetch --force --tags origin
-      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # the action; its toolchain below
         with:
-          toolchain: 1.95.0
+          toolchain: 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: el tag es anotado y nombra la versión del workspace
         run: cargo run --locked --quiet -p rustcord-release -- tag "$TAG"
@@ -90,9 +90,9 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libgtk-4-dev libwebkitgtk-6.0-dev
-      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # the action; its toolchain below
         with:
-          toolchain: 1.95.0
+          toolchain: 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: compilar
         env:
@@ -134,9 +134,9 @@ jobs:
       # Windows would turn their line ends into CRLF.
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # the action; its toolchain below
         with:
-          toolchain: 1.95.0
+          toolchain: 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: compilar
         env:
@@ -201,9 +201,9 @@ jobs:
           fetch-depth: 0
       # Every annotated tag: minimum_version comes from their messages.
       - run: git fetch --force --tags origin
-      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # the action; its toolchain below
         with:
-          toolchain: 1.95.0
+          toolchain: 1.99.1
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       # Built before the secret is in the environment, so no build script
       # ever runs with it.

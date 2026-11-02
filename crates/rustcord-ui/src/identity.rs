@@ -784,11 +784,10 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
     let link = if let Some(index) = id.strip_prefix(ids::BADGE) {
         let index: usize = index.parse().ok()?;
         loaded?.badges.as_ref()?.get(index)?.link.clone()
-    } else if let Some(index) = id.strip_prefix(ids::CONNECTION) {
+    } else {
+        let index = id.strip_prefix(ids::CONNECTION)?;
         let index: usize = index.parse().ok()?;
         loaded?.connections.as_ref()?.get(index)?.link.clone()
-    } else {
-        return None;
     };
     Some(link.map(Intent::OpenUrl).into_iter().collect())
 }

@@ -263,8 +263,8 @@ pub(crate) fn reports(compound: &[u8], ssrc: u32) -> Vec<Report> {
             }
             // Generic NACK: an entry per run of lost packets.
             205 if count == 1 && word(packet, 8) == Some(ssrc) => {
-                let entries = packet.get(12..).unwrap_or_default().chunks_exact(4);
-                found.extend(entries.map(|entry| Report::Nack {
+                let entries = packet.get(12..).unwrap_or_default().as_chunks::<4>().0;
+                found.extend(entries.iter().map(|entry| Report::Nack {
                     first: u16::from_be_bytes([entry[0], entry[1]]),
                     mask: u16::from_be_bytes([entry[2], entry[3]]),
                 }));
@@ -276,7 +276,9 @@ pub(crate) fn reports(compound: &[u8], ssrc: u32) -> Vec<Report> {
                 let asked = packet
                     .get(12..)
                     .unwrap_or_default()
-                    .chunks_exact(8)
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
                     .any(|entry| word(entry, 0) == Some(ssrc));
                 if asked {
                     found.push(Report::KeyFrame);

@@ -60,7 +60,7 @@ pub(crate) fn pixmap(size: usize, dot: bool) -> Pixmap {
     );
     let mut pixels = Vec::with_capacity(size * size * 4);
     let scale = 24.0 / size as f32;
-    for (index, pixel) in rgba.chunks_exact(4).enumerate() {
+    for (index, pixel) in rgba.as_chunks::<4>().0.iter().enumerate() {
         let (x, y) = (index % size, index / size);
         let mut color = [pixel[0], pixel[1], pixel[2]];
         let mut alpha = f32::from(pixel[3]) / 255.0;
@@ -198,7 +198,9 @@ mod tests {
             assert!(
                 plain
                     .2
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .any(|pixel| pixel.iter().all(|value| *value > 235)),
                 "{size}: the rustcord"
             );

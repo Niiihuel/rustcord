@@ -640,8 +640,10 @@ fn echo_left(far: &[f32]) -> f64 {
     let (mut before, mut after) = (0.0_f64, 0.0_f64);
     let mut frame = vec![0.0; FRAME];
     for (index, (played, mic)) in far
-        .chunks_exact(FRAME)
-        .zip(heard.chunks_exact(FRAME))
+        .as_chunks::<FRAME>()
+        .0
+        .iter()
+        .zip(heard.as_chunks::<FRAME>().0)
         .enumerate()
     {
         processor.render(played, 0).unwrap();
@@ -695,6 +697,21 @@ fn suppression_table() {
             name: "Ahora: lo que se oye en «Escucharme» (sin la compuerta de la llamada)",
             gate: Gate::Off,
             ..AFTER
+        },
+        Chain {
+            gate: Gate::Off,
+            ..Chain::new(
+                "DeepFilterNet solo, sin ninguna compuerta",
+                ProcessingMode::DeepFilter,
+            )
+        },
+        Chain {
+            automatic_gain: true,
+            gate: Gate::Sustained,
+            ..Chain::new(
+                "DeepFilterNet con ganancia, compuerta por nivel (la llamada)",
+                ProcessingMode::DeepFilter,
+            )
         },
     ];
     println!(

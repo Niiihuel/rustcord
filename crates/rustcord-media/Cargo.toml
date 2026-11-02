@@ -20,6 +20,13 @@ sonora = "0.2.0"
 # stronger choice where Discord offers Krisp, which is proprietary. Default
 # features would pull its command-line tool (clap, hound).
 nnnoiseless = { version = "0.5.2", default-features = false }
+# DeepFilterNet3 (MIT/Apache-2.0), a larger neural suppressor than RNNoise,
+# closest to Krisp among the open ones, offered as a third choice. Its real-time
+# inference (tract) and its model, built in, are only in the project's
+# repository: crates.io has the 2022 release without them. Pinned to v0.5.6.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", rev = "978576aa8400552a4ce9730838c635aa30db5e61", default-features = false, features = ["tract", "default-model"] }
+# The frame type DeepFilterNet reads and writes: the same version it uses.
+ndarray = "0.15.6"
 # A fixed-capacity SPSC queue keeps the real-time callback free of locks and
 # allocation while a separate worker processes microphone samples.
 rtrb = "0.4.0"

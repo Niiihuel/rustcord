@@ -176,11 +176,10 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
                 Vec::new()
             } else if let Some(account) = listed(store, id, "acc:sign-out=") {
                 sign_out(ui, store, account)
-            } else if let Some(account) = listed(store, id, profile::ACCOUNT) {
+            } else {
+                let account = listed(store, id, profile::ACCOUNT)?;
                 close_popout(ui);
                 switch(ui, store, account)
-            } else {
-                return None;
             }
         }
     })

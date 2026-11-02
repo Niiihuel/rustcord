@@ -692,6 +692,7 @@ fn noise_suppression_offers_rnnoise_and_webrtc_honestly_and_survives_a_restart()
     let buttons = host.us_buttons();
     for id in [
         "us:suppression=rnnoise",
+        "us:suppression=deepfilter",
         "us:suppression=webrtc",
         "us:suppression=off",
     ] {
@@ -710,6 +711,14 @@ fn noise_suppression_offers_rnnoise_and_webrtc_honestly_and_survives_a_restart()
         value: Some("rnnoise".into()),
     }));
     assert_eq!(suppression(&host.us_next_run()), ProcessingMode::RnNoise);
+    host.us_press("us:suppression=deepfilter");
+    assert_eq!(suppression(&host.us_next_run()), ProcessingMode::DeepFilter);
+    let mut kept = Ui::default();
+    kept.restore(|key| (key == "noise_suppression").then(|| "deepfilter".into()));
+    assert_eq!(
+        kept.prefs.processing.suppression,
+        ProcessingMode::DeepFilter
+    );
     host.us_press("us:suppression=webrtc");
     assert_eq!(suppression(&host.us_next_run()), ProcessingMode::WebRtc);
     host.us_press("us:suppression=off");

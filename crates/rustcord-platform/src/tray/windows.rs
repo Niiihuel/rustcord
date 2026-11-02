@@ -90,7 +90,9 @@ fn tooltip(state: &TrayState) -> [u16; 128] {
 /// blue, green, red and alpha, from the top row down.
 fn bgra(size: usize, dot: bool) -> Vec<u8> {
     let (_, _, argb) = mark::pixmap(size, dot);
-    argb.chunks_exact(4)
+    argb.as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|pixel| [pixel[3], pixel[2], pixel[1], pixel[0]])
         .collect()
 }

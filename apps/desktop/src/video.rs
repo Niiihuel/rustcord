@@ -363,7 +363,9 @@ type Thumbnail = (
 fn thumbnail_jpeg(frame: &rustcord_media::video::Frame) -> Option<Vec<u8>> {
     let lit = frame
         .rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .any(|pixel| pixel[..3].iter().any(|channel| *channel != 0));
     let picture = image::RgbaImage::from_raw(frame.width, frame.height, frame.rgba.clone())?;
     if !lit || frame.width == 0 || frame.height == 0 {

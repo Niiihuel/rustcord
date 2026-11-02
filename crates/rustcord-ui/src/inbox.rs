@@ -210,10 +210,9 @@ pub(crate) fn update(ui: &mut Ui, store: &mut Store, action: &UiAction) -> Optio
     }
     let (go, channel) = if let Some(id) = id.strip_prefix("inbox:go:") {
         (true, id)
-    } else if let Some(id) = id.strip_prefix("inbox:read:") {
-        (false, id)
     } else {
-        return None;
+        let id = id.strip_prefix("inbox:read:")?;
+        (false, id)
     };
     let Some(channel) = channel.parse::<u64>().ok().map(ChannelId) else {
         return Some(Vec::new());

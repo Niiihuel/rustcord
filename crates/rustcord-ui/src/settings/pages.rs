@@ -243,7 +243,7 @@ const SECTIONS: &[Section] = &[
             ),
             (
                 "noise-suppression",
-                es("supresión reducción de ruido fondo krisp rnnoise webrtc estándar teclado ventilador"),
+                es("supresión reducción de ruido fondo krisp rnnoise deepfilternet webrtc estándar teclado ventilador"),
             ),
             (
                 "echo-cancellation",
@@ -1147,9 +1147,10 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "noise-suppression" => {
             let chosen = prefs.effective_processing().suppression;
             let custom = prefs.input_profile == super::InputProfile::Custom;
-            let engines = t("RNNoise quita también el teclado y los ruidos que cambian; WebRTC es más liviano, para ruido constante como un ventilador.");
+            let engines = t("RNNoise quita también el teclado y los ruidos que cambian; DeepFilterNet deja la voz más limpia con ruido constante, pero deja pasar más el teclado y usa más procesador, con 20 ms más de retraso; WebRTC es más liviano, para ruido constante como un ventilador.");
             let options = [
                 ("us:suppression=rnnoise", "RNNoise", matches!(&chosen, rustcord_media::ProcessingMode::RnNoise)),
+                ("us:suppression=deepfilter", "DeepFilterNet", matches!(&chosen, rustcord_media::ProcessingMode::DeepFilter)),
                 ("us:suppression=webrtc", "WebRTC", matches!(&chosen, rustcord_media::ProcessingMode::WebRtc)),
                 ("us:suppression=off", t("Ninguna"), matches!(&chosen, rustcord_media::ProcessingMode::Off)),
             ];
