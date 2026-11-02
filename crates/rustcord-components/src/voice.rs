@@ -409,6 +409,9 @@ pub struct Preview {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StreamTile {
     pub owner: u64,
+    /// The streamer's name alone: the pill at the bottom left says it, where
+    /// the title of the picture says «Pantalla de» before it.
+    pub name: String,
     /// The key of its sound for the account's mixer, apart from the voice's.
     pub sound: u64,
     /// Its sound is silenced for the account.
@@ -477,11 +480,13 @@ fn over_button(
         .render()
 }
 
-/// A preview's title in a pill at its bottom left; a stream's says it is a
-/// screen, as the official client's.
+/// A preview's title in a pill at its bottom left; a stream's is its
+/// streamer's name behind a screen, as the official client's.
 fn name_pill(view: &Preview) -> Element {
     let mut name = vec![gap(10.0, 0.0)];
-    if view.stream.is_some() {
+    let mut said = view.title.as_str();
+    if let Some(stream) = &view.stream {
+        said = stream.name.as_str();
         name.push(
             icon(Icon::Screen, OVER_INK)
                 .size(Some(16.0), Some(16.0))
@@ -490,7 +495,7 @@ fn name_pill(view: &Preview) -> Element {
         name.push(gap(6.0, 0.0));
     }
     name.push(
-        strong_line(&view.title, 14.0, OVER_INK)
+        strong_line(said, 14.0, OVER_INK)
             .centered_y()
             .shrink_to_fit(),
     );
@@ -5153,6 +5158,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: user,
+                name: format!("Persona {user}"),
                 sound: user + 1_000,
                 silenced: false,
                 windowed: false,
@@ -5246,7 +5252,12 @@ mod tests {
         // the strip says it is live, as the official client's.
         let said = texts(&focused);
         let count = |text: &str| said.iter().filter(|shown| *shown == text).count();
-        assert_eq!(count("Pantalla de Persona 2"), 2, "header and pill");
+        assert_eq!(count("Pantalla de Persona 2"), 1, "the header");
+        assert_eq!(
+            count("Persona 2"),
+            2,
+            "the pill and the streamer's own tile"
+        );
         assert_eq!(count("720p"), 1);
         assert!(count("EN VIVO") >= 2, "header and the strip's stream");
         // The streamer focused keeps their tile; the strip's offer no watching.
@@ -6239,6 +6250,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: user,
+                name: format!("Persona {user}"),
                 sound: user + 1_000,
                 silenced: false,
                 windowed: false,
@@ -6420,6 +6432,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6450,11 +6463,11 @@ mod tests {
             assert_eq!(node.role, limn::Role::Button);
             assert!(!node.name.is_empty(), "{id} is named");
         }
-        // No words to press: what is written is its name and the badge that
-        // says it is simulated.
+        // No words to press: what is written is its streamer's name and the
+        // badge that says it is simulated.
         let mut said = texts(&laid);
         said.sort();
-        assert_eq!(said, ["En vivo · simulada", "Pantalla de Persona 2"]);
+        assert_eq!(said, ["En vivo · simulada", "Persona 2"]);
         // Full screen: the way back in place of full screen, an icon too.
         let (_, laid) = frame(preview(&stream(false, true), size, &look), size);
         let shown = controls(&laid);
@@ -6506,6 +6519,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6571,6 +6585,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6636,6 +6651,41 @@ mod tests {
     }
 
     /// Someone called `name`, for the VOICE row.
+    #[test]
+    fn a_stream_focused_names_its_streamer_in_the_pill_and_not_the_screen() {
+        let watched = Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+            }),
+            focused: true,
+            card: false,
+        };
+        let view = Stage {
+            people: vec![person(1, false, false, false)],
+            watching: vec![watched],
+            ..picker_stage(VideoControls::default())
+        };
+        let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
+        // Only the pill says the name alone: the strip shows the other person.
+        assert!(texts(&laid).contains(&"Persona 2".to_owned()));
+    }
+
     fn named(name: &str, user: u64) -> Participant {
         Participant {
             name: name.into(),

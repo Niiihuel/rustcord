@@ -696,13 +696,23 @@ fn full_screen_and_a_window_of_its_own_rest_as_the_stage_does() {
     // Its own window: its title goes once the pointer rests over it.
     host.click(&ids::window(owner.0));
     let size = limn::Size::new(960.0, 540.0);
+    // Its pill says the streamer's name, as on the stage.
+    let server = host
+        .store
+        .watching()
+        .iter()
+        .find(|watching| watching.owner == owner)
+        .and_then(|watching| host.store.channel(watching.channel))
+        .and_then(|found| found.server);
+    let name = host.store.display_name(owner, server);
     let shows_title = |host: &Host| {
         let view = crate::video_window(&host.ui, &host.store, owner, size, host.now).unwrap();
         let mut tree = limn::UiTree::new(view);
         tree.set_reduced_motion(true);
-        tree.layout(size).commands.iter().any(|command| {
-            matches!(command, limn::DrawCommand::Text { text, .. } if text.starts_with("Pantalla de "))
-        })
+        tree.layout(size)
+            .commands
+            .iter()
+            .any(|command| matches!(command, limn::DrawCommand::Text { text, .. } if *text == name))
     };
     crate::video_window_stirred(&mut host.ui, owner, host.now);
     assert!(shows_title(&host));

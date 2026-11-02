@@ -810,6 +810,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
     let sound = owner.0 | rustcord_media::mixer::STREAM_SOUND;
     let tile = rustcord_components::voice::StreamTile {
         owner: owner.0,
+        name: store.display_name(owner, server),
         sound,
         silenced: ui.prefs.voice_volume(sound).1,
         windowed: ui.video.windows.contains(&owner),
