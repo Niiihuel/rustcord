@@ -599,6 +599,10 @@ pub(crate) fn shown(ui: &Ui, store: &Store) -> Option<(UserId, Option<ServerId>)
     if let Some(full) = ui.profiles.full {
         return Some(full);
     }
+    // The profile editor's preview is the account's own card, where it is edited.
+    if let Some(editor) = ui.profiles.editor.as_ref() {
+        return store.me().map(|me| (me, editor.server));
+    }
     if let Some(user) = ui.profile {
         return Some((user, ui.server));
     }

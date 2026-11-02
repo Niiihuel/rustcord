@@ -16,7 +16,7 @@ use limn::{
     Button, ButtonVariant, Color, Component, ComponentPalette, DropdownMenu, DropdownMenuEntry,
     DropdownMenuItem, Element, FontFamily, Icon, IconButton, Modal, Point, Popover,
     PopoverPlacement, ScrollArea, Size, Skeleton, Slider, Tab, Tabs, TabsVariant, TextArea,
-    TextField, Tooltip, TooltipPlacement,
+    TextField, Tooltip,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{Rgb, Status, Timestamp, UserId};
@@ -110,8 +110,17 @@ pub mod ids {
     /// The effect over a card, which gives way under the pointer.
     pub const CARD_EFFECT: &str = "pp:card:effect";
 
-    /// The profile editor.
-    pub const EDITOR_CLOSE: &str = "profile:close";
+    /// The profile settings: the example button of the preview.
+    pub const EXAMPLE: &str = "profile:example";
+    /// The tabs of the profile: the account's, and the servers'.
+    pub const TAB_MAIN: &str = "profile:tab:main";
+    pub const TAB_SERVERS: &str = "profile:tab:servers";
+    /// The decorations Rustcord cannot change yet: their buttons do nothing.
+    pub const DECORATION: &str = "profile:decoration";
+    pub const NAMEPLATE: &str = "profile:nameplate";
+    pub const EFFECT: &str = "profile:effect";
+    /// «Cambiar marco»: `profile:frame` is the framing of a picked picture.
+    pub const PROFILE_FRAME: &str = "profile:frame-pick";
     pub const NAME: &str = "profile:name";
     pub const PRONOUNS: &str = "profile:pronouns";
     pub const ABOUT: &str = "profile:about";
@@ -121,7 +130,6 @@ pub mod ids {
     /// The selector of profiles at the top of the editor's column.
     pub const SERVERS: &str = "profile:servers";
     pub const SERVERS_DISMISS: &str = "profile:servers:dismiss";
-    pub const MAIN_PROFILE: &str = "profile:main";
     /// Prefixes the bar's ids: `profile:reset` and `profile:save`.
     pub const BAR: &str = "profile";
     pub const RESET: &str = "profile:reset";
@@ -200,12 +208,11 @@ pub const DIALOG_WIDTH: f32 = 510.5;
 const FULL_WIDTH: f32 = 600.0;
 const FULL_HEIGHT: f32 = 640.0;
 const EXPIRY_MENU_WIDTH: f32 = 274.0;
-/// The editor's maximum form width; smaller windows stack the preview below it.
-pub const EDITOR_FORM: f32 = 427.0;
-const PREVIEW_GAP: f32 = 28.0;
-/// The narrowest editor whose save bar fits its message and buttons on one row.
-const WIDE_BAR: f32 = 560.0;
-const CLOSE: f32 = 34.0;
+/// The settings' profile: the preview's gap from the form, and the narrowest
+/// content column that puts the form and the preview side by side (a 360 px
+/// form beside the 300 px preview); narrower ones stack them.
+const PREVIEW_GAP: f32 = 36.0;
+const SIDE_BY_SIDE: f32 = 360.0 + PREVIEW_GAP + WIDTH;
 
 /// The longest display name, pronouns, «Sobre mí» and custom status.
 pub const NAME_MAX: usize = 32;
@@ -458,6 +465,8 @@ pub struct Profile {
     pub message: Option<MessageField>,
     /// The account's own card offers «Editar perfil».
     pub edit_profile: bool,
+    /// The preview of the profile's editor offers an example button instead.
+    pub example_button: bool,
 }
 
 /// The friendship with someone, as the round button on a card's banner says
@@ -1359,6 +1368,11 @@ fn card_footer(profile: &Profile, look: &Look) -> Option<Element> {
             .accessibility_label(hint)
             .render()
             .flex(1.0)
+        }
+        None if profile.example_button => {
+            Button::new(ids::EXAMPLE, t("Botón de ejemplo"), look.accent_palette())
+                .render()
+                .flex(1.0)
         }
         None if profile.edit_profile => {
             Button::new(ids::EDIT, t("Editar perfil"), look.accent_palette())
@@ -2428,6 +2442,8 @@ pub struct Editor {
     /// The servers, for the name the account goes by in each.
     pub servers: Vec<EditorServer>,
     pub servers_open: bool,
+    /// Whether the per-server tab is the open one.
+    pub servers_tab: bool,
     /// The bar of unsaved changes, while something differs.
     pub bar: Option<UnsavedBar>,
     /// The avatar and the banner, and what may be done with them.
@@ -2533,32 +2549,6 @@ impl EditorErrors {
     }
 }
 
-/// The square button that closes the editor.
-fn close_square(look: &Look) -> Element {
-    let button = Element::clickable(
-        ids::EDITOR_CLOSE,
-        crate::centered(icon(Icon::Close, look.text).size(Some(16.0), Some(16.0))),
-    )
-    .size(Some(CLOSE), Some(CLOSE))
-    .radius(8.0)
-    .background(look.raised)
-    .hover_background(look.selected)
-    .accessible(limn::Access::new(limn::Role::Button).name(t("Cerrar (Esc)")));
-    Tooltip::new(button, ids::EDITOR_CLOSE, t("Cerrar"), look.menu_palette())
-        .shortcut("Esc")
-        .placement(TooltipPlacement::Below)
-        .render()
-}
-
-/// A field's title over it, and its error under it.
-fn field(title: &str, control: Element, error: Option<&String>, look: &Look) -> Element {
-    let mut parts = vec![line(title, 16.0, look.text), control];
-    if let Some(error) = error {
-        parts.push(text(error.clone(), 13.0, look.danger));
-    }
-    Element::column(parts).gap(8.0)
-}
-
 /// A server of the profile choice, marked as the rail marks it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditorServer {
@@ -2595,11 +2585,434 @@ fn server_mark(server: &EditorServer) -> Element {
     }
 }
 
-/// A profile choice, shown only when there are editable server profiles.
-fn editor_selector(view: &Editor, look: &Look) -> Element {
+/// A form section as Discord's settings lay it out: its title (with the
+/// «Nitro» pill beside it when asked, and greyed when `faint`), its
+/// description lines, then its controls 16 px under them.
+fn form_section(
+    title: &str,
+    pill: bool,
+    faint: bool,
+    description: Vec<String>,
+    body: Vec<Element>,
+    width: f32,
+    look: &Look,
+) -> Element {
+    let mut head =
+        vec![strong_line(title, 16.0, if faint { look.faint } else { look.text }).centered_y()];
+    if pill {
+        head.push(nitro_pill(look));
+    }
+    let mut top = vec![Element::row(head).gap(8.0)];
+    top.extend(
+        description
+            .into_iter()
+            .map(|sentence| text(sentence, 14.0, look.muted).size(Some(width), None)),
+    );
+    Element::column(vec![
+        Element::column(top).gap(8.0),
+        Element::column(body).gap(8.0),
+    ])
+    .gap(16.0)
+}
+
+/// The «Nitro» mark of the settings that need it.
+fn nitro_pill(look: &Look) -> Element {
+    Element::row(vec![
+        gap(6.0, 0.0),
+        line(t("Nitro"), 11.0, look.muted).centered_y(),
+        gap(6.0, 0.0),
+    ])
+    .size(None, Some(18.0))
+    .radius(9.0)
+    .background(look.raised)
+    .centered_y()
+}
+
+/// A control with what is said under it: an error, or a reason it is off.
+fn with_note(control: Element, note: Option<(String, Color)>, width: f32) -> Element {
+    match note {
+        Some((note, color)) => Element::column(vec![
+            control,
+            text(note, 13.0, color).size(Some(width), None),
+        ])
+        .gap(8.0),
+        None => control,
+    }
+}
+
+/// The count of «Sobre mí», in the field's corner, red past its maximum.
+fn about_field(
+    id: &str,
+    value: &str,
+    hint: &str,
+    label: &str,
+    height: f32,
+    look: &Look,
+) -> Element {
+    let count = value.trim().chars().count();
+    Element::column(vec![
+        TextArea::new(id, value.to_owned(), hint.to_owned(), look.palette())
+            .accessibility_label(label.to_owned())
+            .height(height)
+            .render(),
+        Element::row(vec![
+            Element::spacer().flex(1.0),
+            line(
+                format!("{count}/{ABOUT_MAX}"),
+                12.0,
+                if count > ABOUT_MAX {
+                    look.danger
+                } else {
+                    look.muted
+                },
+            ),
+        ]),
+    ])
+    .gap(4.0)
+}
+
+/// «Cambiar» and «Quitar» of one picture: the first chooses a file, loading
+/// while the selector is open; the second shows only with one to take away.
+fn picture_actions(
+    pick: &'static str,
+    remove: &'static str,
+    has: bool,
+    picking: bool,
+    pictures: &EditorPictures,
+    look: &Look,
+) -> Element {
+    let avatar = pick == ids::AVATAR_PICK;
+    let (change, take) = if avatar {
+        (t("Cambiar avatar"), t("Quitar avatar"))
+    } else {
+        (t("Cambiar banner"), t("Quitar banner"))
+    };
+    let can = pictures.denied.is_none();
+    let chooses = avatar || pictures.banner_denied.is_none();
+    let mut actions = vec![Button::new(pick, change, look.accent_palette())
+        .enabled(can && chooses && pictures.picking.is_none())
+        .loading(picking)
+        .render()];
+    if has {
+        actions.push(
+            Button::new(remove, take, look.menu_palette())
+                .variant(ButtonVariant::Link)
+                .enabled(can && pictures.picking.is_none())
+                .render(),
+        );
+    }
+    Element::row(actions).gap(12.0)
+}
+
+/// The avatar: its buttons, the formats, what limits it, and the framing
+/// while an avatar is being framed.
+fn avatar_section(view: &Editor, width: f32, look: &Look) -> Element {
+    let pictures = &view.pictures;
+    let hint = if view.scope.is_some() {
+        t("Se muestran en este servidor en lugar de los de tu cuenta. PNG, JPEG, GIF o WebP de hasta 8 MB; después de elegirla, la encuadras.")
+    } else {
+        t("PNG, JPEG, GIF o WebP de hasta 8 MB: el avatar cuadrado, el banner en 5:2. Después de elegirla, la encuadras.")
+    };
+    let mut description = vec![hint.to_owned()];
+    description.extend(pictures.denied.clone());
+    description.extend(pictures.note.clone());
+    let mut body = vec![picture_actions(
+        ids::AVATAR_PICK,
+        ids::AVATAR_REMOVE,
+        pictures.has_avatar,
+        pictures.picking == Some(true),
+        pictures,
+        look,
+    )];
+    if let Some(framing) = pictures.framing.as_ref().filter(|framing| framing.round) {
+        body.push(editor_framing(framing, width, look));
+    }
+    form_section(t("Avatar"), false, false, description, body, width, look).anchor(ids::PICTURES)
+}
+
+/// The banner: its buttons, the reason it may not be chosen, and the
+/// framing while a banner is being framed.
+fn banner_section(view: &Editor, width: f32, look: &Look) -> Element {
+    let pictures = &view.pictures;
+    let mut body = vec![picture_actions(
+        ids::BANNER_PICK,
+        ids::BANNER_REMOVE,
+        pictures.has_banner,
+        pictures.picking == Some(false),
+        pictures,
+        look,
+    )];
+    if let Some(framing) = pictures.framing.as_ref().filter(|framing| !framing.round) {
+        body.push(editor_framing(framing, width, look));
+    }
+    let reason = pictures.banner_denied.clone();
+    form_section(
+        t("Banner del perfil"),
+        view.scope.is_none(),
+        reason.is_some(),
+        reason.into_iter().collect(),
+        body,
+        width,
+        look,
+    )
+}
+
+/// A profile setting Rustcord cannot change yet: greyed, with a disabled button.
+fn unavailable_section(
+    title: &str,
+    button: &'static str,
+    label: &str,
+    width: f32,
+    look: &Look,
+) -> Element {
+    form_section(
+        title,
+        true,
+        true,
+        vec![t("Rustcord todavía no puede cambiar esto.").to_owned()],
+        // In a row, so the button keeps its own width.
+        vec![Element::row(vec![Button::new(
+            button,
+            label,
+            look.menu_palette(),
+        )
+        .variant(ButtonVariant::Secondary)
+        .enabled(false)
+        .render()])],
+        width,
+        look,
+    )
+}
+
+/// The fields of the account's own profile, in Discord's order.
+fn main_sections(view: &Editor, width: f32, look: &Look) -> Vec<Element> {
+    let palette = look.palette();
+    let errors = EditorErrors::of(&view.name, &view.pronouns, &view.about);
+    let name = TextField::new(
+        ids::NAME,
+        view.name.clone(),
+        view.preview.handle.clone(),
+        palette,
+    )
+    .height(40.0)
+    .accessibility_label(t("Nombre para mostrar"))
+    .render();
+    let pronouns = TextField::new(
+        ids::PRONOUNS,
+        view.pronouns.clone(),
+        t("Agrega tus pronombres"),
+        palette,
+    )
+    .height(40.0)
+    .accessibility_label(t("Pronombres"))
+    .render();
+    let about = about_field(
+        ids::ABOUT,
+        &view.about,
+        t("Cuenta algo sobre ti."),
+        t("Biografía"),
+        136.0,
+        look,
+    );
+    vec![
+        form_section(
+            t("Nombre para mostrar"),
+            false,
+            false,
+            Vec::new(),
+            vec![with_note(
+                name,
+                errors.name.clone().map(|note| (note, look.danger)),
+                width,
+            )],
+            width,
+            look,
+        ),
+        form_section(
+            t("Pronombres"),
+            false,
+            false,
+            Vec::new(),
+            vec![with_note(
+                pronouns,
+                errors.pronouns.clone().map(|note| (note, look.danger)),
+                width,
+            )],
+            width,
+            look,
+        ),
+        avatar_section(view, width, look),
+        unavailable_section(
+            t("Decoración de avatar"),
+            ids::DECORATION,
+            t("Cambiar decoración"),
+            width,
+            look,
+        ),
+        unavailable_section(
+            t("Placa de nombre"),
+            ids::NAMEPLATE,
+            t("Cambiar placa de nombre"),
+            width,
+            look,
+        ),
+        unavailable_section(
+            t("Efecto de perfil"),
+            ids::EFFECT,
+            t("Cambiar efecto"),
+            width,
+            look,
+        ),
+        unavailable_section(
+            t("Marco de perfil"),
+            ids::PROFILE_FRAME,
+            t("Cambiar marco"),
+            width,
+            look,
+        ),
+        banner_section(view, width, look),
+        form_section(
+            t("Color del banner"),
+            false,
+            false,
+            Vec::new(),
+            vec![parts::swatches(
+                &Swatches {
+                    prefix: ids::COLOR.into(),
+                    chosen: Some(view.accent),
+                    default: None,
+                    custom: view.hex.clone(),
+                    enabled: true,
+                    narrow: width < parts::swatches_width(false),
+                    picked: view.picked,
+                },
+                look,
+            )],
+            width,
+            look,
+        ),
+        form_section(
+            t("Biografía"),
+            false,
+            false,
+            vec![t("Puedes usar Markdown y enlaces si quieres.").to_owned()],
+            vec![with_note(
+                about,
+                errors.about.clone().map(|note| (note, look.danger)),
+                width,
+            )],
+            width,
+            look,
+        ),
+    ]
+    .into_iter()
+    .chain(view.credentials.as_ref().map(|reason| {
+        // What the account signs in with, and why it cannot change here.
+        form_section(
+            t("Nombre de usuario"),
+            false,
+            false,
+            vec![reason.clone()],
+            vec![text(view.preview.handle.clone(), 15.0, look.text)],
+            width,
+            look,
+        )
+    }))
+    .collect()
+}
+
+/// The name and «Sobre mí» the account has in one server, and its pictures.
+fn scoped_sections(view: &Editor, scope: &EditorScope, width: f32, look: &Look) -> Vec<Element> {
+    let palette = look.palette();
+    let errors = EditorErrors::of(&scope.nick, "", &view.about);
+    let nick = TextField::new(
+        ids::NICK,
+        scope.nick.clone(),
+        view.preview.handle.clone(),
+        palette,
+    )
+    .height(40.0)
+    .enabled(scope.nick_denied.is_none())
+    .accessibility_label(t("Apodo"))
+    .render();
+    let about = about_field(
+        ids::ABOUT,
+        &view.about,
+        t("Cuenta algo para este servidor."),
+        t("Sobre mí en este servidor"),
+        136.0,
+        look,
+    );
+    let about_note = scope
+        .about_denied
+        .clone()
+        .map(|reason| (reason, look.muted))
+        .or(errors.about.clone().map(|note| (note, look.danger)));
+    vec![
+        form_section(
+            t("Apodo"),
+            false,
+            false,
+            Vec::new(),
+            vec![with_note(
+                nick,
+                errors
+                    .name
+                    .clone()
+                    .map(|note| (note, look.danger))
+                    .or(scope.nick_denied.clone().map(|reason| (reason, look.muted))),
+                width,
+            )],
+            width,
+            look,
+        ),
+        avatar_section(view, width, look),
+        banner_section(view, width, look),
+        form_section(
+            t("Biografía"),
+            false,
+            false,
+            vec![t("Puedes usar Markdown y enlaces si quieres.").to_owned()],
+            vec![with_note(about, about_note, width)],
+            width,
+            look,
+        ),
+    ]
+}
+
+/// The read-only account: what is shown of the profile, without controls.
+fn read_only_values(view: &Editor, look: &Look) -> Vec<Element> {
+    vec![
+        profile_value(t("Nombre para mostrar"), Some(&view.preview.name), look),
+        profile_value(t("Nombre de usuario"), Some(&view.preview.handle), look),
+        profile_value(t("Pronombres"), view.preview.pronouns.as_deref(), look),
+        profile_value(t("Sobre mí"), view.preview.about.as_deref(), look),
+        text(
+            t("La edición de este perfil todavía no está disponible."),
+            12.0,
+            look.muted,
+        ),
+    ]
+}
+
+/// The sections, one line apart: a hairline between each two.
+fn ruled(sections: Vec<Element>, look: &Look) -> Vec<Element> {
+    let mut ruled = Vec::new();
+    for section in sections {
+        if !ruled.is_empty() {
+            ruled.push(divider(look));
+        }
+        ruled.push(section);
+    }
+    ruled
+}
+
+/// The per-server tab's picker: the servers, and the one whose profile is
+/// edited.
+fn server_picker(view: &Editor, look: &Look) -> Element {
     let current = view.scope.as_ref().map_or_else(
-        || t("Perfil principal").to_owned(),
-        |scope| tr!("Perfil en {server}", server = scope.server),
+        || t("Elige un servidor").to_owned(),
+        |scope| scope.server.clone(),
     );
     let selector = Element::clickable(
         ids::SERVERS,
@@ -2616,15 +3029,10 @@ fn editor_selector(view: &Editor, look: &Look) -> Element {
     .radius(6.0)
     .background(look.raised)
     .hover_background(look.hover)
-    .accessible(limn::Access::new(limn::Role::Button).name(t("Elegir perfil")));
-    let mut profiles = vec![
-        DropdownMenuEntry::Item(
-            DropdownMenuItem::new(ids::MAIN_PROFILE, t("Perfil principal"))
-                .icon(Icon::Custom(crate::MARK))
-                .selected(view.scope.is_none()),
-        ),
-        DropdownMenuEntry::Heading(t("Perfil en cada servidor").into()),
-    ];
+    .accessible(limn::Access::new(limn::Role::Button).name(t("Elegir servidor")));
+    let mut profiles = vec![DropdownMenuEntry::Heading(
+        t("Perfil en cada servidor").into(),
+    )];
     profiles.extend(view.servers.iter().map(|server| {
         let item = DropdownMenuItem::new(server.action.clone(), server.name.clone())
             .leading(server_mark(server))
@@ -2649,128 +3057,127 @@ fn editor_selector(view: &Editor, look: &Look) -> Element {
     .render()
 }
 
-fn editor_avatar(view: &Editor, look: &Look) -> Element {
-    Element::row(vec![
-        crate::avatar_with_image(
-            &view.preview.name,
-            view.preview.accent,
-            64.0,
-            view.preview.image.clone(),
-        ),
-        Element::column(vec![
-            strong_line(t("Avatar"), 15.0, look.text),
-            text(t("Imagen de tu cuenta"), 13.0, look.muted),
-        ])
-        .gap(4.0)
-        .centered_y()
-        .flex(1.0),
-    ])
-    .gap(16.0)
-    .padding(16.0)
-    .radius(10.0)
-    .background(look.raised)
-}
-
-/// «Cambiar» and «Quitar» of one picture: the first chooses a file, loading
-/// while the selector is open; the second shows only with one to take away.
-fn picture_actions(
-    pick: &'static str,
-    remove: &'static str,
-    has: bool,
-    picking: bool,
-    pictures: &EditorPictures,
-    look: &Look,
-) -> Element {
-    let can = pictures.denied.is_none();
-    let chooses = pick != ids::BANNER_PICK || pictures.banner_denied.is_none();
-    let mut actions = vec![Button::new(pick, t("Cambiar"), look.accent_palette())
-        .enabled(can && chooses && pictures.picking.is_none())
-        .loading(picking)
-        .render()];
-    if has {
-        actions.push(
-            Button::new(remove, t("Quitar"), look.menu_palette())
-                .variant(ButtonVariant::Ghost)
-                .enabled(can && pictures.picking.is_none())
-                .render(),
-        );
-    }
-    Element::row(actions).gap(8.0)
-}
-
-/// The avatar and the banner, each beside its actions, and what limits them.
-fn editor_pictures(view: &Editor, width: f32, look: &Look) -> Element {
-    let pictures = &view.pictures;
-    let inner = (width - 24.0).max(1.0);
-    // The faces share a width, so both titles start in one column.
-    let row = |face: Element, title: &str, actions: Element| {
-        Element::row(vec![
-            Element::row(vec![face.centered_y()]).size(Some(100.0), None),
-            strong_line(title, 15.0, look.text).flex(1.0).centered_y(),
-            actions.centered_y(),
-        ])
-        .gap(12.0)
+/// The tabs of the profile: the account's, and one per server when there are
+/// servers.
+fn profile_tabs(view: &Editor, look: &Look) -> Element {
+    let tab = |id: &'static str, label: &str, active: bool| {
+        // shortcut: widths estimated from the characters, as the full profile's tabs do.
+        let width = label.chars().count() as f32 * 7.5 + 12.0;
+        Tab::new(id, label.to_owned(), width).active(active)
     };
-    let avatar = row(
-        crate::avatar_with_image(
-            &view.preview.name,
-            view.preview.accent,
-            48.0,
-            view.preview.image.clone(),
-        ),
-        t("Avatar"),
-        picture_actions(
-            ids::AVATAR_PICK,
-            ids::AVATAR_REMOVE,
-            pictures.has_avatar,
-            pictures.picking == Some(true),
-            pictures,
-            look,
-        ),
-    );
-    let thumbnail = Element::panel(match &pictures.banner {
-        Some(image) => Element::raster_image(image.clone().cover()).size(None, Some(40.0)),
-        None => Element::spacer(),
-    })
-    .size(Some(100.0), Some(40.0))
-    .radius(6.0)
-    .background(view.preview.accent)
-    .clip_children()
-    .accessible(limn::Access::new(limn::Role::Image).name(t("Vista previa del banner")));
-    let banner = row(
-        thumbnail,
-        t("Banner"),
-        picture_actions(
-            ids::BANNER_PICK,
-            ids::BANNER_REMOVE,
-            pictures.has_banner,
-            pictures.picking == Some(false),
-            pictures,
-            look,
-        ),
-    );
-    let mut parts = vec![avatar, banner];
-    let hint = if view.scope.is_some() {
-        t("Se muestran en este servidor en lugar de los de tu cuenta. PNG, JPEG, GIF o WebP de hasta 8 MB; después de elegirla, la encuadras.")
+    let mut tabs = vec![tab(ids::TAB_MAIN, t("Perfil principal"), !view.servers_tab)];
+    if !view.servers.is_empty() {
+        tabs.push(tab(
+            ids::TAB_SERVERS,
+            t("Perfiles por servidor"),
+            view.servers_tab,
+        ));
+    }
+    Tabs::new(tabs, look.menu_palette())
+        .variant(TabsVariant::Underlined)
+        .accent(look.accent)
+        .id("profile:tabs")
+        .height(32.0)
+        .gap(20.0)
+        .render()
+}
+
+/// The form: what failed to save, the tab's picker, then its sections.
+fn form(view: &Editor, width: f32, look: &Look) -> Element {
+    let mut parts = Vec::new();
+    if view.denied.is_some() {
+        parts.extend(ruled(read_only_values(view, look), look));
     } else {
-        t("PNG, JPEG, GIF o WebP de hasta 8 MB: el avatar cuadrado, el banner en 5:2. Después de elegirla, la encuadras.")
+        if let Some(failure) = &view.failure {
+            parts.push(
+                text(
+                    tr!("No se pudo guardar: {failure}", failure),
+                    13.0,
+                    look.danger,
+                )
+                .accessible(limn::Access::new(limn::Role::Alert).name(failure.clone())),
+            );
+        }
+        if view.servers_tab {
+            parts.push(server_picker(view, look));
+            match &view.scope {
+                Some(scope) => parts.extend(ruled(scoped_sections(view, scope, width, look), look)),
+                None => parts.push(
+                    text(
+                        t("Elige un servidor para cambiar cómo te ven allí."),
+                        14.0,
+                        look.muted,
+                    )
+                    .size(Some(width), None),
+                ),
+            }
+        } else {
+            parts.extend(ruled(main_sections(view, width, look), look));
+        }
+    }
+    Element::column(parts).gap(24.0).size(Some(width), None)
+}
+
+/// The preview: the card as the others see it, its footer a plain example.
+fn preview_column(view: &Editor, look: &Look) -> Element {
+    let can = view.denied.is_none();
+    Element::column(vec![
+        Element::text(if can { t("Vista previa") } else { t("Perfil") })
+            .font_size(16.0)
+            .font_family(FontFamily::SansMedium)
+            .foreground(look.text),
+        Element::panel(card(&view.preview, look))
+            .size(Some(WIDTH), None)
+            .radius(8.0)
+            .background(look.menu)
+            .border(look.border, 1.0)
+            .clip_children(),
+    ])
+    .gap(8.0)
+    .size(Some(WIDTH), None)
+}
+
+/// The profile of the settings' page, as Discord's: its tabs, then the form
+/// beside a preview that stays where it is while the form scrolls. Narrower
+/// than [`SIDE_BY_SIDE`], the preview comes under the form.
+pub fn profiles_page(view: &Editor, size: Size, look: &Look) -> Element {
+    let can = view.denied.is_none();
+    let side_by_side = size.width >= SIDE_BY_SIDE;
+    let form_width = if side_by_side {
+        size.width - PREVIEW_GAP - WIDTH
+    } else {
+        size.width
     };
-    parts.push(text(hint, 12.0, look.muted).size(Some(inner), None));
-    for line in [&pictures.denied, &pictures.banner_denied, &pictures.note]
-        .into_iter()
-        .flatten()
-    {
-        parts.push(text(line.clone(), 12.0, look.muted).size(Some(inner), None));
+    let preview = preview_column(view, look);
+    let content = if side_by_side {
+        Element::row(vec![
+            ScrollArea::new("profile:form", form(view, form_width, look))
+                .render()
+                .flex(1.0),
+            gap(PREVIEW_GAP, 0.0),
+            preview,
+        ])
+    } else {
+        ScrollArea::new(
+            "profile:form",
+            Element::column(vec![form(view, form_width, look), gap(0.0, 32.0), preview]),
+        )
+        .render()
+        .flex(1.0)
+    };
+    let mut rows = Vec::new();
+    if can {
+        rows.push(profile_tabs(view, look));
+        rows.push(divider(look));
+        rows.push(gap(0.0, 16.0));
     }
-    if let Some(framing) = &pictures.framing {
-        parts.push(editor_framing(framing, inner, look));
+    rows.push(content.flex(1.0));
+    if let Some(bar) = view.bar.filter(|_| can) {
+        rows.push(gap(0.0, 12.0));
+        rows.push(parts::unsaved_bar_for(ids::BAR, bar, look).size(Some(size.width), None));
+        rows.push(gap(0.0, 16.0));
     }
-    Element::column(parts)
-        .gap(10.0)
-        .padding(12.0)
-        .radius(10.0)
-        .background(look.raised)
-        .anchor(ids::PICTURES)
+    Element::column(rows).size(Some(size.width), Some(size.height))
 }
 
 /// The picture last chosen, whole, with the part kept framed over it:
@@ -2847,66 +3254,6 @@ fn editor_framing(view: &EditorFraming, width: f32, look: &Look) -> Element {
     Element::column(parts).gap(8.0)
 }
 
-/// The fields of a server's profile: the name there and «Sobre mí» there.
-fn scoped_fields(view: &Editor, scope: &EditorScope, look: &Look) -> Vec<Element> {
-    let palette = look.palette();
-    let errors = EditorErrors::of(&scope.nick, "", &view.about);
-    let mut nick = vec![TextField::new(
-        ids::NICK,
-        scope.nick.clone(),
-        view.preview.handle.clone(),
-        palette,
-    )
-    .height(40.0)
-    .enabled(scope.nick_denied.is_none())
-    .accessibility_label(t("Apodo"))
-    .render()];
-    if let Some(reason) = &scope.nick_denied {
-        nick.push(text(reason.clone(), 12.0, look.muted));
-    }
-    let count = view.about.trim().chars().count();
-    let about = Element::column(vec![
-        TextArea::new(
-            ids::ABOUT,
-            view.about.clone(),
-            t("Cuenta algo para este servidor."),
-            palette,
-        )
-        .accessibility_label(t("Sobre mí en este servidor"))
-        .height(100.0)
-        .enabled(scope.about_denied.is_none())
-        .render(),
-        Element::row(vec![
-            Element::spacer().flex(1.0),
-            line(
-                format!("{count}/{ABOUT_MAX}"),
-                12.0,
-                if count > ABOUT_MAX {
-                    look.danger
-                } else {
-                    look.muted
-                },
-            ),
-        ]),
-    ])
-    .gap(4.0);
-    let about = match &scope.about_denied {
-        Some(reason) => {
-            Element::column(vec![about, text(reason.clone(), 12.0, look.muted)]).gap(6.0)
-        }
-        None => about,
-    };
-    vec![
-        field(
-            t("Apodo"),
-            Element::column(nick).gap(6.0),
-            errors.name.as_ref(),
-            look,
-        ),
-        field(t("Sobre mí"), about, errors.about.as_ref(), look),
-    ]
-}
-
 /// Missing optional data means it was not supplied; it does not prove the user
 /// left that field empty on the service.
 fn profile_value(label: &str, value: Option<&str>, look: &Look) -> Element {
@@ -2924,271 +3271,6 @@ fn profile_value(label: &str, value: Option<&str>, look: &Look) -> Element {
         ),
     ])
     .gap(6.0)
-}
-
-fn editor_fields(view: &Editor, width: f32, look: &Look) -> Vec<Element> {
-    let palette = look.palette();
-    let errors = EditorErrors::of(&view.name, &view.pronouns, &view.about);
-    let mut fields = vec![
-        field(
-            t("Nombre para mostrar"),
-            TextField::new(
-                ids::NAME,
-                view.name.clone(),
-                view.preview.handle.clone(),
-                palette,
-            )
-            .height(40.0)
-            .accessibility_label(t("Nombre para mostrar"))
-            .render(),
-            errors.name.as_ref(),
-            look,
-        ),
-        field(
-            t("Pronombres"),
-            TextField::new(
-                ids::PRONOUNS,
-                view.pronouns.clone(),
-                t("Agrega tus pronombres"),
-                palette,
-            )
-            .height(40.0)
-            .accessibility_label(t("Pronombres"))
-            .render(),
-            errors.pronouns.as_ref(),
-            look,
-        ),
-    ];
-    let count = view.about.trim().chars().count();
-    let about = Element::column(vec![
-        TextArea::new(
-            ids::ABOUT,
-            view.about.clone(),
-            t("Cuenta algo sobre ti."),
-            palette,
-        )
-        .accessibility_label(t("Sobre mí"))
-        .height(100.0)
-        .render(),
-        Element::row(vec![
-            Element::spacer().flex(1.0),
-            line(
-                format!("{count}/{ABOUT_MAX}"),
-                12.0,
-                if count > ABOUT_MAX {
-                    look.danger
-                } else {
-                    look.muted
-                },
-            ),
-        ]),
-    ])
-    .gap(4.0);
-    fields.push(field(t("Sobre mí"), about, errors.about.as_ref(), look));
-    fields.push(field(
-        t("Color del perfil"),
-        parts::swatches(
-            &Swatches {
-                prefix: ids::COLOR.into(),
-                chosen: Some(view.accent),
-                default: None,
-                custom: view.hex.clone(),
-                enabled: true,
-                narrow: width < parts::swatches_width(false),
-                picked: view.picked,
-            },
-            look,
-        ),
-        None,
-        look,
-    ));
-    fields.push(editor_pictures(view, width, look));
-    if let Some(reason) = &view.credentials {
-        fields.push(
-            Element::column(vec![
-                profile_value(t("Nombre de usuario"), Some(&view.preview.handle), look),
-                text(reason.clone(), 12.0, look.muted).size(Some(width), None),
-            ])
-            .gap(6.0),
-        );
-    }
-    fields
-}
-
-/// Keep the save controls outside the scrolling form. Narrow windows use two
-/// lines instead of forcing a long warning and two buttons into the same row.
-fn editor_footer(bar: UnsavedBar, width: f32, look: &Look) -> Element {
-    let message = if bar.nudged {
-        t("Guarda o restablece los cambios antes de salir")
-    } else {
-        t("Cambios sin guardar")
-    };
-    let actions = Element::row(vec![
-        Button::new(ids::RESET, t("Restablecer"), look.menu_palette())
-            .variant(ButtonVariant::Secondary)
-            .enabled(!bar.saving)
-            .width((width - 32.0) / 2.0)
-            .render(),
-        Button::new(ids::SAVE, t("Guardar"), look.accent_palette())
-            .loading(bar.saving)
-            .width((width - 32.0) / 2.0)
-            .render(),
-    ])
-    .gap(8.0);
-    Element::column(vec![
-        text(
-            message,
-            13.0,
-            if bar.nudged { look.danger } else { look.muted },
-        ),
-        actions,
-    ])
-    .gap(8.0)
-    .padding(12.0)
-    .size(Some(width), None)
-    .background(look.menu)
-    .radius(10.0)
-    .border(look.border, 1.0)
-}
-
-/// The account's actual data and a preview, with editing controls only when
-/// the provider supports them. No form or footer overlaps the scroll viewport.
-pub fn editor(view: &Editor, window: Size, look: &Look) -> Element {
-    let can = view.denied.is_none();
-    let available = (window.width - 48.0).max(1.0);
-    let side_by_side = available >= 320.0 + PREVIEW_GAP + WIDTH;
-    let form_width = if side_by_side {
-        (available - PREVIEW_GAP - WIDTH).min(EDITOR_FORM)
-    } else {
-        available.min(EDITOR_FORM)
-    };
-    let preview_width = if side_by_side {
-        WIDTH
-    } else {
-        form_width.min(WIDTH)
-    };
-    let content_width = if side_by_side {
-        form_width + PREVIEW_GAP + preview_width
-    } else {
-        form_width
-    };
-    let horizontal = |child: Element| {
-        Element::row(vec![
-            Element::spacer().flex(1.0),
-            child,
-            Element::spacer().flex(1.0),
-        ])
-    };
-    let heading = Element::row(vec![
-        Element::text(if can {
-            t("Editar perfil")
-        } else {
-            t("Tu perfil")
-        })
-        .font_size(22.0)
-        .font_family(FontFamily::SansMedium)
-        .foreground(look.text)
-        .accessible(limn::Access::new(limn::Role::Heading).id("profile:title"))
-        .flex(1.0)
-        .centered_y(),
-        close_square(look),
-    ])
-    .gap(16.0)
-    .size(Some(content_width), None);
-    let header = Element::column(vec![gap(0.0, 20.0), horizontal(heading), gap(0.0, 20.0)]);
-    let mut form = Vec::new();
-    if can && !view.servers.is_empty() {
-        form.push(editor_selector(view, look));
-    }
-    if !can {
-        form.push(editor_avatar(view, look));
-    }
-    if can {
-        if let Some(failure) = &view.failure {
-            form.push(
-                text(
-                    tr!("No se pudo guardar: {failure}", failure),
-                    13.0,
-                    look.danger,
-                )
-                .accessible(limn::Access::new(limn::Role::Alert).name(failure.clone())),
-            );
-        }
-        match &view.scope {
-            Some(scope) => {
-                form.extend(scoped_fields(view, scope, look));
-                form.push(editor_pictures(view, form_width, look));
-            }
-            None => form.extend(editor_fields(view, form_width, look)),
-        }
-    } else {
-        form.extend([
-            profile_value(t("Nombre para mostrar"), Some(&view.preview.name), look),
-            profile_value(t("Nombre de usuario"), Some(&view.preview.handle), look),
-            profile_value(t("Pronombres"), view.preview.pronouns.as_deref(), look),
-            profile_value(t("Sobre mí"), view.preview.about.as_deref(), look),
-            text(
-                t("La edición de este perfil todavía no está disponible."),
-                12.0,
-                look.muted,
-            ),
-        ]);
-    }
-    // A hairline between each two parts of the form, as in Discord's client.
-    let mut parted = Vec::new();
-    for part in form {
-        if !parted.is_empty() {
-            parted.push(divider(look));
-        }
-        parted.push(part);
-    }
-    let form = Element::column(parted)
-        .gap(18.0)
-        .size(Some(form_width), None);
-    let preview = Element::column(vec![
-        strong_line(
-            if can { t("Vista previa") } else { t("Perfil") },
-            14.0,
-            look.muted,
-        ),
-        Element::panel(card(&view.preview, look))
-            .size(Some(preview_width), None)
-            .radius(12.0)
-            .background(look.menu)
-            .border(look.border, 1.0)
-            .clip_children(),
-    ])
-    .gap(10.0)
-    .size(Some(preview_width), None);
-    let content = if side_by_side {
-        Element::row(vec![form, preview]).gap(PREVIEW_GAP)
-    } else {
-        Element::column(vec![form, preview]).gap(24.0)
-    }
-    .size(Some(content_width), None);
-    let scroll = ScrollArea::new(
-        "profile:form",
-        Element::column(vec![horizontal(content), gap(0.0, 24.0)]),
-    )
-    .render()
-    .flex(1.0);
-    let mut rows = vec![header, scroll];
-    if let Some(bar) = view.bar.filter(|_| can) {
-        // One row as in the settings when it fits; else stacked.
-        let bar = if content_width >= WIDE_BAR {
-            parts::unsaved_bar_for(ids::BAR, bar, look).size(Some(content_width), None)
-        } else {
-            editor_footer(bar, content_width, look)
-        };
-        rows.push(Element::column(vec![
-            gap(0.0, 12.0),
-            horizontal(bar),
-            gap(0.0, 16.0),
-        ]));
-    }
-    Element::column(rows)
-        .size(Some(window.width), Some(window.height))
-        .background(look.canvas)
 }
 
 #[cfg(test)]
@@ -3239,6 +3321,7 @@ mod tests {
             role_removals: vec![None, None],
             role_menu: None,
             edit_profile: false,
+            example_button: false,
         }
     }
 
@@ -3415,6 +3498,7 @@ mod tests {
         let own = Profile {
             message: None,
             edit_profile: true,
+            example_button: false,
             full_action: None,
             ..ada()
         };
@@ -3919,7 +4003,10 @@ mod tests {
     #[test]
     fn the_editor_counts_what_is_written_about_oneself_and_says_when_it_is_too_long() {
         let view = Editor {
-            preview: ada(),
+            preview: Profile {
+                message: None,
+                ..ada()
+            },
             name: "Ada".into(),
             pronouns: "ella".into(),
             about: "x".repeat(ABOUT_MAX + 1),
@@ -3929,6 +4016,7 @@ mod tests {
             denied: None,
             servers: Vec::new(),
             servers_open: false,
+            servers_tab: false,
             bar: Some(UnsavedBar::default()),
             pictures: EditorPictures::default(),
             scope: None,
@@ -3936,8 +4024,8 @@ mod tests {
             picked: None,
         };
         let (_, laid) = frame(
-            editor(&view, Size::new(1280.0, 800.0), &LOOK),
-            Size::new(1280.0, 800.0),
+            profiles_page(&view, Size::new(1280.0, 2000.0), &LOOK),
+            Size::new(1280.0, 2000.0),
         );
         let painted = texts(&laid);
         assert!(painted.contains(&format!("{}/{ABOUT_MAX}", ABOUT_MAX + 1)));
@@ -3950,7 +4038,7 @@ mod tests {
             ids::PRONOUNS,
             ids::ABOUT,
             ids::SAVE,
-            ids::EDITOR_CLOSE,
+            ids::TAB_MAIN,
         ] {
             assert!(ids.contains(&expected.to_owned()), "{expected}: {ids:?}");
         }
@@ -3959,6 +4047,7 @@ mod tests {
     fn editing(bar: Option<UnsavedBar>) -> Editor {
         Editor {
             preview: Profile {
+                message: None,
                 name: "Ada Nueva".into(),
                 pronouns: Some("elle".into()),
                 about: Some("Ahora en Rust.".into()),
@@ -3974,6 +4063,7 @@ mod tests {
             denied: None,
             servers: Vec::new(),
             servers_open: false,
+            servers_tab: false,
             bar,
             pictures: EditorPictures::default(),
             scope: None,
@@ -3998,8 +4088,9 @@ mod tests {
             server(2, "Laboratorio", None),
         ];
         view.servers_open = true;
+        view.servers_tab = true;
         let window = Size::new(1280.0, 800.0);
-        let (_, laid) = frame(editor(&view, window, &LOOK), window);
+        let (_, laid) = frame(profiles_page(&view, window, &LOOK), window);
         let icon = laid
             .commands
             .iter()
@@ -4038,7 +4129,7 @@ mod tests {
             (Size::new(1280.0, 800.0), true),
             (Size::new(400.0, 800.0), false),
         ] {
-            let (_, laid) = frame(editor(&editing(None), window, &LOOK), window);
+            let (_, laid) = frame(profiles_page(&editing(None), window, &LOOK), window);
             let ids = controls(&laid);
             assert!(!ids.contains(&ids::SAVE.to_owned()) && !ids.contains(&ids::RESET.to_owned()));
             let painted = texts(&laid);
@@ -4057,19 +4148,16 @@ mod tests {
             }
 
             let (_, laid) = frame(
-                editor(&editing(Some(UnsavedBar::default())), window, &LOOK),
+                profiles_page(&editing(Some(UnsavedBar::default())), window, &LOOK),
                 window,
             );
             let ids = controls(&laid);
             assert!(ids.contains(&ids::SAVE.to_owned()) && ids.contains(&ids::RESET.to_owned()));
             let painted = texts(&laid);
-            let message = if wide {
-                "¡Cuidado! Tienes cambios sin guardar"
-            } else {
-                "Cambios sin guardar"
-            };
+            // Narrow, the bar's message is cut to the room the buttons leave.
+            let message = "¡Cuidado! Tienes cambios sin guardar";
             assert!(
-                painted.iter().any(|t| t == message),
+                !wide || painted.iter().any(|t| t == message),
                 "{message}: {painted:?}"
             );
         }
@@ -4153,7 +4241,7 @@ mod tests {
             ..EditorPictures::default()
         };
         let window = Size::new(1280.0, 2400.0);
-        let (_, laid) = frame(editor(&view, window, &LOOK), window);
+        let (_, laid) = frame(profiles_page(&view, window, &LOOK), window);
         let ids = controls(&laid);
         assert!(ids.contains(&ids::AVATAR_PICK.to_owned()), "{ids:?}");
         assert!(ids.contains(&ids::BANNER_REMOVE.to_owned()));
@@ -4161,6 +4249,131 @@ mod tests {
         assert!(texts(&laid)
             .iter()
             .any(|text| text == "Necesitas Nitro para usar un banner"));
+    }
+
+    /// Where the text `wanted` starts, as drawn.
+    fn at(laid: &limn::Frame, wanted: &str) -> limn::Point {
+        laid.commands
+            .iter()
+            .find_map(|command| match command {
+                limn::DrawCommand::Text { position, text, .. } if text == wanted => Some(*position),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{wanted} is not drawn"))
+    }
+
+    #[test]
+    fn the_profile_page_lists_discords_sections_in_order_and_greys_what_rustcord_cannot_change() {
+        let mut view = editing(None);
+        view.preview.example_button = true;
+        let window = Size::new(696.0, 2000.0);
+        let (_, laid) = frame(profiles_page(&view, window, &LOOK), window);
+        let painted = texts(&laid);
+        let mut from = 0;
+        for title in [
+            "Nombre para mostrar",
+            "Pronombres",
+            "Avatar",
+            "Decoración de avatar",
+            "Placa de nombre",
+            "Efecto de perfil",
+            "Marco de perfil",
+            "Banner del perfil",
+            "Color del banner",
+            "Biografía",
+        ] {
+            let found = painted[from..]
+                .iter()
+                .position(|text| text == title)
+                .unwrap_or_else(|| panic!("{title} out of order: {painted:?}"));
+            from += found + 1;
+        }
+        assert!(painted.contains(&"Botón de ejemplo".to_owned()));
+        assert!(!painted.contains(&"Editar perfil".to_owned()));
+        assert!(painted.contains(&"Rustcord todavía no puede cambiar esto.".to_owned()));
+        let ids = controls(&laid);
+        for expected in [
+            ids::TAB_MAIN,
+            ids::NAME,
+            ids::AVATAR_PICK,
+            ids::BANNER_PICK,
+            ids::ABOUT,
+            ids::EXAMPLE,
+        ] {
+            assert!(ids.contains(&expected.to_owned()), "{expected}: {ids:?}");
+        }
+        assert!(
+            !ids.contains(&ids::TAB_SERVERS.to_owned()),
+            "no servers, no tab"
+        );
+        for disabled in [
+            ids::DECORATION,
+            ids::NAMEPLATE,
+            ids::EFFECT,
+            ids::PROFILE_FRAME,
+        ] {
+            assert!(
+                !ids.contains(&disabled.to_owned()),
+                "{disabled} is clickable"
+            );
+        }
+    }
+
+    #[test]
+    fn the_preview_stays_beside_the_form_when_wide_and_comes_under_it_when_narrow() {
+        let view = editing(None);
+        let wide = Size::new(696.0, 900.0);
+        let (_, laid) = frame(profiles_page(&view, wide, &LOOK), wide);
+        let (form, preview) = (at(&laid, "Nombre para mostrar"), at(&laid, "Vista previa"));
+        assert!((preview.x - (696.0 - WIDTH)).abs() < 1.0, "{preview:?}");
+        assert!(preview.y <= form.y + 80.0, "beside: {preview:?} {form:?}");
+
+        let narrow = Size::new(400.0, 2400.0);
+        let (_, laid) = frame(profiles_page(&view, narrow, &LOOK), narrow);
+        let (form, preview) = (at(&laid, "Nombre para mostrar"), at(&laid, "Vista previa"));
+        assert!((preview.x - form.x).abs() < 1.0, "{preview:?} {form:?}");
+        assert!(preview.y > form.y + 200.0, "under: {preview:?} {form:?}");
+    }
+
+    #[test]
+    fn the_per_server_tab_asks_for_a_server_and_then_shows_its_own_sections() {
+        let mut view = editing(None);
+        view.servers = vec![EditorServer {
+            action: format!("{}1", ids::SCOPE),
+            name: "Taller".into(),
+            nick: None,
+            image: None,
+            initials: "TA".into(),
+            accent: Color::rgb(200, 40, 40),
+        }];
+        view.servers_tab = true;
+        let window = Size::new(1280.0, 1000.0);
+        let (_, laid) = frame(profiles_page(&view, window, &LOOK), window);
+        assert!(laid
+            .regions
+            .iter()
+            .any(|region| region.id == ids::TAB_SERVERS));
+        assert!(
+            texts(&laid).contains(&"Elige un servidor para cambiar cómo te ven allí.".to_owned())
+        );
+        assert!(!texts(&laid).contains(&"Nombre para mostrar".to_owned()));
+
+        view.scope = Some(EditorScope {
+            server: "Taller".into(),
+            nick: "Ada del taller".into(),
+            nick_denied: None,
+            about_denied: None,
+        });
+        let (_, laid) = frame(profiles_page(&view, window, &LOOK), window);
+        let painted = texts(&laid);
+        for title in ["Apodo", "Avatar", "Banner del perfil", "Biografía"] {
+            assert!(
+                painted.iter().any(|text| text == title),
+                "{title}: {painted:?}"
+            );
+        }
+        assert!(!painted.contains(&"Color del banner".to_owned()));
+        assert!(controls(&laid).contains(&ids::NICK.to_owned()));
     }
 
     #[test]

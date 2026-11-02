@@ -78,9 +78,7 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     if let Some(focused) = crate::video::focused_view(ui, store, window, context.now) {
         return with_notices(focused, ui, look, None);
     }
-    let body = if let Some(editor) = profile::editor_view(ui, store, context) {
-        editor
-    } else if let Some(settings) = channel_settings::view(ui, store, context) {
+    let body = if let Some(settings) = channel_settings::view(ui, store, context) {
         settings
     } else if let Some(settings) = server_settings::view(ui, store, context) {
         settings

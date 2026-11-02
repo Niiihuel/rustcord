@@ -48,7 +48,11 @@ impl Host {
         self.send(UiEvent::PointerMove(center));
     }
 
+    /// Whether `id` is on screen, scrolling its list to it first when needed.
     fn pf_shows(&mut self, id: &str) -> bool {
+        if !self.frame().regions.iter().any(|region| region.id == id) {
+            self.tree.reveal(id);
+        }
         self.frame().regions.iter().any(|region| region.id == id)
     }
 
@@ -436,7 +440,7 @@ fn pf_the_editor_saves_what_changed_and_blocks_a_long_about() {
     host.click(ids::EDIT);
     assert!(host.ui.profiles.editor.is_some() && !host.ui.status_menu);
     let painted = host.painted();
-    for expected in ["Editar perfil", "Vista previa", "Sobre mí", "Pronombres"] {
+    for expected in ["Perfiles", "Vista previa", "Pronombres"] {
         assert!(
             painted.iter().any(|text| text == expected),
             "{expected}: {painted:?}"
@@ -444,11 +448,9 @@ fn pf_the_editor_saves_what_changed_and_blocks_a_long_about() {
     }
     // Too long: said under the field and not sent.
     host.pf_input(ids::ABOUT, &"x".repeat(ABOUT_MAX + 1));
-    let painted = host.painted();
+    let painted = host.pf_painted();
     assert!(painted.contains(&format!("{}/{ABOUT_MAX}", ABOUT_MAX + 1)));
-    assert!(painted
-        .iter()
-        .any(|text| text.contains("«Sobre mí» puede tener hasta 190")));
+    assert!(painted.contains("«Sobre mí» puede tener hasta 190"));
     let sent = host.sent.len();
     host.click(ids::SAVE);
     assert_eq!(host.sent.len(), sent, "nothing leaves while it is too long");
@@ -490,28 +492,25 @@ fn pf_the_editor_saves_what_changed_and_blocks_a_long_about() {
         ambiguous: false,
     });
     assert!(host.ui.notices.is_empty());
-    assert!(host
-        .painted()
-        .iter()
-        .any(|text| text.contains("el servicio no responde")));
+    assert!(host.pf_painted().contains("el servicio no responde"));
     // Leaving with changes is refused until they are reset.
     host.key(Key::Escape, false, false);
     assert!(host.ui.profiles.editor.as_ref().unwrap().nudged);
     host.click(ids::RESET);
-    host.click(ids::EDITOR_CLOSE);
-    assert!(host.ui.profiles.editor.is_none());
+    host.click("us:close");
+    assert!(host.ui.profiles.editor.is_none() && host.ui.settings.is_none());
 }
 
 #[test]
-fn pf_the_editor_opened_over_the_settings_goes_back_to_them() {
+fn pf_the_editor_is_the_profiles_page_of_the_settings_and_escape_closes_them() {
     let mut host = Host::new();
     host.click("me:settings");
     assert!(host.ui.settings.is_some());
     host.pf_act(ids::EDIT);
-    assert!(host.ui.settings.is_none() && host.ui.profiles.editor.is_some());
+    assert_eq!(host.ui.settings, Some(SettingsPage::Profiles));
+    assert!(host.ui.profiles.editor.is_some());
     host.key(Key::Escape, false, false);
-    assert!(host.ui.profiles.editor.is_none());
-    assert_eq!(host.ui.settings, Some(SettingsPage::default()));
+    assert!(host.ui.profiles.editor.is_none() && host.ui.settings.is_none());
 }
 
 #[test]
@@ -673,6 +672,7 @@ fn pf_the_editor_reaches_the_nickname_of_each_server() {
         .server_profiles = false;
     host.click("me:status");
     host.click(ids::EDIT);
+    host.click(ids::TAB_SERVERS);
     host.click(ids::SERVERS);
     let server = host.store.servers()[0].id;
     host.click(&format!("sm:profile:{server}"));
@@ -723,28 +723,21 @@ fn pf_read_only_profile_uses_the_real_avatar_in_both_places_and_shows_available_
     let images = frame.commands.iter().filter(|command| {
         matches!(command, limn::DrawCommand::RasterImage { image: actual, .. } if actual == &expected)
     }).count();
-    assert_eq!(
-        images, 2,
-        "the avatar section and profile card share the received image"
-    );
+    // The card and the settings' own account share the received image.
+    assert!(images >= 2, "{images} drawings of the avatar");
     let text = host.painted().join(" ");
-    for expected in [
-        "Tu perfil",
-        "Nombre de usuario",
-        "elle",
-        "Programo en Rust.",
-    ] {
+    for expected in ["Perfil", "Nombre de usuario", "elle", "Programo en Rust."] {
         assert!(text.contains(expected), "missing {expected}: {text}");
     }
     assert!(!text.contains("Tu inicial") && !text.contains("Vista previa"));
     assert!(!frame.regions.iter().any(|region| {
-        matches!(
+        (matches!(
             region.kind,
             limn::HitKind::TextInput | limn::HitKind::TextArea
-        ) || region.id.starts_with(ids::COLOR)
+        ) && region.id.starts_with("profile:"))
+            || region.id.starts_with(ids::COLOR)
             || matches!(region.id.as_str(), ids::SERVERS | ids::SAVE | ids::RESET)
     }));
-    assert_eq!(host.tree.focused_id(), Some(ids::EDITOR_CLOSE));
 }
 
 #[test]
@@ -792,9 +785,11 @@ fn pf_unsupported_editing_ignores_stale_input_and_does_not_trap_the_user_with_un
 }
 
 #[test]
-fn pf_profile_layout_keeps_close_and_save_outside_its_scroll_on_small_windows() {
+fn pf_profile_layout_keeps_the_bar_outside_its_scroll_on_small_windows() {
     for theme in [Theme::Onyx, Theme::Light] {
-        for window in [Size::new(320.0, 640.0), Size::new(720.0, 480.0), WINDOW] {
+        // Narrower than the settings' sidebar and a column together, the page
+        // has no room for its bar, as every settings page has none.
+        for window in [Size::new(720.0, 480.0), WINDOW] {
             for editable in [true, false] {
                 let mut host = Host::new();
                 host.ui.theme = theme;
@@ -822,10 +817,8 @@ fn pf_profile_layout_keeps_close_and_save_outside_its_scroll_on_small_windows() 
                         })
                         .rect
                 };
-                let close = rect(&frame, ids::EDITOR_CLOSE);
                 let scroll = rect(&frame, "profile:form");
-                assert!(close.x >= 0.0 && close.x + close.width <= window.width);
-                assert!(close.y >= 0.0 && close.y + close.height <= scroll.y);
+                assert!(scroll.x >= 0.0 && scroll.x + scroll.width <= window.width);
                 if editable {
                     let save = rect(&frame, ids::SAVE);
                     let reset = rect(&frame, ids::RESET);
@@ -836,11 +829,13 @@ fn pf_profile_layout_keeps_close_and_save_outside_its_scroll_on_small_windows() 
                 }
                 host.tree.scroll_to_end("profile:form");
                 let end = host.tree.layout(window);
-                assert_eq!(
-                    rect(&end, ids::EDITOR_CLOSE),
-                    close,
-                    "close must not scroll away"
-                );
+                if editable {
+                    assert_eq!(
+                        rect(&end, ids::SAVE),
+                        rect(&frame, ids::SAVE),
+                        "save must not scroll away"
+                    );
+                }
                 for region in &end.regions {
                     if region.kind == limn::HitKind::TextInput
                         || region.kind == limn::HitKind::TextArea
@@ -851,13 +846,6 @@ fn pf_profile_layout_keeps_close_and_save_outside_its_scroll_on_small_windows() 
                             "input escapes: {region:?}"
                         );
                     }
-                }
-                if editable {
-                    assert_eq!(
-                        rect(&end, ids::SAVE),
-                        rect(&frame, ids::SAVE),
-                        "save must not scroll away"
-                    );
                 }
             }
         }
@@ -937,15 +925,15 @@ fn pf_profile_banner_arrival_paints_received_artwork_and_removal_restores_the_co
     assert_eq!(rects.len(), 1);
     assert!((rects[0].width - rustcord_components::profile::WIDTH).abs() < 1.0);
     assert_eq!(rects[0].height, 105.0);
-    let close = |frame: &Frame| {
+    let form = |frame: &Frame| {
         frame
             .regions
             .iter()
-            .find(|region| region.id == ids::EDITOR_CLOSE)
+            .find(|region| region.id == "profile:form")
             .unwrap()
             .rect
     };
-    assert_eq!(close(&before), close(&loaded));
+    assert_eq!(form(&before), form(&loaded));
     assert!(host
         .sent
         .iter()
@@ -957,7 +945,7 @@ fn pf_profile_banner_arrival_paints_received_artwork_and_removal_restores_the_co
         .commands
         .iter()
         .any(|command| matches!(command, limn::DrawCommand::RasterImage { .. })));
-    assert_eq!(close(&before), close(&removed));
+    assert_eq!(form(&before), form(&removed));
 }
 
 #[test]
@@ -1279,9 +1267,8 @@ fn pf_without_the_plan_a_banner_is_not_chosen_and_a_moving_avatar_stays_still() 
     host.click(ids::EDIT);
     host.tree.scroll_to_end("profile:form");
     assert!(host
-        .painted()
-        .iter()
-        .any(|text| text.contains("Necesitas Nitro para usar un banner")));
+        .pf_painted()
+        .contains("Necesitas Nitro para usar un banner"));
     let asked = host.upload_intents.len();
     host.pf_act(ids::BANNER_PICK);
     assert_eq!(
@@ -1305,13 +1292,7 @@ fn pf_without_the_plan_a_banner_is_not_chosen_and_a_moving_avatar_stays_still() 
         Some(pf_source(true)),
         host.now,
     );
-    host.tree.scroll_to_end("profile:form");
-    let painted = host
-        .painted()
-        .join(" ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let painted = host.pf_painted();
     assert!(
         painted
             .contains("Necesitas Nitro para usar un avatar animado. Se usa sólo el primer cuadro."),
@@ -1334,10 +1315,13 @@ impl Host {
     /// What the editor paints at the top of its form and at its end, one
     /// space between words.
     fn pf_painted(&mut self) -> String {
-        self.tree.scroll_to_start("profile:form");
-        let mut painted = self.painted();
-        self.tree.scroll_to_end("profile:form");
-        painted.extend(self.painted());
+        // The whole form, scrolled in steps: its sections sit far apart.
+        let mut painted = Vec::new();
+        for step in 0..12 {
+            self.tree
+                .set_scroll_offset("profile:form", step as f32 * 240.0);
+            painted.extend(self.painted());
+        }
         painted
             .join(" ")
             .split_whitespace()
@@ -1565,7 +1549,7 @@ fn pf_the_editor_chooses_a_picture_previews_it_and_saves_it_with_the_profile() {
         .any(|notice| notice.title == "No se pudo usar la imagen"));
     // Closing the editor while choosing tells the host to stop the selector.
     host.click(ids::AVATAR_PICK);
-    host.click(ids::EDITOR_CLOSE);
+    host.click("us:close");
     assert!(matches!(
         host.upload_intents.last(),
         Some(Intent::CancelProfileImage)
@@ -1577,6 +1561,7 @@ fn pf_the_editor_changes_the_profile_of_a_server_and_waits_where_restricted() {
     let mut host = Host::new();
     host.click("me:status");
     host.click(ids::EDIT);
+    host.click(ids::TAB_SERVERS);
     host.click(ids::SERVERS);
     let taller = host
         .store
@@ -1591,10 +1576,7 @@ fn pf_the_editor_changes_the_profile_of_a_server_and_waits_where_restricted() {
         host.ui.profiles.editor.as_ref().unwrap().server,
         Some(taller)
     );
-    assert!(host
-        .painted()
-        .iter()
-        .any(|text| text == "Perfil en Taller de Rust"));
+    assert!(host.painted().iter().any(|text| text == "Taller de Rust"));
     // Its «Sobre mí» and banner there are read.
     assert!(host.sent[from..].iter().any(
         |command| matches!(command, Command::LoadProfile { server: Some(s), .. } if *s == taller)
@@ -1603,7 +1585,7 @@ fn pf_the_editor_changes_the_profile_of_a_server_and_waits_where_restricted() {
     host.pf_input(ids::NICK, "Lab");
     host.pf_input(ids::ABOUT, "Aquí pruebo cosas");
     // Going elsewhere with that unsaved is refused, as leaving is.
-    host.pf_act(ids::MAIN_PROFILE);
+    host.pf_act(ids::TAB_MAIN);
     assert!(host.ui.profiles.editor.as_ref().unwrap().nudged);
     let from = host.sent.len();
     host.click(ids::SAVE);
@@ -1647,7 +1629,7 @@ fn pf_the_editor_changes_the_profile_of_a_server_and_waits_where_restricted() {
         .iter()
         .any(|text| text.contains("Estás aislado en Café Nocturno")));
     // Back to the main profile.
-    host.pf_act(ids::MAIN_PROFILE);
+    host.pf_act(ids::TAB_MAIN);
     assert_eq!(host.ui.profiles.editor.as_ref().unwrap().server, None);
 }
 
@@ -1879,4 +1861,47 @@ fn pf_the_roles_plus_opens_its_checklist_and_a_role_keeps_it_open() {
     let role = host.store.server(server).unwrap().roles[1].id;
     host.pf_act(&format!("ss:member-of:{server}:{user}:role:{role}"));
     assert_eq!(host.ui.profiles.menu, Some((user, CardMenu::Roles)));
+}
+
+#[test]
+fn pf_the_profiles_page_keeps_unsaved_changes_and_shows_an_example_button() {
+    let mut host = Host::new();
+    host.click("me:settings");
+    host.pf_act(ids::EDIT);
+    // «Editar perfiles» of the main window's menu is another text.
+    assert!(host.pf_painted().contains("Botón de ejemplo"));
+    assert!(!host.painted().iter().any(|text| text == "Editar perfil"));
+    host.pf_input(ids::NAME, "Nombre sin guardar");
+    // Another page, or closing the settings, waits while the change is unsaved.
+    host.click("us:page=privacy");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Profiles));
+    assert!(host.ui.profiles.editor.as_ref().unwrap().nudged);
+    host.click("us:close");
+    assert!(host.ui.settings.is_some());
+    host.click(ids::RESET);
+    host.click("us:page=privacy");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Privacy));
+    assert!(host.ui.profiles.editor.is_none());
+}
+
+#[test]
+fn pf_the_per_server_tab_shows_the_nickname_once_a_server_is_chosen() {
+    let mut host = Host::new();
+    host.click("me:settings");
+    host.pf_act(ids::EDIT);
+    host.click(ids::TAB_SERVERS);
+    assert!(!host.pf_painted().contains("Apodo"));
+    host.click(ids::SERVERS);
+    let taller = host
+        .store
+        .servers()
+        .iter()
+        .find(|server| server.name == "Taller de Rust")
+        .unwrap()
+        .id;
+    host.click(&format!("{}{taller}", ids::SCOPE));
+    assert!(host.pf_painted().contains("Apodo"));
+    host.pf_act(ids::TAB_MAIN);
+    let painted = host.pf_painted();
+    assert!(!painted.contains("Apodo") && painted.contains("Nombre para mostrar"));
 }

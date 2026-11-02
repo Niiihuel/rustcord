@@ -1916,10 +1916,10 @@ pub fn intercept(
         }
         return Some(Vec::new());
     }
-    if let Some(intents) = profile::intercept(ui, store, event) {
+    if let Some(intents) = profile::intercept(ui, event) {
         return Some(intents);
     }
-    if let Some(intents) = settings::intercept(ui, event) {
+    if let Some(intents) = settings::intercept(ui, store, event) {
         return Some(intents);
     }
     if let Some(intents) = channel_settings::intercept(ui, store, event) {
