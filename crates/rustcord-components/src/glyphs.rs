@@ -1,6 +1,7 @@
-//! Rustcord's icon set, drawn by `tools/rustcord-icons` and installed on each UI
-//! thread with `limn_egui::set_icon_pack(rustcord_components::glyphs::pack)`.
-//! A limn icon it lacks stays a Bootstrap Icon.
+//! The interface's icons: Discord's, each as one evenodd path on the 24 grid
+//! in `assets/glyphs`, installed on each UI thread with
+//! `limn_egui::set_icon_pack(rustcord_components::glyphs::pack)`. A limn icon
+//! with no glyph here stays a Bootstrap Icon.
 
 use limn::Icon;
 
@@ -139,7 +140,7 @@ mod tests {
     use super::*;
 
     /// Every glyph is one evenodd path in `currentColor` on the 24 grid,
-    /// with no strokes: the shape the generator writes.
+    /// with no strokes: the one shape the icon pack takes.
     #[test]
     fn glyphs_are_single_filled_paths() {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/glyphs");

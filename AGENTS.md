@@ -49,7 +49,8 @@ en [limn](https://github.com/Niiihuel/limn).
   públicos como sonidos predeterminados en `assets/sounds` (2026-10-21), la
   marca de `assets/icons/rustcord-discord.png` como icono de la aplicación y
   el logo de Discord en blanco como marca de la interfaz
-  (`assets/rustcord-mark.svg`: botón de inicio, carga, acceso) (2026-11-01).
+  (`assets/rustcord-mark.svg`: botón de inicio, carga, acceso) y los iconos
+  de la interfaz de Discord (`assets/glyphs`) (2026-11-01).
   No abarca código, otros recursos, perfiles,
   cachés, credenciales, datos de sesión ni contenidos de servidores o
   cuentas ajenas.
