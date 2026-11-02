@@ -450,8 +450,12 @@ pub(crate) fn update(
             return Some(open_card(ui, store));
         }
     }
-    // A stream nobody watches: its button, or its tile as a whole, watches it.
+    // A stream nobody watches: its button, or its tile as a whole, watches it
+    // alone; its icon adds it to those watched.
     if let Some(user) = number(id, "vz:watch:").or_else(|| number(id, "vz:stream-tile:")) {
+        return Some(video::watch_alone(ui, store, UserId(user), now));
+    }
+    if let Some(user) = number(id, "vz:watch-add:") {
         return Some(video::watch(ui, store, UserId(user), now));
     }
     if let Some(user) = number(id, "vz:live:watch:") {

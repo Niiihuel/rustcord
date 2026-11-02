@@ -1558,7 +1558,9 @@ fn several_streams_share_the_stage_up_to_their_bound_and_the_oldest_goes() {
     // be watched too.
     for (at, owner) in streamers.iter().enumerate() {
         let from = host.sent.len();
-        host.click(&ids::watch(owner.0));
+        let now = host.now;
+        let intents = crate::video::watch(&mut host.ui, &mut host.store, *owner, now);
+        host.run(intents);
         host.event(Event::StreamPhase {
             channel: room,
             owner: *owner,

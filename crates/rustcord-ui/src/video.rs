@@ -1217,6 +1217,36 @@ pub fn window_closed(ui: &mut Ui, owner: UserId) {
     ui.video.window_stirred.retain(|(shown, _)| *shown != owner);
 }
 
+/// «Mirar transmisión» on a stream nobody watches: it is watched alone, the
+/// others stop, and it takes the stage.
+pub(crate) fn watch_alone(
+    ui: &mut Ui,
+    store: &mut Store,
+    owner: UserId,
+    now: Instant,
+) -> Vec<Intent> {
+    let mut intents = watch(ui, store, owner, now);
+    // Only once it is watched: a watch that was denied leaves the others be.
+    if store
+        .watching()
+        .iter()
+        .any(|watching| watching.owner == owner)
+    {
+        let others: Vec<UserId> = store
+            .watching()
+            .iter()
+            .map(|watching| watching.owner)
+            .filter(|shown| *shown != owner)
+            .collect();
+        for other in others {
+            intents.extend(stop_watching(ui, store, other));
+        }
+        ui.video.spotlight = Some(owner);
+        ui.video.own_focus = false;
+    }
+    intents
+}
+
 /// «Ver transmisión»: `owner`'s stream in the account's call, besides the
 /// others; past [`MAX_STREAMS`] the one watched longest goes.
 pub(crate) fn watch(ui: &mut Ui, store: &mut Store, owner: UserId, now: Instant) -> Vec<Intent> {

@@ -150,9 +150,15 @@ pub mod ids {
         format!("vz:mute:{user}")
     }
 
-    /// «Mirar transmisión» on the tile of a stream nobody watches.
+    /// «Mirar transmisión» on the tile of a stream nobody watches: it is
+    /// watched alone.
     pub fn watch(user: u64) -> String {
         format!("vz:watch:{user}")
+    }
+
+    /// The icon beside it: the stream is added to those watched.
+    pub fn watch_add(user: u64) -> String {
+        format!("vz:watch-add:{user}")
     }
 
     /// The tile of that stream as a whole: a click watches it, as `watch` does.
@@ -520,6 +526,7 @@ pub struct StreamTile {
 const SCREEN_STOP: &str = crate::glyphs::glyph!("screen-stop");
 const POP_OUT: &str = crate::glyphs::glyph!("pop-out");
 const ZOOM_IN: &str = crate::glyphs::glyph!("add");
+const ADD_STREAM: &str = crate::glyphs::glyph!("add");
 const ZOOM_OUT: &str = crate::glyphs::glyph!("minus");
 
 /// The level of a zoom as a percentage, «150 %», in a pill as the name's.
@@ -2284,10 +2291,14 @@ fn veil_palette(look: &Look) -> ComponentPalette {
 
 /// «Mirar transmisión» in the middle of a stream's tile, «Ver» on a tile
 /// under 175 wide. Disabled with its reason when it cannot be used.
+/// «Mirar transmisión» («Ver» under 175 px) on a stream nobody watches; with
+/// `another`, beside it an icon that adds the stream to those watched, as the
+/// official client's, 8 px after it.
 fn watch_button(
     person: &Participant,
     size: Size,
     permit: &Result<(), String>,
+    another: bool,
     look: &Look,
 ) -> Element {
     let label = if size.width < 175.0 {
@@ -2297,19 +2308,46 @@ fn watch_button(
     };
     let small = size.width < 195.0;
     let button = Button::new(ids::watch(person.user), label, veil_palette(look))
-        .variant(ButtonVariant::Raised)
+        .variant(ButtonVariant::Secondary)
         .button_size(if small {
             ButtonSize::Small
         } else {
             ButtonSize::Default
         });
-    match permit {
+    let watch = match permit {
         Ok(()) => button.render(),
         Err(reason) => button
             .tooltip_with(denied_hint(label, reason))
             .disabled()
             .render(),
+    };
+    if !another {
+        return watch;
     }
+    let height = if small { 30.0 } else { 38.0 };
+    let hint = t("Comienza a ver múltiples transmisiones");
+    let add = IconButton::new(
+        ids::watch_add(person.user),
+        Icon::Custom(ADD_STREAM),
+        veil_palette(look),
+    )
+    .variant(ButtonVariant::Secondary)
+    .sizing(ButtonSizing {
+        height,
+        font_size: 14.0,
+        icon_size: 20.0,
+        horizontal_padding: 8.0,
+        inner_spacing: 6.0,
+    })
+    .width(height)
+    .round()
+    .tooltip(hint)
+    .accessibility_label(hint);
+    let add = match permit {
+        Ok(()) => add.render(),
+        Err(_) => add.disabled().render(),
+    };
+    Element::row(vec![watch, gap(8.0, 0.0), add])
 }
 
 /// The tile of a live stream nobody watches, after its streamer's:
@@ -2322,6 +2360,7 @@ fn watch_tile(
     person: &Participant,
     size: Size,
     watch: &Result<(), String>,
+    another: bool,
     look: &Look,
 ) -> Element {
     let picture = match &person.thumbnail {
@@ -2348,7 +2387,7 @@ fn watch_tile(
         live(16.0, 12.0, look),
     ])
     .padding(8.0);
-    let middle = centered(watch_button(person, size, watch, look)).flex(1.0);
+    let middle = centered(watch_button(person, size, watch, another, look)).flex(1.0);
     let mut bottom: Vec<Element> = name_tag(&person.name, Vec::new(), size)
         .into_iter()
         .map(Element::shrink_to_fit)
@@ -2896,6 +2935,9 @@ fn call(view: &Stage, look: &Look) -> Element {
             look,
         )
     };
+    // With a stream watched already, the streams nobody watches offer to be
+    // added to those.
+    let another = !view.watching.is_empty();
     // Each person's tile, and after it the tile of their stream when offered.
     let people_tiles = |size: Size| -> Vec<Element> {
         people
@@ -2903,7 +2945,7 @@ fn call(view: &Stage, look: &Look) -> Element {
             .flat_map(|shown| {
                 let mut tiles = vec![person(shown, size)];
                 if offered(shown) {
-                    tiles.push(watch_tile(shown, size, &view.watch, look));
+                    tiles.push(watch_tile(shown, size, &view.watch, another, look));
                 }
                 tiles
             })
@@ -4509,7 +4551,7 @@ mod tests {
         };
         let offer = |width: f32| {
             let size = Size::new(width, width * 9.0 / 16.0);
-            let element = watch_tile(&streamer, size, &watch, &look);
+            let element = watch_tile(&streamer, size, &watch, false, &look);
             texts(&frame(element, size).1)
         };
         assert_eq!(face_size(Size::new(124.0, 70.0)), 80.0);
@@ -5543,7 +5585,8 @@ mod tests {
         };
         let look = Look::ONYX;
         let size = Size::new(480.0, 270.0);
-        let offer = |person: &Participant| frame(watch_tile(person, size, &Ok(()), &look), size).1;
+        let offer =
+            |person: &Participant| frame(watch_tile(person, size, &Ok(()), false, &look), size).1;
         let pictured = offer(&shown(Some(Thumbnail::Image(image.clone()))));
         assert!(pictured
             .commands
@@ -5600,7 +5643,7 @@ mod tests {
             own: false,
             ..person(2, false, false, false)
         };
-        let (_, laid) = frame(watch_tile(&streamer, size, &Ok(()), &look), size);
+        let (_, laid) = frame(watch_tile(&streamer, size, &Ok(()), false, &look), size);
         let at = laid
             .regions
             .iter()
@@ -6994,6 +7037,26 @@ mod tests {
         let hidden = at(true);
         assert!(region(&hidden, &ids::tile(1)).is_none());
         assert_eq!(named(&hidden).as_deref(), Some("Mostrar miembros"));
+    }
+
+    #[test]
+    fn a_stream_nobody_watches_adds_an_icon_to_add_it_only_with_another_watched() {
+        let look = Look::ONYX;
+        let streamer = Participant {
+            streaming: true,
+            own: false,
+            ..person(2, false, false, false)
+        };
+        let size = Size::new(200.0, 112.5);
+        let alone = frame(watch_tile(&streamer, size, &Ok(()), false, &look), size).1;
+        assert!(!controls(&alone).contains(&ids::watch_add(2)));
+        let beside = frame(watch_tile(&streamer, size, &Ok(()), true, &look), size).1;
+        assert!(controls(&beside).contains(&ids::watch(2)));
+        assert!(controls(&beside).contains(&ids::watch_add(2)));
+        // Under 175 px the primary says «Ver».
+        let narrow = Size::new(120.0, 67.5);
+        let said = texts(&frame(watch_tile(&streamer, narrow, &Ok(()), true, &look), narrow).1);
+        assert!(said.contains(&"Ver".to_owned()), "{said:?}");
     }
 
     fn named(name: &str, user: u64) -> Participant {

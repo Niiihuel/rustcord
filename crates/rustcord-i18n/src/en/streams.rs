@@ -7,4 +7,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Acercar", "Zoom in"),
     ("Alejar", "Zoom out"),
     ("{percent} %", "{percent}%"),
+    (
+        "Comienza a ver múltiples transmisiones",
+        "Start watching multiple streams",
+    ),
 ];
