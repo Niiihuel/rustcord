@@ -40,7 +40,13 @@ impl Host {
 
     /// Watch `owner`'s stream in `room`, live.
     pub(super) fn tr_watch(&mut self, room: ChannelId, owner: UserId) {
-        self.click(&ids::watch(owner.0));
+        // The first alone; the next ones beside those watched, by their icon.
+        let id = if self.store.watching().is_empty() {
+            ids::watch(owner.0)
+        } else {
+            ids::watch_add(owner.0)
+        };
+        self.click(&id);
         self.event(Event::StreamPhase {
             channel: room,
             owner,
@@ -95,6 +101,8 @@ fn a_stream_watched_is_focused_with_a_click_and_the_grid_comes_back() {
     let owners = host.tr_streamers(room, 4, 2);
     let (first, second) = (owners[0], owners[1]);
     host.tr_watch(room, first);
+    // «Mirar transmisión» focused it: let go, so both sit side by side.
+    host.click(&ids::stream_tile(first.0));
     host.tr_watch(room, second);
     let side = host.tr_surface(first);
     assert_eq!(side.width, host.tr_surface(second).width, "side by side");
@@ -446,7 +454,6 @@ fn a_secondary_click_on_a_stream_or_its_streamer_offers_to_stop_watching() {
             .count()
     };
     host.tr_watch(room, first);
-    host.click(&ids::stream_tile(first.0));
     assert_eq!(host.ui.video.spotlight, Some(first));
     let stop = ids::stop_watching(first.0);
     assert_eq!(count(&mut host, &stop), 1, "the bar's");
@@ -472,7 +479,10 @@ fn a_secondary_click_on_a_stream_or_its_streamer_offers_to_stop_watching() {
     host.vz_right_click(&ids::tile(second.0));
     assert_eq!(host.ui.voice.menu.map(|menu| menu.user), Some(second));
     assert!(count(&mut host, &ids::watch(second.0)) >= 1);
-    host.click(&ids::watch(second.0));
+    // Closed, the icon beside its tile's button adds it to those watched: the
+    // stage keeps the one focused.
+    host.click(ids::MENU_DISMISS);
+    host.click(&ids::watch_add(second.0));
     assert!(host
         .store
         .watching()
@@ -696,13 +706,23 @@ fn full_screen_and_a_window_of_its_own_rest_as_the_stage_does() {
     // Its own window: its title goes once the pointer rests over it.
     host.click(&ids::window(owner.0));
     let size = limn::Size::new(960.0, 540.0);
+    // Its pill says the streamer's name, as on the stage.
+    let server = host
+        .store
+        .watching()
+        .iter()
+        .find(|watching| watching.owner == owner)
+        .and_then(|watching| host.store.channel(watching.channel))
+        .and_then(|found| found.server);
+    let name = host.store.display_name(owner, server);
     let shows_title = |host: &Host| {
         let view = crate::video_window(&host.ui, &host.store, owner, size, host.now).unwrap();
         let mut tree = limn::UiTree::new(view);
         tree.set_reduced_motion(true);
-        tree.layout(size).commands.iter().any(|command| {
-            matches!(command, limn::DrawCommand::Text { text, .. } if text.starts_with("Pantalla de "))
-        })
+        tree.layout(size)
+            .commands
+            .iter()
+            .any(|command| matches!(command, limn::DrawCommand::Text { text, .. } if *text == name))
     };
     crate::video_window_stirred(&mut host.ui, owner, host.now);
     assert!(shows_title(&host));
@@ -719,6 +739,7 @@ fn the_own_card_and_a_stream_watched_take_the_stage_one_at_a_time() {
     host.click(&format!("voice:{room}"));
     let owners = host.tr_streamers(room, 4, 2);
     host.tr_watch(room, owners[0]);
+    host.click(&ids::stream_tile(owners[0].0));
     // Sharing: the account's stream is a card in the grid, with its way to
     // stop, and no picture of its own until it is clicked.
     host.click(ids::SCREEN);
@@ -809,4 +830,61 @@ fn the_header_names_who_watches_the_stream_focused() {
         .filter(|node| node.id.starts_with(&format!("vz:viewer:{}:", owner.0)))
         .count();
     assert_eq!(pictures, 2);
+}
+
+#[test]
+fn the_zoom_buttons_and_the_wheel_zoom_the_focused_stream_and_a_new_focus_starts_fitted() {
+    let mut host = Host::new();
+    let owner = host.tr_focused();
+    let level = |host: &Host| host.ui.video.zoom.map(|(_, zoom)| zoom.level);
+    // «Acercar» steps by a quarter; «Alejar» steps back.
+    host.click(&ids::zoom_in(owner.0));
+    assert_eq!(level(&host), Some(1.25));
+    host.click(&ids::zoom_out(owner.0));
+    assert_eq!(level(&host), Some(1.0));
+    // The wheel zooms about the pointer: a step of 100 px is a level.
+    host.click(&ids::zoom_in(owner.0));
+    let tile = host.vz_rect(&ids::stream_tile(owner.0));
+    let middle = limn::Point::new(tile.x + tile.width / 2.0, tile.y + tile.height / 2.0);
+    host.send(limn::UiEvent::Scroll {
+        position: middle,
+        delta_y: 100.0,
+    });
+    assert_eq!(level(&host), Some(2.25));
+    // Unfocused, the zoom goes at the next layout; focused again, the stream
+    // starts fitted.
+    host.click(&ids::stream_tile(owner.0));
+    assert_eq!(host.ui.video.spotlight, None);
+    host.vz_rect(&ids::stream_tile(owner.0));
+    assert_eq!(level(&host), None);
+    host.click(&ids::stream_tile(owner.0));
+    host.vz_rect(&ids::stream_tile(owner.0));
+    assert_eq!(host.ui.video.spotlight, Some(owner));
+    assert_eq!(level(&host), None);
+}
+
+#[test]
+fn watch_alone_stops_the_others_and_the_icon_adds_a_stream_to_those_watched() {
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    host.click(&format!("voice:{room}"));
+    let owners = host.tr_streamers(room, 5, 3);
+    let watched = |host: &Host| {
+        host.store
+            .watching()
+            .iter()
+            .map(|watching| watching.owner)
+            .collect::<Vec<_>>()
+    };
+    host.tr_watch(room, owners[0]);
+    assert_eq!(watched(&host), vec![owners[0]]);
+    // The icon beside the second one's button adds it to the one watched.
+    host.click(&ids::watch_add(owners[1].0));
+    assert_eq!(watched(&host), vec![owners[0], owners[1]]);
+    // «Mirar transmisión» on the third one watches it alone: the strip has
+    // no room for its button here, so the handler is called as the click does.
+    let now = host.now;
+    crate::video::watch_alone(&mut host.ui, &mut host.store, owners[2], now);
+    assert_eq!(watched(&host), vec![owners[2]]);
+    assert_eq!(host.ui.video.spotlight, Some(owners[2]));
 }

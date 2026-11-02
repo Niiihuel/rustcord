@@ -10,9 +10,9 @@
 use limn::{
     Access, AlertDialog, Button, ButtonSize, ButtonSizing, ButtonVariant, ChartSeries, Checkbox,
     Color, Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
-    DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, PopoverPlacement,
-    RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip, TooltipPlacement,
-    TooltipSpec,
+    DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, Point,
+    PopoverPlacement, RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Tooltip,
+    TooltipPlacement, TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{CallPhase, CallQuality, Rgb, ShareKind, StreamQuality};
@@ -171,9 +171,15 @@ pub mod ids {
         format!("vz:mute:{user}")
     }
 
-    /// «Mirar transmisión» on the tile of a stream nobody watches.
+    /// «Mirar transmisión» on the tile of a stream nobody watches: it is
+    /// watched alone.
     pub fn watch(user: u64) -> String {
         format!("vz:watch:{user}")
+    }
+
+    /// The icon beside it: the stream is added to those watched.
+    pub fn watch_add(user: u64) -> String {
+        format!("vz:watch-add:{user}")
     }
 
     /// The tile of that stream as a whole: a click watches it, as `watch` does.
@@ -212,10 +218,8 @@ pub mod ids {
         format!("{CLOSE_STREAM}{user}")
     }
 
-    /// «Reintentar» on `user`'s stream that failed: watched again.
-    pub fn retry_watching(user: u64) -> String {
-        format!("stream:{user}:retry")
-    }
+    /// «Déjanos ayudarte.» under a stream that failed to start: the help article.
+    pub const STREAM_HELP: &str = "vz:stream-help";
 
     /// «Pantalla completa» on `user`'s stream: alone, the window full screen.
     pub fn fullscreen(user: u64) -> String {
@@ -253,6 +257,15 @@ pub mod ids {
     /// menu, anchored there.
     pub fn stream_more(user: u64) -> String {
         format!("vz:stream-more:{user}")
+    }
+
+    /// «Acercar» and «Alejar» on the focused `user`'s stream.
+    pub fn zoom_in(user: u64) -> String {
+        format!("vz:zoom-in:{user}")
+    }
+
+    pub fn zoom_out(user: u64) -> String {
+        format!("vz:zoom-out:{user}")
     }
 
     /// «Enfocar» `user`'s stream, or «Volver a la grilla» while it is.
@@ -421,6 +434,78 @@ pub struct Preview {
     pub card: bool,
 }
 
+/// The zoom of a focused stream's picture, from 1× (the fit) to 5×, by
+/// quarters with the buttons, as the official client's.
+pub const ZOOM_MIN: f32 = 1.0;
+pub const ZOOM_MAX: f32 = 5.0;
+pub const ZOOM_STEP: f32 = 0.25;
+
+/// A zoomed picture: its level, and how far its middle is from the middle of
+/// its tile, in pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Zoom {
+    pub level: f32,
+    pub pan: (f32, f32),
+}
+
+impl Zoom {
+    /// The picture as it fits its tile.
+    pub const FIT: Zoom = Zoom {
+        level: ZOOM_MIN,
+        pan: (0.0, 0.0),
+    };
+}
+
+/// A frame as it fits a tile, at 1×.
+pub fn fitted(frame: (u32, u32), room: Size) -> Size {
+    let scale = (room.width / frame.0 as f32).min(room.height / frame.1 as f32);
+    Size::new(frame.0 as f32 * scale, frame.1 as f32 * scale)
+}
+
+/// `zoom` at `level` about `pivot` (from the tile's middle, so the point of
+/// the picture under it stays there), then moved by `by`. A picture larger
+/// than its tile never leaves the tile's edges bare.
+pub fn zoom_to(
+    zoom: Zoom,
+    level: f32,
+    pivot: (f32, f32),
+    by: (f32, f32),
+    picture: Size,
+    room: Size,
+) -> Zoom {
+    let level = level.clamp(ZOOM_MIN, ZOOM_MAX);
+    let ratio = level / zoom.level;
+    let moved = |at: f32, pan: f32, by: f32| at - (at - pan) * ratio + by;
+    let reach = |picture: f32, room: f32| ((picture * level - room) / 2.0).max(0.0);
+    let (x, y) = (
+        reach(picture.width, room.width),
+        reach(picture.height, room.height),
+    );
+    Zoom {
+        level,
+        pan: (
+            moved(pivot.0, zoom.pan.0, by.0).clamp(-x, x),
+            moved(pivot.1, zoom.pan.1, by.1).clamp(-y, y),
+        ),
+    }
+}
+
+/// The zoomed picture of a frame on a surface, moved by its pan from the
+/// middle of the tile; the tile clips what goes past it.
+fn zoomed_surface(view: &Preview, frame: (u32, u32), size: Size, zoom: Zoom) -> Element {
+    let fit = fitted(frame, size);
+    let (width, height) = (fit.width * zoom.level, fit.height * zoom.level);
+    Element::column(vec![Element::row(vec![Element::surface(
+        view.surface.clone(),
+        view.title.clone(),
+    )
+    .size(Some(width), Some(height))
+    .translate(Point::new(
+        (size.width - width) / 2.0 + zoom.pan.0,
+        (size.height - height) / 2.0 + zoom.pan.1,
+    ))])])
+}
+
 /// A stream watched, as its tile offers it, as in the
 /// official client: a click focuses it, a double click shows it full
 /// screen. Its name goes in a pill at the bottom left and its controls,
@@ -430,6 +515,9 @@ pub struct Preview {
 #[derive(Clone, Debug, PartialEq)]
 pub struct StreamTile {
     pub owner: u64,
+    /// The streamer's name alone: the pill at the bottom left says it, where
+    /// the title of the picture says «Pantalla de» before it.
+    pub name: String,
     /// The key of its sound for the account's mixer, apart from the voice's.
     pub sound: u64,
     /// Its sound is silenced for the account.
@@ -444,6 +532,9 @@ pub struct StreamTile {
     /// It is over for now (stopped, ended or failed): the stage says so with
     /// a picture at rest in place of the stream, and no note.
     pub over: bool,
+    /// It failed to start, or ended while its owner still streams: the title
+    /// says so, and `waiting` is the reason. Else `waiting` is the title.
+    pub failed: bool,
     /// The pointer rested on it a while: what is drawn over it fades out,
     /// the bar under it too, and the pointer hides over it, as the official
     /// client's (3 s). Only while it takes the stage or the window.
@@ -454,11 +545,33 @@ pub struct StreamTile {
     pub degraded: bool,
     /// Who watches it: the header's viewers, none drawn yet.
     pub viewers: Vec<Participant>,
+    /// Its picture's zoom, while it takes the stage or the window: its
+    /// buttons are shown then.
+    pub zoom: Option<Zoom>,
 }
 
 /// Rustcord's own glyphs for «Dejar de ver» and «Abrir en otra ventana».
 const SCREEN_STOP: &str = crate::glyphs::glyph!("screen-stop");
 const POP_OUT: &str = crate::glyphs::glyph!("pop-out");
+const ZOOM_IN: &str = crate::glyphs::glyph!("add");
+const ADD_STREAM: &str = crate::glyphs::glyph!("add");
+const ZOOM_OUT: &str = crate::glyphs::glyph!("minus");
+
+/// The level of a zoom as a percentage, «150 %», in a pill as the name's.
+fn zoom_level(level: f32) -> Element {
+    let percent = (level * 100.0).round() as u32;
+    Element::panel(Element::row(vec![
+        gap(10.0, 0.0),
+        strong_line(tr!("{percent} %", percent), 14.0, OVER_INK)
+            .centered_y()
+            .shrink_to_fit(),
+        gap(10.0, 0.0),
+    ]))
+    .size(None, Some(OVER_BUTTON))
+    .radius(OVER_BUTTON / 2.0)
+    .background(OVER)
+    .shrink_to_fit()
+}
 
 /// What is drawn over a picture, as the official client's chips: black at
 /// 60 %, 80 % under the pointer, with white on it whatever the theme.
@@ -481,12 +594,25 @@ fn over_button(
     fill: Color,
     look: &Look,
 ) -> Element {
+    over_button_at(id, glyph, hint, fill, true, look)
+}
+
+/// [`over_button`], or off when `enabled` is false: what it does is not
+/// possible now, as «Acercar» at the largest zoom.
+fn over_button_at(
+    id: impl Into<String>,
+    glyph: Icon,
+    hint: &str,
+    fill: Color,
+    enabled: bool,
+    look: &Look,
+) -> Element {
     let hover = if fill == OVER {
         OVER_HOVER
     } else {
         lighter(fill, 18)
     };
-    IconButton::new(id, glyph, filled(fill, hover, look))
+    let button = IconButton::new(id, glyph, filled(fill, hover, look))
         .variant(ButtonVariant::Raised)
         .sizing(ButtonSizing {
             height: OVER_BUTTON,
@@ -500,15 +626,21 @@ fn over_button(
         .ink(OVER_INK)
         .hover_ink(OVER_INK)
         .tooltip(hint)
-        .accessibility_label(hint)
-        .render()
+        .accessibility_label(hint);
+    if enabled {
+        button.render()
+    } else {
+        button.disabled().render()
+    }
 }
 
-/// A preview's title in a pill at its bottom left; a stream's says it is a
-/// screen, as the official client's.
+/// A preview's title in a pill at its bottom left; a stream's is its
+/// streamer's name behind a screen, as the official client's.
 fn name_pill(view: &Preview) -> Element {
     let mut name = vec![gap(10.0, 0.0)];
-    if view.stream.is_some() {
+    let mut said = view.title.as_str();
+    if let Some(stream) = &view.stream {
+        said = stream.name.as_str();
         name.push(
             icon(Icon::Screen, OVER_INK)
                 .size(Some(16.0), Some(16.0))
@@ -517,7 +649,7 @@ fn name_pill(view: &Preview) -> Element {
         name.push(gap(6.0, 0.0));
     }
     name.push(
-        strong_line(&view.title, 14.0, OVER_INK)
+        strong_line(said, 14.0, OVER_INK)
             .centered_y()
             .shrink_to_fit(),
     );
@@ -555,21 +687,20 @@ pub fn preview(view: &Preview, size: Size, look: &Look) -> Element {
 /// picture and its title only.
 fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Element {
     let picture = match view.frame {
-        Some((width, height)) => {
-            let scale = (size.width / width as f32).min(size.height / height as f32);
-            centered(
-                Element::surface(view.surface.clone(), view.title.clone())
-                    .surface_mirrored(view.surface == ids::CAMERA_SURFACE)
-                    .size(Some(width as f32 * scale), Some(height as f32 * scale)),
-            )
-        }
+        Some((width, height)) => match view.stream.as_ref().and_then(|stream| stream.zoom) {
+            Some(zoom) => zoomed_surface(view, (width, height), size, zoom),
+            None => {
+                let scale = (size.width / width as f32).min(size.height / height as f32);
+                centered(
+                    Element::surface(view.surface.clone(), view.title.clone())
+                        .surface_mirrored(view.surface == ids::CAMERA_SURFACE)
+                        .size(Some(width as f32 * scale), Some(height as f32 * scale)),
+                )
+            }
+        },
         // A stream over says so, and offers to be watched again or closed.
         None => match &view.stream {
-            Some(stream) if stream.over => {
-                let wide = (size.width * 0.22).clamp(180.0, 320.0);
-                let picture = (size.height >= OVER_PICTURE_HEIGHT && !compact).then_some(wide);
-                over_picture(view, picture, look)
-            }
+            Some(stream) if stream.over => over_picture(view, look),
             // The account's own stream before its first frame: the screen's glyph.
             None if view.card => {
                 centered(icon(Icon::Screen, look.faint).size(Some(48.0), Some(48.0)))
@@ -632,16 +763,10 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
             .padding(12.5)
         }
     };
-    // A stream over, with no picture left, stands on a dark gradient.
     let backdrop = Element::panel(picture)
         .size(Some(size.width), Some(size.height))
-        .radius(TILE_RADIUS);
-    let ended = view.frame.is_none() && view.stream.as_ref().is_some_and(|stream| stream.over);
-    let backdrop = if ended {
-        backdrop.vertical_gradient(vec![ENDED_TOP, ENDED_BOTTOM])
-    } else {
-        backdrop.background(Color::rgb(0, 0, 0))
-    };
+        .radius(TILE_RADIUS)
+        .background(Color::rgb(0, 0, 0));
     let shown = Element::stack(vec![backdrop.clip_children(), over]);
     match &view.stream {
         Some(stream) => {
@@ -700,60 +825,41 @@ fn own_over(view: &Preview, title: Element, look: &Look) -> Element {
     .padding(12.5)
 }
 
-/// Rustcord's own picture of a stream at rest: a screen in a muted gray with the
-/// mark over it in red (`assets/illustrations/stream-ended-mark.svg`).
-const ENDED_SCREEN_INK: Color = Color::rgb(58, 58, 66);
-const ENDED_MARK: &str = include_str!("../../../assets/illustrations/stream-ended-mark.svg");
-/// The stage's backdrop when a stream is over: dark purple top, near black below.
-const ENDED_TOP: Color = Color::rgb(44, 26, 74);
-const ENDED_BOTTOM: Color = Color::rgb(12, 12, 14);
-/// The picture needs this much height of a tile, else it stays out.
-// shortcut: the grid's tiles are too short for the picture; only the stage shows it, upgrade if tiles grow
-const OVER_PICTURE_HEIGHT: f32 = 220.0;
-
-/// What a stream over shows in its place: its picture at rest when `width`
-/// is set (the picture is 0.6 as high), what happened and the ways out, all
-/// centred. The picture and the text are 16 apart, the buttons 12 under.
-fn over_picture(view: &Preview, width: Option<f32>, look: &Look) -> Element {
-    let mut head = Vec::new();
-    if let Some(width) = width {
-        let height = width * 0.6;
-        // limn draws an icon square, up to 128: the mark is a quarter of the picture.
-        head.push(
-            Element::stack(vec![
-                Element::panel(Element::spacer())
-                    .size(Some(width), Some(height))
-                    .radius(10.0)
-                    .background(ENDED_SCREEN_INK),
-                Element::icon(Icon::Custom(ENDED_MARK))
-                    .large_icon((width * 0.25).min(128.0))
-                    .foreground(Color::rgba(214, 45, 45, 115))
-                    .size(Some(width), Some(height)),
-            ])
-            .size(Some(width), Some(height)),
-        );
+/// What a stream over shows, centred on its tile, with no picture: a failure's
+/// title, its reason under it and the line to the help; an ended stream's
+/// wording as its title. «Cerrar transmisión» comes 16 px under.
+fn over_picture(view: &Preview, look: &Look) -> Element {
+    let failed = view.stream.as_ref().is_some_and(|stream| stream.failed);
+    let mut text = Vec::new();
+    if failed {
+        text.push(strong_line(
+            t("No se pudo iniciar la transmisión :("),
+            16.0,
+            OVER_INK,
+        ));
+        text.push(strong_line(view.waiting.clone(), 14.0, look.muted));
+        text.push(help_line(look));
+    } else {
+        text.push(strong_line(view.waiting.clone(), 16.0, OVER_INK));
     }
-    head.push(line(&view.waiting, 16.0, look.text));
-    let mut buttons: Vec<Element> = view
-        .actions
-        .iter()
-        .map(|(id, label)| stream_text_button(id, t(label), ButtonVariant::Default, look))
-        .collect();
-    buttons.push(stream_text_button(
-        &view.stop.0,
-        t(view.stop.1),
-        ButtonVariant::Secondary,
-        look,
-    ));
-    let column = vec![
-        Element::column(head).gap(16.0),
-        Element::row(buttons).gap(8.0),
-    ];
-    centered(Element::column(column).gap(12.0))
+    let close = stream_text_button(&view.stop.0, t(view.stop.1), ButtonVariant::Secondary, look);
+    centered(Element::column(vec![Element::column(text).gap(4.0), close]).gap(16.0))
 }
 
-/// A text button on a stream that is over: «Cerrar transmisión» secondary,
-/// «Reintentar» the light primary.
+/// «¿Tienes problemas con tu transmisión? Déjanos ayudarte.», where the last
+/// words open the help article.
+fn help_line(look: &Look) -> Element {
+    Element::row(vec![
+        line(t("¿Tienes problemas con tu transmisión?"), 14.0, look.muted),
+        Element::clickable(
+            ids::STREAM_HELP,
+            line(t("Déjanos ayudarte."), 14.0, look.accent),
+        ),
+    ])
+    .gap(4.0)
+}
+
+/// A text button on a stream that is over: «Cerrar transmisión», secondary.
 fn stream_text_button(id: &str, label: &str, variant: ButtonVariant, look: &Look) -> Element {
     Button::new(id, label, look.sidebar_palette())
         .variant(variant)
@@ -856,6 +962,28 @@ fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
             Icon::Collapse,
             t("Salir de pantalla completa"),
             OVER,
+            look,
+        ));
+    }
+    // The focused stream's zoom: «Alejar» and the level once zoomed, then
+    // «Acercar», off at the largest zoom.
+    if let Some(zoom) = stream.zoom {
+        if zoom.level > ZOOM_MIN {
+            buttons.push(over_button(
+                ids::zoom_out(stream.owner),
+                Icon::Custom(ZOOM_OUT),
+                t("Alejar"),
+                OVER,
+                look,
+            ));
+            buttons.push(zoom_level(zoom.level));
+        }
+        buttons.push(over_button_at(
+            ids::zoom_in(stream.owner),
+            Icon::Custom(ZOOM_IN),
+            t("Acercar"),
+            OVER,
+            zoom.level < ZOOM_MAX,
             look,
         ));
     }
@@ -2156,10 +2284,14 @@ fn veil_palette(look: &Look) -> ComponentPalette {
 
 /// «Mirar transmisión» in the middle of a stream's tile, «Ver» on a tile
 /// under 175 wide. Disabled with its reason when it cannot be used.
+/// «Mirar transmisión» («Ver» under 175 px) on a stream nobody watches; with
+/// `another`, beside it an icon that adds the stream to those watched, as the
+/// official client's, 8 px after it.
 fn watch_button(
     person: &Participant,
     size: Size,
     permit: &Result<(), String>,
+    another: bool,
     look: &Look,
 ) -> Element {
     let label = if size.width < 175.0 {
@@ -2169,19 +2301,46 @@ fn watch_button(
     };
     let small = size.width < 195.0;
     let button = Button::new(ids::watch(person.user), label, veil_palette(look))
-        .variant(ButtonVariant::Raised)
+        .variant(ButtonVariant::Secondary)
         .button_size(if small {
             ButtonSize::Small
         } else {
             ButtonSize::Default
         });
-    match permit {
+    let watch = match permit {
         Ok(()) => button.render(),
         Err(reason) => button
             .tooltip_with(denied_hint(label, reason))
             .disabled()
             .render(),
+    };
+    if !another {
+        return watch;
     }
+    let height = if small { 30.0 } else { 38.0 };
+    let hint = t("Comienza a ver múltiples transmisiones");
+    let add = IconButton::new(
+        ids::watch_add(person.user),
+        Icon::Custom(ADD_STREAM),
+        veil_palette(look),
+    )
+    .variant(ButtonVariant::Secondary)
+    .sizing(ButtonSizing {
+        height,
+        font_size: 14.0,
+        icon_size: 20.0,
+        horizontal_padding: 8.0,
+        inner_spacing: 6.0,
+    })
+    .width(height)
+    .round()
+    .tooltip(hint)
+    .accessibility_label(hint);
+    let add = match permit {
+        Ok(()) => add.render(),
+        Err(_) => add.disabled().render(),
+    };
+    Element::row(vec![watch, gap(8.0, 0.0), add])
 }
 
 /// The tile of a live stream nobody watches, after its streamer's:
@@ -2194,6 +2353,7 @@ fn watch_tile(
     person: &Participant,
     size: Size,
     watch: &Result<(), String>,
+    another: bool,
     look: &Look,
 ) -> Element {
     let picture = match &person.thumbnail {
@@ -2220,7 +2380,7 @@ fn watch_tile(
         live(16.0, 12.0, look),
     ])
     .padding(8.0);
-    let middle = centered(watch_button(person, size, watch, look)).flex(1.0);
+    let middle = centered(watch_button(person, size, watch, another, look)).flex(1.0);
     let mut bottom: Vec<Element> = name_tag(&person.name, Vec::new(), size)
         .into_iter()
         .map(Element::shrink_to_fit)
@@ -2661,7 +2821,10 @@ pub fn stage(view: Stage, look: &Look) -> Element {
             Some(fps) => format!("{height}p {fps} FPS"),
             None => format!("{height}p"),
         });
-        right.push(live_pill(quality, look));
+        // A stream that is over is no longer live.
+        if !shown.stream.as_ref().is_some_and(|stream| stream.over) {
+            right.push(live_pill(quality, look));
+        }
     } else {
         header.push(Element::spacer().flex(1.0));
     }
@@ -2950,13 +3113,9 @@ fn call(view: &Stage, look: &Look) -> Element {
     let focus = previews.iter().position(|shown| shown.focused);
     // The pill over the bar offers to hide the tiles, when there are some.
     let hideable = focus.is_some() && previews.len() + people.len() + streams + ringing.len() > 1;
-    // The bar, and the pill over it on its own line, under the tiles.
-    let pill_room = if hideable {
-        TILES_PILL_HEIGHT + BAR_GAP
-    } else {
-        0.0
-    };
-    let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP + pill_room;
+    // The bar's room under the tiles; the pill over the strip or the bar
+    // takes none of its own.
+    let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP;
     let area = Size::new(
         view.size.width - 2.0 * AREA_SIDE,
         view.size.height - crate::sidebar::HEADER - 1.0 - AREA_TOP - below,
@@ -2982,6 +3141,9 @@ fn call(view: &Stage, look: &Look) -> Element {
             look,
         )
     };
+    // With a stream watched already, the streams nobody watches offer to be
+    // added to those.
+    let another = !view.watching.is_empty();
     // Each person's tile, and after it the tile of their stream when offered.
     let people_tiles = |size: Size| -> Vec<Element> {
         people
@@ -2989,12 +3151,14 @@ fn call(view: &Stage, look: &Look) -> Element {
             .flat_map(|shown| {
                 let mut tiles = vec![person(shown, size)];
                 if offered(shown) {
-                    tiles.push(watch_tile(shown, size, &view.watch, look));
+                    tiles.push(watch_tile(shown, size, &view.watch, another, look));
                 }
                 tiles
             })
             .collect()
     };
+    // The strip's height, when shown: the pill over the bar lifts onto its top edge.
+    let mut strip_height = 0.0;
     let tiles = match (voice, focus) {
         (true, _) => {
             let row: Vec<(&Participant, bool)> = people
@@ -3018,6 +3182,7 @@ fn call(view: &Stage, look: &Look) -> Element {
                 0.0
             };
             let strip = if view.tiles_hidden { 0.0 } else { strip };
+            strip_height = strip;
             // 16:9 as the official client's tiles, so what is over the
             // stream sits on its picture rather than on black bars.
             let room = Size::new(area.width, area.height - strip - TILE_GAP.min(strip));
@@ -3048,15 +3213,19 @@ fn call(view: &Stage, look: &Look) -> Element {
                     Element::spacer().flex(1.0),
                 ]),
             ];
+            // The strip sits at the bottom, under the spacer that centres the
+            // stream above it.
             if strip > 0.0 {
                 column.push(gap(0.0, TILE_GAP));
+                column.push(Element::spacer().flex(1.0));
                 column.push(Element::row(vec![
                     Element::spacer().flex(1.0),
                     Element::row(rest).gap(TILE_GAP),
                     Element::spacer().flex(1.0),
                 ]));
+            } else {
+                column.push(Element::spacer().flex(1.0));
             }
-            column.push(Element::spacer().flex(1.0));
             column.push(gap(0.0, below));
             Element::column(column)
         }
@@ -3114,56 +3283,76 @@ fn call(view: &Stage, look: &Look) -> Element {
         Some(stream) if stream.idle => (Element::spacer(), None),
         Some(_) => (
             bar(view, look).animate_presence(ids::BAR),
-            hideable.then(|| tiles_pill(view.tiles_hidden)),
+            hideable.then(|| tiles_pill(view.tiles_hidden, look)),
         ),
         None => (bar(view, look), None),
     };
-    let mut over = vec![Element::spacer().flex(1.0)];
+    let mut layers = vec![
+        tiles,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            bar.size(None, Some(BAR_HEIGHT)),
+            gap(0.0, BAR_BOTTOM),
+        ]),
+    ];
+    // Centred, half over the strip's top edge while the strip shows; else
+    // just above the bar.
     if let Some(pill) = pill {
-        over.push(
+        let lift = if strip_height > 0.0 {
+            strip_height - TILES_PILL_HEIGHT / 2.0
+        } else {
+            0.0
+        };
+        layers.push(Element::column(vec![
+            Element::spacer().flex(1.0),
             Element::row(vec![
                 Element::spacer().flex(1.0),
                 pill,
                 Element::spacer().flex(1.0),
             ])
             .size(None, Some(TILES_PILL_HEIGHT)),
-        );
-        over.push(gap(0.0, BAR_GAP));
+            gap(0.0, below + lift),
+        ]));
     }
-    over.push(bar.size(None, Some(BAR_HEIGHT)));
-    over.push(gap(0.0, BAR_BOTTOM));
-    Element::stack(vec![tiles, Element::column(over)])
+    Element::stack(layers)
 }
 
 const TILES_PILL_HEIGHT: f32 = 24.0;
 
-/// The pill over the bar, as the official client's: a chevron and the people,
-/// over a stream focused. Up shows the tiles, down hides them.
-fn tiles_pill(hidden: bool) -> Element {
+/// The pill over the strip's top edge or the bar, as the official client's: a
+/// chevron and the people. Up shows the strip, down hides it; its label says
+/// what it does.
+fn tiles_pill(hidden: bool, look: &Look) -> Element {
     let (chevron, hint) = if hidden {
-        (Icon::ChevronUp, t("Mostrar participantes"))
+        (Icon::ChevronUp, t("Mostrar miembros"))
     } else {
-        (Icon::ChevronDown, t("Ocultar participantes"))
+        (Icon::ChevronDown, t("Ocultar miembros"))
     };
-    Element::clickable(
+    let pill = Element::clickable(
         ids::TILES,
         Element::panel(Element::row(vec![
-            gap(8.0, 0.0),
+            gap(4.0, 0.0),
             icon(chevron, OVER_INK)
                 .size(Some(12.0), Some(12.0))
                 .centered_y(),
-            gap(6.0, 0.0),
+            gap(4.0, 0.0),
             icon(Icon::Users, OVER_INK)
                 .size(Some(16.0), Some(16.0))
                 .centered_y(),
-            gap(8.0, 0.0),
+            gap(4.0, 0.0),
         ]))
-        .size(Some(50.0), Some(TILES_PILL_HEIGHT))
+        .size(None, Some(TILES_PILL_HEIGHT))
+        .shrink_to_fit()
         .radius(TILES_PILL_HEIGHT / 2.0)
-        .background(OVER),
+        .background(look.menu)
+        .hover_background(PILL_HOVER),
     )
-    .accessibility_label(hint)
+    .accessibility_label(hint);
+    Tooltip::new(pill, ids::TILES, hint, look.palette()).render()
 }
+
+/// The strip's pill a step darker under the pointer.
+const PILL_HOVER: Color = Color::rgb(35, 36, 40);
 
 /// The bar under the tiles: the microphone, the sound and the camera; the
 /// screen and «Más opciones»; hanging up.
@@ -4640,7 +4829,7 @@ mod tests {
         };
         let offer = |width: f32| {
             let size = Size::new(width, width * 9.0 / 16.0);
-            let element = watch_tile(&streamer, size, &watch, &look);
+            let element = watch_tile(&streamer, size, &watch, false, &look);
             texts(&frame(element, size).1)
         };
         assert_eq!(face_size(Size::new(124.0, 70.0)), 80.0);
@@ -5464,6 +5653,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: user,
+                name: format!("Persona {user}"),
                 sound: user + 1_000,
                 silenced: false,
                 windowed: false,
@@ -5474,6 +5664,8 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -5561,7 +5753,12 @@ mod tests {
         // the strip says it is live, as the official client's.
         let said = texts(&focused);
         let count = |text: &str| said.iter().filter(|shown| *shown == text).count();
-        assert_eq!(count("Pantalla de Persona 2"), 2, "header and pill");
+        assert_eq!(count("Pantalla de Persona 2"), 1, "the header");
+        assert_eq!(
+            count("Persona 2"),
+            2,
+            "the pill and the streamer's own tile"
+        );
         assert_eq!(count("720p"), 1);
         assert!(count("EN VIVO") >= 2, "header and the strip's stream");
         // The streamer focused keeps their tile; the strip's offer no watching.
@@ -5681,7 +5878,8 @@ mod tests {
         };
         let look = Look::ONYX;
         let size = Size::new(480.0, 270.0);
-        let offer = |person: &Participant| frame(watch_tile(person, size, &Ok(()), &look), size).1;
+        let offer =
+            |person: &Participant| frame(watch_tile(person, size, &Ok(()), false, &look), size).1;
         let pictured = offer(&shown(Some(Thumbnail::Image(image.clone()))));
         assert!(pictured
             .commands
@@ -5738,7 +5936,7 @@ mod tests {
             own: false,
             ..person(2, false, false, false)
         };
-        let (_, laid) = frame(watch_tile(&streamer, size, &Ok(()), &look), size);
+        let (_, laid) = frame(watch_tile(&streamer, size, &Ok(()), false, &look), size);
         let at = laid
             .regions
             .iter()
@@ -6558,6 +6756,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: user,
+                name: format!("Persona {user}"),
                 sound: user + 1_000,
                 silenced: false,
                 windowed: false,
@@ -6568,6 +6767,8 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6619,14 +6820,7 @@ mod tests {
         // Its own ID: the call bar's red button keeps `stop_watching`.
         assert!(controls(&ended).contains(&ids::close_stream(2)));
         assert!(said.contains(&"Cerrar transmisión".to_owned()));
-        // Its picture is wide (180 at least), and «Cerrar transmisión» is not danger.
-        let screen = ended.commands.iter().find_map(|command| match command {
-            limn::DrawCommand::FillRect { rect, color, .. } if *color == ENDED_SCREEN_INK => {
-                Some(rect.width)
-            }
-            _ => None,
-        });
-        assert!(screen.is_some_and(|width| width >= 180.0));
+        // No picture, and «Cerrar transmisión» is not danger.
         assert!(!ended.commands.iter().any(|command| matches!(
             command,
             limn::DrawCommand::FillRect { color, .. } | limn::DrawCommand::FillCornerRect { color, .. }
@@ -6743,6 +6937,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6753,6 +6948,8 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                zoom: None,
+                failed: false,
             }),
             focused: !fullscreen,
             card: false,
@@ -6774,11 +6971,11 @@ mod tests {
             .unwrap_or_else(|| panic!("{id} has no node"));
         assert_eq!(node.role, limn::Role::Button);
         assert!(!node.name.is_empty(), "{id} is named");
-        // No words to press: what is written is its name and the badge that
-        // says it is simulated.
+        // No words to press: what is written is its streamer's name and the
+        // badge that says it is simulated.
         let mut said = texts(&laid);
         said.sort();
-        assert_eq!(said, ["En vivo · simulada", "Pantalla de Persona 2"]);
+        assert_eq!(said, ["En vivo · simulada", "Persona 2"]);
         // Full screen: the way back in place of full screen, an icon too.
         let (_, laid) = frame(preview(&stream(false, true), size, &look), size);
         let shown = controls(&laid);
@@ -6830,6 +7027,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6840,6 +7038,8 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6899,6 +7099,7 @@ mod tests {
             actions: Vec::new(),
             stream: Some(StreamTile {
                 owner: 2,
+                name: "Persona 2".into(),
                 sound: 1_002,
                 silenced: false,
                 windowed: false,
@@ -6909,6 +7110,8 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -6992,6 +7195,9 @@ mod tests {
                 activity: activity.map(str::to_owned),
                 degraded,
                 viewers: Vec::new(),
+                name: "Persona 2".into(),
+                zoom: None,
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -7023,7 +7229,7 @@ mod tests {
             end: 0.0,
             invite: false,
         };
-        // With a game: the header names it; the title stays on the picture's pill.
+        // With a game: the header names it; the picture's pill names the streamer.
         let (_, laid) = frame(
             stage(stage_with(vec![focused(Some("Juego"), false)]), &look),
             size,
@@ -7034,21 +7240,18 @@ mod tests {
                 .any(|text| text == "Persona 2 está jugando a Juego"),
             "{said:?}"
         );
-        assert_eq!(
-            said.iter()
-                .filter(|text| *text == "Pantalla de Persona 2")
-                .count(),
-            1
-        );
-        // Without one: the header says «Pantalla de» them, as the pill does.
+        assert!(!said.iter().any(|text| text == "Pantalla de Persona 2"));
+        assert!(said.iter().any(|text| text == "Persona 2"), "{said:?}");
+        // Without one: the header says «Pantalla de» them; the pill, their name.
         let (_, laid) = frame(stage(stage_with(vec![focused(None, false)]), &look), size);
         let said = texts(&laid);
         assert_eq!(
             said.iter()
                 .filter(|text| *text == "Pantalla de Persona 2")
                 .count(),
-            2
+            1
         );
+        assert!(said.iter().any(|text| text == "Persona 2"), "{said:?}");
         // The warning is there only while the picture is reduced.
         let warned =
             |laid: &limn::Frame| laid.regions.iter().any(|region| region.id == ids::WARNING);
@@ -7099,6 +7302,9 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                name: "Persona 2".into(),
+                zoom: None,
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -7229,6 +7435,9 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers: Vec::new(),
+                name: "Persona 2".into(),
+                zoom: None,
+                failed: false,
             }),
             focused,
             card: false,
@@ -7321,6 +7530,9 @@ mod tests {
                 activity: None,
                 degraded: false,
                 viewers,
+                name: "Persona 2".into(),
+                zoom: None,
+                failed: false,
             }),
             focused: true,
             card: false,
@@ -7406,6 +7618,264 @@ mod tests {
     }
 
     /// Someone called `name`, for the VOICE row.
+    #[test]
+    fn a_stream_focused_names_its_streamer_in_the_pill_and_not_the_screen() {
+        let watched = Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                zoom: None,
+                failed: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let view = Stage {
+            people: vec![person(1, false, false, false)],
+            watching: vec![watched],
+            ..picker_stage(VideoControls::default())
+        };
+        let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
+        // Only the pill says the name alone: the strip shows the other person.
+        assert!(texts(&laid).contains(&"Persona 2".to_owned()));
+    }
+
+    #[test]
+    fn a_zoom_keeps_the_point_under_the_pointer_and_never_bares_the_tile() {
+        let room = Size::new(400.0, 225.0);
+        let picture = fitted((1600, 900), room);
+        assert_eq!((picture.width, picture.height), (400.0, 225.0));
+        // Twice as large, about a point right of the middle: the picture point
+        // under it stays under it, so the middle moves left by as much.
+        let twice = zoom_to(Zoom::FIT, 2.0, (100.0, 0.0), (0.0, 0.0), picture, room);
+        assert_eq!((twice.level, twice.pan), (2.0, (-100.0, 0.0)));
+        // Panned past an edge, it stops where the picture meets the tile's.
+        let edge = zoom_to(twice, 2.0, (0.0, 0.0), (1_000.0, 0.0), picture, room);
+        assert_eq!(edge.pan, (200.0, 0.0));
+        // The levels stop at 1× and 5×, and at the fit there is nothing to pan.
+        assert_eq!(
+            zoom_to(Zoom::FIT, 9.0, (0.0, 0.0), (0.0, 0.0), picture, room).level,
+            ZOOM_MAX
+        );
+        assert_eq!(
+            zoom_to(twice, 0.5, (0.0, 0.0), (0.0, 0.0), picture, room).level,
+            ZOOM_MIN
+        );
+        let fit = zoom_to(Zoom::FIT, 1.0, (50.0, 0.0), (30.0, 0.0), picture, room);
+        assert_eq!(fit.pan, (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_focused_stream_zooms_by_its_buttons_and_says_the_level() {
+        let look = Look::ONYX;
+        let size = Size::new(640.0, 360.0);
+        let stream = |zoom: Option<Zoom>| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1600, 900)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                zoom,
+                failed: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let shown = |zoom| {
+            let (_, laid) = frame(preview(&stream(zoom), size, &look), size);
+            (controls(&laid), texts(&laid), laid)
+        };
+        // At the fit, only «Acercar»; the picture fills the tile.
+        let (fit, _, _) = shown(Some(Zoom::FIT));
+        assert!(fit.contains(&ids::zoom_in(2)) && !fit.contains(&ids::zoom_out(2)));
+        // Zoomed, «Alejar» and the level too.
+        let (zoomed, said, _) = shown(Some(Zoom {
+            level: 2.0,
+            pan: (0.0, 0.0),
+        }));
+        assert!(zoomed.contains(&ids::zoom_out(2)));
+        assert!(said.contains(&"200 %".to_owned()), "{said:?}");
+        // Not a stream that does not take the stage: no zoom.
+        let (none, _, _) = shown(None);
+        assert!(!none.contains(&ids::zoom_in(2)));
+    }
+
+    #[test]
+    fn the_strip_pill_sits_on_the_strips_top_edge_and_says_what_it_does() {
+        let watched = Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                zoom: Some(Zoom::FIT),
+                failed: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let size = Size::new(980.0, 762.0);
+        let at = |tiles_hidden: bool| {
+            let view = Stage {
+                people: vec![person(1, false, false, false)],
+                watching: vec![watched.clone()],
+                tiles_hidden,
+                ..picker_stage(VideoControls::default())
+            };
+            let (_, laid) = frame(stage(view, &Look::ONYX), size);
+            laid
+        };
+        // Shown: the pill is centred on the strip's top edge, half over it.
+        let shown = at(false);
+        let region = |laid: &limn::Frame, id: &str| {
+            laid.regions
+                .iter()
+                .rev()
+                .find(|region| region.id == id)
+                .map(|region| region.rect)
+        };
+        let pill = region(&shown, ids::TILES).expect("the pill is laid out");
+        let strip = region(&shown, &ids::tile(1)).expect("the strip shows the other person");
+        assert!(
+            (pill.y + pill.height / 2.0 - strip.y).abs() <= 1.0,
+            "{pill:?} {strip:?}"
+        );
+        let named = |laid: &limn::Frame| {
+            laid.access
+                .iter()
+                .find(|node| node.id == ids::TILES)
+                .map(|node| node.name.clone())
+        };
+        assert_eq!(named(&shown).as_deref(), Some("Ocultar miembros"));
+        // Hidden: no strip, and the pill says it shows them again.
+        let hidden = at(true);
+        assert!(region(&hidden, &ids::tile(1)).is_none());
+        assert_eq!(named(&hidden).as_deref(), Some("Mostrar miembros"));
+    }
+
+    #[test]
+    fn a_stream_nobody_watches_adds_an_icon_to_add_it_only_with_another_watched() {
+        let look = Look::ONYX;
+        let streamer = Participant {
+            streaming: true,
+            own: false,
+            ..person(2, false, false, false)
+        };
+        let size = Size::new(200.0, 112.5);
+        let alone = frame(watch_tile(&streamer, size, &Ok(()), false, &look), size).1;
+        assert!(!controls(&alone).contains(&ids::watch_add(2)));
+        let beside = frame(watch_tile(&streamer, size, &Ok(()), true, &look), size).1;
+        assert!(controls(&beside).contains(&ids::watch(2)));
+        assert!(controls(&beside).contains(&ids::watch_add(2)));
+        // Under 175 px the primary says «Ver».
+        let narrow = Size::new(120.0, 67.5);
+        let said = texts(&frame(watch_tile(&streamer, narrow, &Ok(()), true, &look), narrow).1);
+        assert!(said.contains(&"Ver".to_owned()), "{said:?}");
+    }
+
+    #[test]
+    fn a_stream_that_failed_says_why_and_offers_the_help_and_closing_only() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let over = |failed: bool, waiting: &str| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: None,
+            fps: None,
+            waiting: waiting.into(),
+            stop: (ids::close_stream(2), "Cerrar transmisión"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: true,
+                failed,
+                idle: false,
+                zoom: None,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused: true,
+            card: false,
+        };
+        let shown = |view: Preview| {
+            let (_, laid) = frame(preview(&view, size, &look), size);
+            (texts(&laid), controls(&laid))
+        };
+        // A failure: its title, the reason, the line to the help and one way out.
+        let (said, ids_shown) = shown(over(true, "Discord no respondió a tiempo."));
+        assert!(said.contains(&"No se pudo iniciar la transmisión :(".to_owned()));
+        assert!(said.contains(&"Discord no respondió a tiempo.".to_owned()));
+        assert!(said.contains(&"¿Tienes problemas con tu transmisión?".to_owned()));
+        assert!(said.contains(&"Déjanos ayudarte.".to_owned()));
+        assert!(ids_shown.contains(&ids::STREAM_HELP.to_owned()));
+        assert!(ids_shown.contains(&ids::close_stream(2)));
+        assert!(!ids_shown.iter().any(|id| id.contains("retry")));
+        // An ended stream: its wording is the title, and no help is offered.
+        let (ended, ended_ids) = shown(over(false, "Esta transmisión ha finalizado."));
+        assert!(ended.contains(&"Esta transmisión ha finalizado.".to_owned()));
+        assert!(!ended.contains(&"Déjanos ayudarte.".to_owned()));
+        assert!(!ended_ids.contains(&ids::STREAM_HELP.to_owned()));
+        assert!(ended_ids.contains(&ids::close_stream(2)));
+    }
+
     fn named(name: &str, user: u64) -> Participant {
         Participant {
             name: name.into(),

@@ -1834,6 +1834,9 @@ pub fn intercept(
     messages::note_press(ui, event);
     messages::note_modifiers(ui, event);
     profile::close_card_on_scroll(ui, event);
+    if let Some(intents) = video::pointer(ui, event) {
+        return Some(intents);
+    }
     let UiEvent::Key { key, ctrl, .. } = event else {
         return None;
     };

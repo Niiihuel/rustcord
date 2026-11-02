@@ -434,9 +434,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Cerrar transmisión", "Close stream"),
     ("No se pudo conectar a la transmisión.", "Couldn't connect to the stream."),
     ("Detenida", "Stopped"),
-    // The stage's pill over the bar.
-    ("Ocultar participantes", "Hide participants"),
-    ("Mostrar participantes", "Show participants"),
     ("{note} · simulada", "{note} · simulated"),
     ("Pantalla completa", "Full screen"),
     ("Ventana aparte", "Separate window"),

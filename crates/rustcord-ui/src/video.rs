@@ -17,7 +17,10 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use rustcord_components::voice::{ids, Preview, ScreenChoice, Thumbnail, VideoControls, NO_VIDEO};
+use limn::{Point, Rect, Size, UiEvent};
+use rustcord_components::voice::{
+    fitted, ids, zoom_to, Preview, ScreenChoice, Thumbnail, VideoControls, Zoom, NO_VIDEO, ZOOM_MIN,
+};
 use rustcord_i18n::{t, tr};
 use rustcord_model::{
     CallPhase, ChannelId, ServerId, ShareKind, StreamPhase, StreamQuality, UserId,
@@ -98,6 +101,15 @@ pub struct Video {
     pub held: bool,
     /// When the pointer last moved over each stream's window of its own.
     pub window_stirred: Vec<(UserId, Instant)>,
+    /// The focused stream's picture zoom, with whose it is; 1× when none.
+    pub zoom: Option<(UserId, Zoom)>,
+    /// The focused stream's tile as the last layout put it.
+    pub tile: Option<(UserId, Rect)>,
+    /// A press on the zoomed picture: where, and the pan it began from.
+    pub grab: Option<(Point, (f32, f32))>,
+    /// The pointer moved since the last press on the stream's tile: its
+    /// release ends a pan, which is no click.
+    pub panned: bool,
 }
 
 /// A stream's picture asked for: when, and how many answers in a row before
@@ -776,14 +788,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         ),
         // Stopped by its owner: it is over for now, and the stage says so.
         StreamPhase::Waiting => (t("Detenida"), t("Esta transmisión ha finalizado.").into()),
-        StreamPhase::Failed(reason) => (
-            t("Sin conexión"),
-            format!(
-                "{} {}",
-                t("No se pudo conectar a la transmisión."),
-                t(reason)
-            ),
-        ),
+        StreamPhase::Failed(reason) => (t("Sin conexión"), t(reason).into()),
         // Over while its owner still streams: never «Terminó».
         StreamPhase::Ended(reason) if streaming => (
             t("Sin conexión"),
@@ -804,13 +809,16 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
         watching.phase,
         StreamPhase::Ended(_) | StreamPhase::Waiting | StreamPhase::Failed(_)
     );
-    let failed = matches!(watching.phase, StreamPhase::Failed(_));
+    // A watch that failed, or ended while its owner still streams, says so.
+    let failed = matches!(watching.phase, StreamPhase::Failed(_))
+        || (streaming && matches!(watching.phase, StreamPhase::Ended(_)));
     let owner = watching.owner;
     // What its tile offers, as the official client's.
     let sound = owner.0 | rustcord_media::mixer::STREAM_SOUND;
     let look = ui.look();
     let tile = rustcord_components::voice::StreamTile {
         owner: owner.0,
+        name: store.display_name(owner, server),
         sound,
         silenced: ui.prefs.voice_volume(sound).1,
         windowed: ui.video.windows.contains(&owner),
@@ -826,6 +834,9 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
             .iter()
             .map(|viewer| crate::voice::participant(ui, store, server, *viewer, &look))
             .collect(),
+        failed,
+        zoom: (ui.video.spotlight == Some(owner) || ui.video.focus == Some(owner))
+            .then(|| zoom_of(ui, owner)),
     };
     let live = ui
         .video
@@ -855,11 +866,7 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
             },
         ),
         note,
-        actions: if failed {
-            vec![(ids::retry_watching(watching.owner.0), t("Reintentar"))]
-        } else {
-            Vec::new()
-        },
+        actions: Vec::new(),
         stream: Some(tile),
         focused: ui.video.spotlight == Some(owner),
         card: false,
@@ -971,6 +978,120 @@ pub(crate) fn hold(ui: &mut Ui, tree: &limn::UiTree) {
         .hovered_region()
         .is_some_and(|region| region == ids::BAR || region.starts_with(ids::STREAM_CONTROLS));
     ui.video.held = on_controls || tree.has_open_popover() || tree.has_keyboard_focus();
+    // The zoom lasts while its stream stays focused; its tile is where the
+    // wheel and the pan act.
+    let focused = ui.video.spotlight.or(ui.video.focus);
+    if ui
+        .video
+        .zoom
+        .is_some_and(|(owner, _)| Some(owner) != focused)
+    {
+        ui.video.zoom = None;
+    }
+    ui.video.tile = focused.and_then(|owner| {
+        tree.frame()
+            .regions
+            .iter()
+            .rev()
+            .find(|region| region.id == ids::stream_tile(owner.0))
+            .map(|region| (owner, region.rect))
+    });
+}
+
+/// The zoom of `owner`'s stream: 1× unless it was zoomed while it took the stage.
+pub(crate) fn zoom_of(ui: &Ui, owner: UserId) -> Zoom {
+    ui.video
+        .zoom
+        .filter(|(shown, _)| *shown == owner)
+        .map_or(Zoom::FIT, |(_, zoom)| zoom)
+}
+
+/// The picture of `owner`'s stream as it fits its tile on the last layout,
+/// and the tile's size; `None` before the tile was laid out.
+fn picture_room(ui: &Ui, owner: UserId) -> Option<(Size, Size)> {
+    let (shown, tile) = ui.video.tile?;
+    if shown != owner {
+        return None;
+    }
+    let room = Size::new(tile.width, tile.height);
+    let frame = ui
+        .video
+        .streams
+        .iter()
+        .find(|(stream, _)| *stream == owner)
+        .and_then(|(_, live)| live.frame());
+    Some((frame.map_or(room, |frame| fitted(frame, room)), room))
+}
+
+/// «Acercar» or «Alejar» on `owner`'s stream, by `step`, about its middle.
+pub(crate) fn zoom_step(ui: &mut Ui, owner: UserId, step: f32) -> Vec<Intent> {
+    if let Some((picture, room)) = picture_room(ui, owner) {
+        let zoom = zoom_of(ui, owner);
+        let next = zoom_to(
+            zoom,
+            zoom.level + step,
+            (0.0, 0.0),
+            (0.0, 0.0),
+            picture,
+            room,
+        );
+        ui.video.zoom = Some((owner, next));
+    }
+    Vec::new()
+}
+
+/// The wheel zooms the focused stream's picture about the pointer, and a
+/// press on it, zoomed, pans it as the pointer moves. The press itself stays
+/// with the tree, so the stream's click still answers a press and release.
+pub(crate) fn pointer(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
+    let (owner, tile) = ui.video.tile?;
+    let middle = Point::new(tile.x + tile.width / 2.0, tile.y + tile.height / 2.0);
+    match *event {
+        UiEvent::Scroll { position, delta_y } if tile.contains(position) => {
+            let (picture, room) = picture_room(ui, owner)?;
+            let zoom = zoom_of(ui, owner);
+            // A wheel step of 100 px is one level, as the official client's.
+            let pivot = (position.x - middle.x, position.y - middle.y);
+            let next = zoom_to(
+                zoom,
+                zoom.level + delta_y / 100.0,
+                pivot,
+                (0.0, 0.0),
+                picture,
+                room,
+            );
+            ui.video.zoom = Some((owner, next));
+            Some(Vec::new())
+        }
+        UiEvent::PointerDown(at) if tile.contains(at) => {
+            ui.video.panned = false;
+            let zoom = zoom_of(ui, owner);
+            if zoom.level > ZOOM_MIN {
+                ui.video.grab = Some((at, zoom.pan));
+            }
+            None
+        }
+        UiEvent::PointerMove(at) => {
+            let (from, pan) = ui.video.grab?;
+            let (dx, dy) = (at.x - from.x, at.y - from.y);
+            if dx.hypot(dy) > 4.0 {
+                ui.video.panned = true;
+            }
+            let (picture, room) = picture_room(ui, owner)?;
+            let zoom = Zoom {
+                pan,
+                ..zoom_of(ui, owner)
+            };
+            let next = zoom_to(zoom, zoom.level, (0.0, 0.0), (dx, dy), picture, room);
+            ui.video.zoom = Some((owner, next));
+            None
+        }
+        UiEvent::PointerUp(_) => {
+            ui.video.grab = None;
+            None
+        }
+        _ => None,
+    }
 }
 
 /// When to paint again for what is over a stream, or a window of its own,
@@ -1096,6 +1217,36 @@ pub fn window_closed(ui: &mut Ui, owner: UserId) {
     ui.video.window_stirred.retain(|(shown, _)| *shown != owner);
 }
 
+/// «Mirar transmisión» on a stream nobody watches: it is watched alone, the
+/// others stop, and it takes the stage.
+pub(crate) fn watch_alone(
+    ui: &mut Ui,
+    store: &mut Store,
+    owner: UserId,
+    now: Instant,
+) -> Vec<Intent> {
+    let mut intents = watch(ui, store, owner, now);
+    // Only once it is watched: a watch that was denied leaves the others be.
+    if store
+        .watching()
+        .iter()
+        .any(|watching| watching.owner == owner)
+    {
+        let others: Vec<UserId> = store
+            .watching()
+            .iter()
+            .map(|watching| watching.owner)
+            .filter(|shown| *shown != owner)
+            .collect();
+        for other in others {
+            intents.extend(stop_watching(ui, store, other));
+        }
+        ui.video.spotlight = Some(owner);
+        ui.video.own_focus = false;
+    }
+    intents
+}
+
 /// «Ver transmisión»: `owner`'s stream in the account's call, besides the
 /// others; past [`MAX_STREAMS`] the one watched longest goes.
 pub(crate) fn watch(ui: &mut Ui, store: &mut Store, owner: UserId, now: Instant) -> Vec<Intent> {
@@ -1111,6 +1262,7 @@ pub(crate) fn watch(ui: &mut Ui, store: &mut Store, owner: UserId, now: Instant)
         return Vec::new();
     }
     // Watched again, it starts over.
+    ui.video.zoom = None;
     let mut intents = stop_watching(ui, store, owner);
     let watched = store.watching();
     if watched.len() >= MAX_STREAMS {

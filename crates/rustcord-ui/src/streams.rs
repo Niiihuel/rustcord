@@ -40,6 +40,10 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
     };
     let open = ui.video.menu.take();
     ui.video.clicked = number(id, "vz:stream:").map(UserId);
+    // The release of a pan over the zoomed picture is no click on the stream.
+    if number(id, "vz:stream:").is_some() && std::mem::take(&mut ui.video.panned) {
+        return Some(Vec::new());
+    }
     if let Some(owner) = number(id, "vz:stream-more:").map(UserId) {
         if open != Some((owner, None)) && watched(store, owner) {
             ui.video.menu = Some((owner, None));
