@@ -19,6 +19,15 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant merged into zbus 6; accesskit and secret-service still need zbus 5" },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names merged into zbus 6; accesskit and secret-service still need zbus 5" },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive merged into zbus 6; accesskit and secret-service still need zbus 5" },
+    # DeepFilterNet pins tract 0.19: its main branch is tied to ndarray 0.15,
+    # and the tract releases with these fixed use 0.16. The NNEF tensor reader
+    # is never reached: DeepFilterNet loads only its ONNX model, built into
+    # the binary, through tract-onnx; nothing from outside is parsed. paste
+    # and anymap2 (tract-linalg's build script) are unmaintained, with no
+    # known flaw. Remove all three once DeepFilterNet moves to a fixed tract.
+    { id = "RUSTSEC-2026-0217", reason = "tract-nnef's NNEF reader; only DeepFilterNet's built-in ONNX model is loaded; blocked upstream" },
+    { id = "RUSTSEC-2024-0436", reason = "paste unmaintained, reached through tract; no known flaw" },
+    { id = "RUSTSEC-2026-0319", reason = "anymap2 unmaintained, in tract-linalg's build script only; no known flaw" },
 ]
 
 [licenses]
@@ -57,6 +66,8 @@ exceptions = [
     { crate = "symphonia-format-riff", allow = ["MPL-2.0"] },
     { crate = "symphonia-metadata", allow = ["MPL-2.0"] },
     { crate = "symphonia-utils-xiph", allow = ["MPL-2.0"] },
+    # Public domain (CC0), reached through DeepFilterNet's config reader.
+    { crate = "tiny-keccak", allow = ["CC0-1.0"] },
     # The fonts egui embeds keep their own licenses, apart from the code's.
     { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
 ]
@@ -80,4 +91,9 @@ unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # limn, Rustcord's interface toolkit, is used from its own repository's branch.
 # cpal is pinned to its upstream WASAPI silent-capture fix until it ships.
-allow-git = ["https://github.com/Niiihuel/limn", "https://github.com/RustAudio/cpal"]
+# DeepFilterNet's real-time inference and model are only in its repository.
+allow-git = [
+    "https://github.com/Niiihuel/limn",
+    "https://github.com/RustAudio/cpal",
+    "https://github.com/Rikorose/DeepFilterNet",
+]

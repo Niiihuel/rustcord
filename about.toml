@@ -38,3 +38,8 @@ ignore-dev-dependencies = true
 # Rustcord's own crates (publish = false) are MIT OR Apache-2.0, in LICENSE-*.
 [private]
 ignore = true
+
+# Public domain (CC0), reached through DeepFilterNet's config reader; accepted
+# for this crate alone, as deny.toml does.
+[tiny-keccak]
+accepted = ["CC0-1.0"]
