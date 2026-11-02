@@ -153,6 +153,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Calidad de transmisión", "Stream quality"),
     ("Invitar", "Invite"),
     ("Invitar a transmisión", "Invite to Stream"),
+    ("Abrir en otra ventana", "Pop Out"),
     ("Silenciado por el servidor", "Server muted"),
     ("Ensordecido por el servidor", "Server deafened"),
     ("Ensordecido", "Deafened"),

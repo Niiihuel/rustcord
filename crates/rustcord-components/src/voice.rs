@@ -208,7 +208,7 @@ pub mod ids {
         format!("vz:fullscreen:{user}")
     }
 
-    /// «Ventana aparte» on `user`'s stream: in a window of its own too.
+    /// «Abrir en otra ventana» on `user`'s stream: in a window of its own too.
     pub fn window(user: u64) -> String {
         format!("vz:window:{user}")
     }
@@ -442,7 +442,7 @@ pub struct StreamTile {
     pub viewers: Vec<Participant>,
 }
 
-/// Rustcord's own glyphs for «Dejar de ver» and «Ventana aparte».
+/// Rustcord's own glyphs for «Dejar de ver» and «Abrir en otra ventana».
 const SCREEN_STOP: &str = crate::glyphs::glyph!("screen-stop");
 const POP_OUT: &str = crate::glyphs::glyph!("pop-out");
 
@@ -802,9 +802,10 @@ fn top_left(view: &Preview, big: bool, look: &Look) -> Element {
 }
 
 /// A stream's controls at its tile's bottom right, as the official
-/// client's: its sound, its own window and full screen while `big`, and
-/// «⋯». In the grid only its sound and «⋯», under the pointer: the sound
-/// stays while silenced, the «⋯» while its menu is open.
+/// client's: «⋯» and, in the grid, its sound under the pointer (kept while
+/// silenced). On the stage the sound, its own window and full screen are on
+/// the bar instead; a stream shown alone in full screen has no bar, so they
+/// stay here.
 fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
     let reveal = |shown: Element, kept: bool, what: &str| {
         if kept || big {
@@ -813,43 +814,36 @@ fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
             shown.reveal_on_hover(format!("{}:{what}", ids::stream_tile(stream.owner)))
         }
     };
-    let (glyph, hint) = if stream.silenced {
-        (Icon::VolumeMuted, t("Activar el sonido"))
-    } else {
-        (Icon::Volume, t("Silenciar"))
-    };
-    let mut buttons = vec![reveal(
-        over_button(ids::local_mute(stream.sound), glyph, hint, OVER, look),
-        stream.silenced,
-        "sound",
-    )];
-    if big {
+    let mut buttons = Vec::new();
+    if !big || stream.fullscreen {
+        let (glyph, hint) = if stream.silenced {
+            (Icon::VolumeMuted, t("Activar el sonido"))
+        } else {
+            (Icon::Volume, t("Silenciar"))
+        };
+        buttons.push(reveal(
+            over_button(ids::local_mute(stream.sound), glyph, hint, OVER, look),
+            stream.silenced,
+            "sound",
+        ));
+    }
+    if stream.fullscreen {
         if !stream.windowed {
             buttons.push(over_button(
                 ids::window(stream.owner),
                 Icon::Custom(POP_OUT),
-                t("Ventana aparte"),
+                t("Abrir en otra ventana"),
                 OVER,
                 look,
             ));
         }
-        buttons.push(if stream.fullscreen {
-            over_button(
-                ids::FULLSCREEN_EXIT,
-                Icon::Collapse,
-                t("Salir de pantalla completa"),
-                OVER,
-                look,
-            )
-        } else {
-            over_button(
-                ids::fullscreen(stream.owner),
-                Icon::Fullscreen,
-                t("Pantalla completa"),
-                OVER,
-                look,
-            )
-        });
+        buttons.push(over_button(
+            ids::FULLSCREEN_EXIT,
+            Icon::Collapse,
+            t("Salir de pantalla completa"),
+            OVER,
+            look,
+        ));
     }
     let open = stream.menu.is_some();
     let more = DropdownMenu::new(
@@ -3056,6 +3050,16 @@ fn bar(view: &Stage, look: &Look) -> Element {
         horizontal_padding: 8.0,
         inner_spacing: 6.0,
     };
+    // The ghost icons at the bar's ends: the invitation, the stream's controls.
+    let ghost = |id: String, glyph: Icon, hint: &str| {
+        IconButton::new(id, glyph, look.palette())
+            .variant(ButtonVariant::Ghost)
+            .sizing(sizing)
+            .width(BAR_BUTTON)
+            .tooltip(hint)
+            .render()
+            .centered_y()
+    };
     let toggle = |id: &str, on: Icon, off: Icon, off_now: bool, hint: (&str, &str)| {
         let (fill, ink) = if off_now {
             (Look::alpha(look.danger, 34), look.danger)
@@ -3230,19 +3234,52 @@ fn bar(view: &Stage, look: &Look) -> Element {
         } else {
             t("Invitar")
         };
-        IconButton::new(ids::INVITE, Icon::Invite, look.palette())
-            .variant(ButtonVariant::Ghost)
-            .sizing(sizing)
-            .width(BAR_BUTTON)
-            .tooltip(hint)
-            .render()
-            .centered_y()
-            .hover_region_id(ids::BAR)
+        ghost(ids::INVITE.to_owned(), Icon::Invite, hint).hover_region_id(ids::BAR)
     });
     let left = Element::row(invite.into_iter().collect()).size(Some(BAR_SIDE), Some(BAR_HEIGHT));
-    // Centered in the stage. Its own window and full screen are over the
-    // stream focused, with its other controls. The pointer on it keeps
-    // it from hiding.
+    // The stream focused: its sound, its own window and full screen, at the
+    // right end as the official client's bar has them.
+    let right = match focused {
+        Some(stream) => {
+            let (glyph, hint) = if stream.silenced {
+                (Icon::VolumeMuted, t("Activar el sonido"))
+            } else {
+                (Icon::Volume, t("Silenciar"))
+            };
+            let mut buttons = vec![ghost(ids::local_mute(stream.sound), glyph, hint)];
+            if !stream.windowed {
+                buttons.push(ghost(
+                    ids::window(stream.owner),
+                    Icon::Custom(POP_OUT),
+                    t("Abrir en otra ventana"),
+                ));
+            }
+            buttons.push(if stream.fullscreen {
+                ghost(
+                    ids::FULLSCREEN_EXIT.to_owned(),
+                    Icon::Collapse,
+                    t("Salir de pantalla completa"),
+                )
+            } else {
+                ghost(
+                    ids::fullscreen(stream.owner),
+                    Icon::Fullscreen,
+                    t("Pantalla completa"),
+                )
+            });
+            Element::row(vec![
+                Element::spacer().flex(1.0),
+                Element::row(buttons)
+                    .gap(4.0)
+                    .centered_y()
+                    .hover_region_id(ids::BAR),
+            ])
+            .size(Some(BAR_SIDE), Some(BAR_HEIGHT))
+        }
+        None => Element::spacer().size(Some(BAR_SIDE), Some(BAR_HEIGHT)),
+    };
+    // Centered in the stage: the stream's controls at its right end keep the
+    // pointer on the bar, as its overlay's did.
     Element::row(vec![
         left,
         Element::spacer().flex(1.0),
@@ -3254,7 +3291,7 @@ fn bar(view: &Stage, look: &Look) -> Element {
         .gap(BAR_GAP)
         .hover_region_id(ids::BAR),
         Element::spacer().flex(1.0),
-        Element::spacer().size(Some(BAR_SIDE), Some(BAR_HEIGHT)),
+        right,
     ])
     .size(None, Some(BAR_HEIGHT))
 }
@@ -5405,8 +5442,8 @@ mod tests {
         // The streamer focused keeps their tile; the strip's offer no watching.
         assert!(ids.contains(&ids::tile(2)) && !ids.contains(&ids::watch(3)));
         // The bar lets go of the one focused in place of hanging up; its
-        // own window and full screen are icons over it at its bottom right,
-        // after its sound and before its «⋯», as the official client's.
+        // sound, its own window and full screen are icons on the bar at its
+        // right end, as the official client's.
         assert!(ids.contains(&ids::stop_watching(2)) && !ids.contains(&ids::stop_watching(3)));
         assert!(!ids.contains(&ids::LEAVE.to_owned()));
         assert!(ids.contains(&ids::fullscreen(2)) && !ids.contains(&ids::fullscreen(3)));
@@ -5424,10 +5461,11 @@ mod tests {
             at(&focused, &ids::fullscreen(2)),
             at(&focused, &ids::stream_more(2)),
         );
-        assert!(sound.x < window.x && window.x < full.x && full.x < more.x);
+        assert!(sound.x < window.x && window.x < full.x);
+        assert!(sound.x > big.x + big.width / 2.0 && sound.y > big.y + big.height);
         assert!(more.x + more.width <= big.x + big.width + 0.5);
         assert!(more.y > big.y + big.height / 2.0, "at the bottom");
-        assert_eq!((full.width, full.height), (OVER_BUTTON, OVER_BUTTON));
+        assert_eq!((full.width, full.height), (BAR_BUTTON, BAR_BUTTON));
         // Already in a window of its own: only full screen.
         let mut windowed = stream(2, true);
         windowed.stream.as_mut().unwrap().windowed = true;
@@ -6596,23 +6634,21 @@ mod tests {
         };
         let look = Look::ONYX;
         let size = Size::new(960.0, 540.0);
+        // Over the stage its sound, window and full screen are on the bar: here
+        // only «⋯», named and an icon.
         let (_, laid) = frame(preview(&stream(false, false), size, &look), size);
         let shown = controls(&laid);
-        for id in [
-            ids::local_mute(1_002),
-            ids::window(2),
-            ids::fullscreen(2),
-            ids::stream_more(2),
-        ] {
-            assert!(shown.contains(&id), "{id}");
-            let node = laid
-                .access
-                .iter()
-                .find(|node| node.id == id)
-                .unwrap_or_else(|| panic!("{id} has no node"));
-            assert_eq!(node.role, limn::Role::Button);
-            assert!(!node.name.is_empty(), "{id} is named");
-        }
+        assert!(!shown.contains(&ids::fullscreen(2)) && !shown.contains(&ids::window(2)));
+        assert!(!shown.contains(&ids::local_mute(1_002)));
+        let id = ids::stream_more(2);
+        assert!(shown.contains(&id), "{id}");
+        let node = laid
+            .access
+            .iter()
+            .find(|node| node.id == id)
+            .unwrap_or_else(|| panic!("{id} has no node"));
+        assert_eq!(node.role, limn::Role::Button);
+        assert!(!node.name.is_empty(), "{id} is named");
         // No words to press: what is written is its name and the badge that
         // says it is simulated.
         let mut said = texts(&laid);
@@ -7041,6 +7077,98 @@ mod tests {
                 .x
         };
         assert_eq!(mute(&wide), mute(&laid(false, 980.0)));
+    }
+
+    #[test]
+    fn the_stream_focused_keeps_its_sound_window_and_full_screen_on_the_bar() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let stream = |focused: bool| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: None,
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen: false,
+                over: false,
+                idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+            }),
+            focused,
+            card: false,
+        };
+        let stage_with = |watching: Vec<Preview>| Stage {
+            channel: "General".into(),
+            phase: Some(CallPhase::Connected),
+            people: vec![
+                person(1, false, false, false),
+                person(2, false, false, false),
+            ],
+            muted: false,
+            deafened: false,
+            simulated: false,
+            join_denied: None,
+            chat: Err("Sin chat".into()),
+            size,
+            card: None,
+            tile_menu: None,
+            more_open: false,
+            video: VideoControls::default(),
+            previews: Vec::new(),
+            watch: Ok(()),
+            watching,
+            tiles_hidden: false,
+            private: None,
+            quick: None,
+            camera_panel: None,
+            end: 0.0,
+            invite: false,
+        };
+        let mute = |laid: &limn::Frame| {
+            laid.regions
+                .iter()
+                .find(|region| region.id == ids::MUTE)
+                .unwrap()
+                .rect
+                .x
+        };
+        // Focused: the bar holds the sound, the window and full screen, once
+        // each; the stream's overlay keeps only its «⋯».
+        let (_, focused) = frame(stage(stage_with(vec![stream(true)]), &look), size);
+        let shown = controls(&focused);
+        let count = |id: String| shown.iter().filter(|shown| **shown == id).count();
+        assert_eq!(count(ids::local_mute(1_002)), 1);
+        assert_eq!(count(ids::window(2)), 1);
+        assert_eq!(count(ids::fullscreen(2)), 1);
+        assert_eq!(count(ids::stream_more(2)), 1);
+        // Not focused, nothing of that is on the bar, and the groups did not move.
+        let (_, grid) = frame(stage(stage_with(vec![stream(false)]), &look), size);
+        let shown = controls(&grid);
+        assert!(!shown.contains(&ids::fullscreen(2)) && !shown.contains(&ids::window(2)));
+        assert_eq!(mute(&focused), mute(&grid));
+        // Shown alone in full screen there is no bar: the way out stays over it.
+        let alone = Preview {
+            stream: Some(StreamTile {
+                fullscreen: true,
+                ..stream(false).stream.unwrap()
+            }),
+            ..stream(false)
+        };
+        let (_, laid) = frame(preview(&alone, size, &look), size);
+        let shown = controls(&laid);
+        assert!(shown.contains(&ids::FULLSCREEN_EXIT.to_owned()));
+        assert!(shown.contains(&ids::window(2)));
     }
 
     /// Someone called `name`, for the VOICE row.
