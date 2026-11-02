@@ -17,11 +17,45 @@ use eframe::egui;
 use limn::{Key, Modifiers, OtherButton};
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::UserId;
+#[cfg(target_os = "linux")]
+use rustcord_platform::hyprland::{GlobalBind, GlobalBinds};
 use rustcord_platform::shortcuts::{GlobalShortcuts, Shortcut, ShortcutEvent};
+
+/// Hyprland runs only on Linux; elsewhere no bind is ever made.
+#[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
+struct GlobalBind {
+    keys: String,
+    shortcut: String,
+    release: bool,
+}
+#[cfg(not(target_os = "linux"))]
+struct GlobalBinds;
+
+/// Hyprland's binds for `binds`, through its command socket.
+fn bind_keys(binds: Vec<GlobalBind>) -> Option<GlobalBinds> {
+    // Tests never reach the compositor the developer runs.
+    if binds.is_empty() || cfg!(test) {
+        return None;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        rustcord_platform::hyprland::socket().and_then(|socket| {
+            GlobalBinds::start(socket, rustcord_platform::shortcuts::APP_ID, binds)
+        })
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        drop(binds);
+        None
+    }
+}
 use rustcord_ui::desktop::Shortcut as VoiceKey;
 use rustcord_ui::{GlobalKeys, Ui};
 
 const ID: &str = "push-to-talk";
+/// After a held shortcut's id, the one Hyprland fires when its key is let go.
+const RELEASE: &str = "-release";
 
 /// A key as the settings keep it: its modifiers, then its name, the one
 /// egui gave it before limn knew every key, so older settings still read.
@@ -168,10 +202,21 @@ pub fn global_allowed(binding: &str) -> bool {
             .is_some_and(|(key, modifiers)| modifiers != Modifiers::default() || function_key(key))
 }
 
-/// Hyprland assigns no key by itself: this is the line to add to its config
-/// for `binding`, in Lua (`lua`) or in the classic form. `None` without a trigger.
-pub fn hyprland_line(binding: &str, lua: bool) -> Option<String> {
-    let trigger = match mouse(binding) {
+/// `binding` as Hyprland's Lua binds name keys: `CTRL + SHIFT + t`, `mouse:275`.
+fn lua_keys(binding: &str) -> Option<String> {
+    let trigger = hyprland_trigger(binding)?;
+    let (mods, key) = trigger.rsplit_once('+').unwrap_or(("", trigger.as_str()));
+    Some(if mods.is_empty() {
+        key.to_owned()
+    } else {
+        format!("{} + {key}", mods.replace('+', " + "))
+    })
+}
+
+/// The key Hyprland binds for `binding`: the freedesktop trigger, or a
+/// mouse button's input code.
+fn hyprland_trigger(binding: &str) -> Option<String> {
+    Some(match mouse(binding) {
         // The Linux input codes: BTN_MIDDLE, BTN_SIDE and BTN_EXTRA.
         Some(button) => format!(
             "mouse:{}",
@@ -182,14 +227,16 @@ pub fn hyprland_line(binding: &str, lua: bool) -> Option<String> {
             }
         ),
         None => trigger(binding)?,
-    };
+    })
+}
+
+/// Hyprland assigns no key by itself: this is the line to add to its config
+/// for `binding`, in Lua (`lua`) or in the classic form. `None` without a trigger.
+pub fn hyprland_line(binding: &str, lua: bool) -> Option<String> {
+    let trigger = hyprland_trigger(binding)?;
     let (mods, key) = trigger.rsplit_once('+').unwrap_or(("", trigger.as_str()));
     Some(if lua {
-        let combo = if mods.is_empty() {
-            key.to_owned()
-        } else {
-            format!("{} + {key}", mods.replace('+', " + "))
-        };
+        let combo = lua_keys(binding)?;
         format!(r#"hl.bind("{combo}", hl.dsp.global("rustcord:{ID}"))"#)
     } else {
         format!(
@@ -200,7 +247,7 @@ pub fn hyprland_line(binding: &str, lua: bool) -> Option<String> {
 }
 
 /// Whether the session runs under Hyprland, by its environment.
-fn hyprland() -> bool {
+pub fn hyprland() -> bool {
     std::env::var_os("HYPRLAND_INSTANCE_SIGNATURE").is_some()
         || std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktop| {
             desktop
@@ -210,7 +257,7 @@ fn hyprland() -> bool {
 }
 
 /// Whether the person's Hyprland config is Lua (read only).
-fn hyprland_lua() -> bool {
+pub fn hyprland_lua() -> bool {
     std::env::var_os("HOME").is_some_and(|home| {
         std::path::Path::new(&home)
             .join(".config/hypr/hyprland.lua")
@@ -233,9 +280,27 @@ pub struct GlobalPushToTalk {
     bound: HashSet<String>,
     /// Mute and deafen pressed since last taken.
     toggles: Vec<VoiceKey>,
+    /// Hand the keys to the shortcuts through Hyprland's binds, which a Lua
+    /// config can take while Rustcord runs: set where Hyprland runs one.
+    hyprland_binds: bool,
+    binds: Option<GlobalBinds>,
+}
+
+/// The shortcuts held down, not pressed once: their key's release counts.
+fn held_shortcut(id: &str) -> bool {
+    id == ID || id == VoiceKey::PushToMute.key()
 }
 
 impl GlobalPushToTalk {
+    /// A session that hands the keys through Hyprland's binds when
+    /// `hyprland_binds`.
+    pub fn new(hyprland_binds: bool) -> Self {
+        Self {
+            hyprland_binds,
+            ..Self::default()
+        }
+    }
+
     pub fn held(&self) -> bool {
         self.held.contains(ID)
     }
@@ -286,34 +351,64 @@ impl GlobalPushToTalk {
         let wanted = account
             .filter(|_| !keys.is_empty())
             .map(|account| (account, keys));
+        // Bound by Rustcord itself, the line is not needed.
         ui.audio.hyprland_bind = key
-            .filter(|_| hyprland())
+            .filter(|_| hyprland() && !self.hyprland_binds)
             .and_then(|key| hyprland_line(key, hyprland_lua()));
         if wanted != self.wanted {
             // Dropping the old session closes it and releases its keys.
             self.session = None;
+            self.binds = None;
             self.held.clear();
             self.bound.clear();
             self.wanted = wanted;
             if let Some((_, keys)) = &self.wanted {
-                self.session = start(
-                    keys.iter()
-                        .map(|(id, key)| Shortcut {
-                            id: id.clone(),
-                            description: match id.as_str() {
-                                ID => t("Pulsar para hablar en Rustcord").into(),
-                                id => tr!(
-                                    "{shortcut} en Rustcord",
-                                    shortcut = VoiceKey::GLOBAL
-                                        .into_iter()
-                                        .find(|shortcut| shortcut.key() == id)
-                                        .map_or(t("Atajo"), |shortcut| t(shortcut.label()))
-                                ),
-                            },
-                            preferred_trigger: trigger(key),
-                        })
-                        .collect(),
-                );
+                let description = |id: &str| match id {
+                    ID => t("Pulsar para hablar en Rustcord").into(),
+                    id => tr!(
+                        "{shortcut} en Rustcord",
+                        shortcut = VoiceKey::GLOBAL
+                            .into_iter()
+                            .find(|shortcut| shortcut.key() == id)
+                            .map_or(t("Atajo"), |shortcut| t(shortcut.label()))
+                    ),
+                };
+                let mut shortcuts: Vec<Shortcut> = keys
+                    .iter()
+                    .map(|(id, key)| Shortcut {
+                        id: id.clone(),
+                        description: description(id),
+                        preferred_trigger: trigger(key),
+                    })
+                    .collect();
+                let mut binds = Vec::new();
+                if self.hyprland_binds {
+                    for (id, key) in keys {
+                        let Some(keys) = lua_keys(key) else { continue };
+                        binds.push(GlobalBind {
+                            keys: keys.clone(),
+                            shortcut: id.clone(),
+                            release: false,
+                        });
+                        // Whether Hyprland tells the portal of a release is
+                        // its own business: a bind of the release says it.
+                        if held_shortcut(id) {
+                            let release = format!("{id}{RELEASE}");
+                            shortcuts.push(Shortcut {
+                                id: release.clone(),
+                                description: description(id),
+                                preferred_trigger: None,
+                            });
+                            binds.push(GlobalBind {
+                                keys,
+                                shortcut: release,
+                                release: true,
+                            });
+                        }
+                    }
+                }
+                self.session = start(shortcuts);
+                self.binds = bind_keys(binds);
                 ui.audio.global_keys = GlobalKeys::Waiting;
             }
         }
@@ -358,6 +453,9 @@ impl GlobalPushToTalk {
                     ui.audio.global_keys = GlobalKeys::Bound(trigger);
                 }
             }
+            ShortcutEvent::Pressed(id) if id.ends_with(RELEASE) => {
+                self.held.remove(id.trim_end_matches(RELEASE));
+            }
             ShortcutEvent::Pressed(id) => {
                 // Desktop: mute and deafen act once per press.
                 if let Some(toggle) = [VoiceKey::Mute, VoiceKey::Deafen]
@@ -380,6 +478,7 @@ impl GlobalPushToTalk {
             ShortcutEvent::Ended(reason) => {
                 // Keep `wanted`: the same keys are not asked again until they change.
                 self.session = None;
+                self.binds = None;
                 self.held.clear();
                 self.bound.clear();
                 ui.audio.global_keys = GlobalKeys::Unavailable(reason.to_string());
@@ -546,6 +645,37 @@ mod tests {
             ShortcutEvent::Bound(vec![("mute".into(), "Ctrl+M".into())]),
         );
         assert!(matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)));
+    }
+
+    #[test]
+    fn under_hyprland_a_held_key_is_let_go_by_its_release_shortcut_too() {
+        let mut global = GlobalPushToTalk::new(true);
+        let mut ui = ptt("V");
+        ui.prefs.mute_key = Some("Ctrl+Shift+M".into());
+        let mut asked = Vec::new();
+        global.sync(&mut ui, Some(UserId(1)), true, |shortcuts| {
+            asked = shortcuts;
+            None
+        });
+        let ids: Vec<&str> = asked.iter().map(|shortcut| shortcut.id.as_str()).collect();
+        // Mute acts once per press: no release of its own.
+        assert_eq!(ids, [ID, "mute", "push-to-talk-release"]);
+        assert_eq!(ui.audio.hyprland_bind, None, "no line to copy");
+        global.apply(&mut ui, ShortcutEvent::Pressed(ID.into()));
+        assert!(global.held());
+        global.apply(
+            &mut ui,
+            ShortcutEvent::Pressed("push-to-talk-release".into()),
+        );
+        assert!(!global.held());
+        // The portal's own release, if it comes too, changes nothing.
+        global.apply(&mut ui, ShortcutEvent::Released(ID.into()));
+        assert!(!global.held());
+        assert_eq!(
+            lua_keys("Ctrl+Shift+T").as_deref(),
+            Some("CTRL + SHIFT + t")
+        );
+        assert_eq!(lua_keys("MOUSE4").as_deref(), Some("mouse:275"));
     }
 
     fn ptt(key: &str) -> Ui {
