@@ -244,13 +244,13 @@ fn context_scope_survives_dismissing_highlight_and_explains_a_latest_preview() {
     assert!(host
         .painted()
         .iter()
-        .any(|text| text.contains("Ventana de contexto del proveedor")));
+        .any(|text| text.contains("Estás viendo mensajes antiguos")));
     host.key(Key::Escape, false, false);
     assert!(host.ui.context_navigation.is_none());
     assert!(host
         .painted()
         .iter()
-        .any(|text| text.contains("Ventana de contexto del proveedor")));
+        .any(|text| text.contains("Estás viendo mensajes antiguos")));
     let applied = host.store.apply_cached(channel, vec![found]);
     let intents = on_applied(&mut host.ui, &mut host.store, &applied, host.now);
     host.run(intents);

@@ -109,12 +109,16 @@ pub fn channel_name(name: &str) -> String {
 /// The server's menu on `anchor`, its entries as the channel menus draw them
 /// (groups apart by a line, submenus, checks), while `open`.
 pub fn menu(anchor: Element, entries: Vec<Entry>, open: bool, look: &Look) -> Element {
+    // As wide as its longest label, so «Ajustes de notificaciones» is not
+    // cut, but within the channel column under the server's name.
+    let width =
+        crate::channel_menu::fit_width(&entries).clamp(MENU_WIDTH, crate::sidebar::WIDTH - 16.0);
     let entries = dropdown_entries(entries, look);
     let count = entries.len();
     DropdownMenu::new(anchor, entries, open, ids::DISMISS, look.menu_palette())
         .sizing(SelectorSizing {
-            preferred_width: MENU_WIDTH,
-            min_width: MENU_WIDTH,
+            preferred_width: width,
+            min_width: width,
             row_height: 38.0,
             // An item that cannot be used says why on a second line.
             detail_row_height: 50.0,
@@ -127,7 +131,7 @@ pub fn menu(anchor: Element, entries: Vec<Entry>, open: bool, look: &Look) -> El
             max_visible_items: count,
             ..SelectorSizing::COMPACT
         })
-        .width(MENU_WIDTH)
+        .width(width)
         .render()
 }
 

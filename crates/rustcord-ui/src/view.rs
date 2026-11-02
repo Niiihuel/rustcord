@@ -701,7 +701,7 @@ fn conversation(
                 Some(t("Contexto guardado en este equipo · puede haber huecos"))
             }
             Some(rustcord_model::HistorySource::Provider) => {
-                Some(t("Ventana de contexto del proveedor"))
+                Some(t("Estás viendo mensajes antiguos"))
             }
             None if !timeline.latest && !timeline.is_empty() => Some(if context.loading_latest {
                 t("Actualizando recientes…")

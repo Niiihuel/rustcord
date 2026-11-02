@@ -35,7 +35,7 @@ pub(super) const ENTRIES: super::Entries = &[
         "Contexto guardado en este equipo · puede haber huecos",
         "Context saved on this device · there may be gaps",
     ),
-    ("Ventana de contexto del proveedor", "The provider's context window"),
+    ("Estás viendo mensajes antiguos", "You're viewing older messages"),
     ("Actualizando recientes…", "Updating recent messages…"),
     ("No se pudo cargar el historial.", "Couldn't load the history."),
     (

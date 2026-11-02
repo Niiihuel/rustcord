@@ -177,7 +177,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Reconectando (intento {attempt})…", "Reconnecting (attempt {attempt})…"),
     (
         "Llamada simulada: no se transmite audio",
-        "Simulated call: no audio is carried",
+        "Simulated call: no audio is sent",
     ),
     ("Ocultar chat", "Hide chat"),
     ("Mostrar chat", "Show chat"),
