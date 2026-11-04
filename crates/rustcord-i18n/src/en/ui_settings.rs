@@ -262,7 +262,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Escucharte", "Hear yourself"),
     ("Aislamiento de voz", "Voice isolation"),
     ("Estudio", "Studio"),
-    ("Personalizado", "Custom"),
     ("Supresión de ruido", "Noise suppression"),
     (
         "Quita el ruido de fondo. Lo eliges tú.",

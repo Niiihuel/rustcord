@@ -7,9 +7,9 @@
 //! here and there is the same choice.
 
 use limn::{
-    Button, ButtonVariant, Component, DropdownMenu, DropdownMenuEntry, DropdownMenuItem,
-    DropdownOption, Element, FontFamily, Icon, ScrollArea, Select, Size, Slider, SurfaceFit,
-    Tooltip, TooltipSpec,
+    Button, ButtonVariant, Color, Component, DropdownMenu, DropdownMenuEntry, DropdownMenuItem,
+    DropdownOption, Element, FontFamily, Icon, ScrollArea, Select, SelectorSizing, Size, Slider,
+    SurfaceFit, Tooltip, TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
 
@@ -35,6 +35,14 @@ const RED: f32 = 0.9;
 /// The slider's track and the value beside it.
 const SLIDER_HEIGHT: f32 = 28.0;
 const VALUE_WIDTH: f32 = 52.0;
+/// Discord's «Nivel de entrada»: pills 4 wide every 8, 16 high, centered in
+/// a 28 px box; lit, each takes its place on a ramp from `--yellow-260` to
+/// `--green-360` across the whole meter.
+const PILL: f32 = 4.0;
+const PILL_PITCH: f32 = 8.0;
+const PILL_HEIGHT: f32 = 16.0;
+const PILLS_HEIGHT: f32 = 28.0;
+const RAMP: (Color, Color) = (Color::rgb(255, 191, 74), Color::rgb(61, 158, 96));
 
 /// The actions of the panel; the rest are the voice page's.
 pub mod ids {
@@ -272,6 +280,54 @@ pub fn level_meter(
         )
 }
 
+/// How many of `count` pills `level` (0 to 1) lights: whole pills, as
+/// Discord's meter moves by whole pills.
+pub fn lit_pills(level: Option<f32>, count: usize) -> usize {
+    let level = level.filter(|it| !it.is_nan()).unwrap_or(0.0);
+    (level.clamp(0.0, 1.0) * count as f32).round() as usize
+}
+
+/// The microphone's level as Discord's menu shows it: a row of pills that
+/// light from the left, yellow shading to green, the rest grey.
+pub fn input_meter(id: &str, level: Option<f32>, width: f32, look: &Look) -> Element {
+    let count = ((width + PILL_PITCH - PILL) / PILL_PITCH).floor().max(1.0) as usize;
+    let lit = lit_pills(level, count);
+    // Discord's #36373e on its menu, from the text so it holds on every theme.
+    let unlit = Look::alpha(look.text, 46);
+    let (start, end) = RAMP;
+    let pills = (0..count)
+        .map(|index| {
+            let color = if index < lit {
+                let at = ((index as f32 * PILL_PITCH + PILL / 2.0) / width).clamp(0.0, 1.0);
+                let mix =
+                    |from: u8, to: u8| (from as f32 + (to as f32 - from as f32) * at).round() as u8;
+                Color::rgb(
+                    mix(start.r, end.r),
+                    mix(start.g, end.g),
+                    mix(start.b, end.b),
+                )
+            } else {
+                unlit
+            };
+            Element::panel(Element::spacer())
+                .background(color)
+                .radius(PILL / 2.0)
+                .size(Some(PILL), Some(PILL_HEIGHT))
+        })
+        .collect();
+    Element::row(pills)
+        .gap(PILL_PITCH - PILL)
+        .size(Some(width), Some(PILL_HEIGHT))
+        .centered_y()
+        .size(Some(width), Some(PILLS_HEIGHT))
+        .accessible(
+            limn::Access::new(limn::Role::ProgressIndicator)
+                .id(id)
+                .name(t("Nivel de entrada"))
+                .value(lit as f32 / count as f32),
+        )
+}
+
 fn label(value: &str, look: &Look) -> Element {
     strong_line(value, 12.0, look.muted)
 }
@@ -289,7 +345,7 @@ pub fn volume_note(look: &Look) -> Element {
 pub const PROFILES: [(&str, &str); 3] = [
     ("voice-isolation", es("Aislamiento de voz")),
     ("studio", es("Estudio")),
-    ("custom", es("Personalizado")),
+    ("custom", es("Personalizar")),
 ];
 
 /// The menu of the arrow beside the microphone or the headphones, as
@@ -312,16 +368,19 @@ pub struct AudioMenu {
     pub push_to_talk: Option<bool>,
 }
 
-/// The menu's width.
-pub const MENU_WIDTH: f32 = 240.0;
+/// The menu's width, Discord's.
+pub const MENU_WIDTH: f32 = 222.0;
 // What limn's menu keeps around a custom row: its inset and a row's sides.
-const MENU_SIDES: f32 = 2.0 * (4.0 + 8.0);
+const MENU_SIDES: f32 = 2.0 * (crate::look::MENU_METRICS.inset + 8.0);
 
-/// A choice of a list beside the menu: a radio item, its long name cut and
-/// whole in its hint.
-fn radio(id: String, name: &str, chosen: bool) -> DropdownMenuEntry {
+/// A choice of a list beside the menu: a radio item with the list's glyph,
+/// as Discord's, its long name cut and whole in its hint.
+fn radio(id: String, name: &str, glyph: Icon, chosen: bool) -> DropdownMenuEntry {
     let shown = short_name(name);
-    let item = DropdownMenuItem::new(id, &shown).radio(chosen).truncate();
+    let item = DropdownMenuItem::new(id, &shown)
+        .icon(glyph)
+        .radio(chosen)
+        .truncate();
     DropdownMenuEntry::Item(if shown == name {
         item
     } else {
@@ -378,12 +437,14 @@ pub fn audio_menu(view: &AudioMenu, look: &Look) -> Element {
             let mut choices = vec![radio(
                 format!("us:{}-default", list.name),
                 t("Predeterminado del sistema"),
+                list.glyph,
                 list.chosen.is_none(),
             )];
             choices.extend(devices.iter().take(MAX_DEVICES).map(|device| {
                 radio(
                     format!("us:{}={}", list.name, device.id),
                     &device.name,
+                    list.glyph,
                     list.chosen.as_deref() == Some(device.id.as_str()),
                 )
             }));
@@ -399,7 +460,7 @@ pub fn audio_menu(view: &AudioMenu, look: &Look) -> Element {
         let label = PROFILES
             .iter()
             .find(|(key, _)| *key == profile)
-            .map_or(t("Personalizado"), |(_, label)| t(label));
+            .map_or(t("Personalizar"), |(_, label)| t(label));
         entries.push(DropdownMenuEntry::Item(
             DropdownMenuItem::new("qv:profile", t("Perfil de entrada"))
                 .description(label)
@@ -418,15 +479,21 @@ pub fn audio_menu(view: &AudioMenu, look: &Look) -> Element {
     }
     let width = MENU_WIDTH - MENU_SIDES;
     entries.push(DropdownMenuEntry::Separator);
+    // Discord's: the track across the row, no value beside it.
+    let stops = (view.most * 100.0).round() as usize + 1;
     entries.push(menu_row(
         volume,
-        percent_slider(volume_id, volume, view.volume, view.most, width, look),
+        crate::user_settings::slider(volume_id, view.volume / view.most, look)
+            .steps(stops)
+            .width(width)
+            .accessibility_label(volume)
+            .render(),
         look,
     ));
     if let Some(level) = view.level {
         entries.push(menu_row(
             t("Nivel de entrada"),
-            level_meter("qv:level", level, None, width, look),
+            input_meter("qv:level", level, width, look),
             look,
         ));
     }
@@ -442,9 +509,10 @@ pub fn audio_menu(view: &AudioMenu, look: &Look) -> Element {
         ));
     }
     entries.push(DropdownMenuEntry::Item(
-        // shortcut: Discord puts a gear at the row's end; limn's items take an
-        // icon only at their start, which would push every label right. Add
-        // it once limn's menu items take a trailing icon.
+        // shortcut: Discord puts a gear before this label alone; a limn menu
+        // gives every row an icon's slot once one row has an icon, which would
+        // push the other labels right. Add it once limn's items can keep the
+        // slot to themselves.
         DropdownMenuItem::new(ids::SETTINGS, t("Ajustes de voz")),
     ));
     // Inline: the arrow's popover places it and closes it.
@@ -457,6 +525,13 @@ pub fn audio_menu(view: &AudioMenu, look: &Look) -> Element {
     )
     .context_menu_style()
     .context_metrics(crate::look::MENU_METRICS)
+    // Discord's rows with a hint under them: 52 high, their chevrons 20.
+    .sizing(SelectorSizing {
+        detail_row_height: 52.0,
+        icon_size: 20.0,
+        max_visible_items: usize::MAX,
+        ..SelectorSizing::COMPACT
+    })
     .width(MENU_WIDTH)
     .inline(true)
     .render()
@@ -658,6 +733,49 @@ mod tests {
     }
 
     #[test]
+    fn the_input_level_lights_whole_pills_from_yellow_to_green() {
+        assert_eq!(lit_pills(None, 24), 0);
+        assert_eq!(lit_pills(Some(f32::NAN), 24), 0);
+        assert_eq!(lit_pills(Some(0.6), 24), 14);
+        assert_eq!(lit_pills(Some(3.0), 24), 24);
+        let look = Look::ONYX;
+        let width = MENU_WIDTH - MENU_SIDES;
+        let (_, laid) = frame(
+            input_meter("qv:level", Some(0.6), width, &look),
+            Size::new(width, PILLS_HEIGHT),
+        );
+        let pills: Vec<(limn::Rect, Color)> = laid
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::FillRect { rect, color, .. } => Some((*rect, *color)),
+                _ => None,
+            })
+            .collect();
+        // Discord's menu: 24 pills 8 apart, 16 high in the middle of 28.
+        assert_eq!(pills.len(), 24, "{pills:?}");
+        assert!(pills
+            .windows(2)
+            .all(|pair| pair[1].0.x - pair[0].0.x == PILL_PITCH));
+        assert!(pills
+            .iter()
+            .all(|(rect, _)| rect.width == PILL && rect.height == PILL_HEIGHT && rect.y == 6.0));
+        let unlit = Look::alpha(look.text, 46);
+        let lit: Vec<Color> = pills
+            .iter()
+            .map(|(_, color)| *color)
+            .take_while(|color| *color != unlit)
+            .collect();
+        assert_eq!(lit.len(), 14);
+        assert!(pills[14..].iter().all(|(_, color)| *color == unlit));
+        // Warm yellow first, greener toward the level.
+        assert_eq!(lit[0], Color::rgb(253, 191, 74));
+        assert!(lit
+            .windows(2)
+            .all(|pair| pair[1].r < pair[0].r && pair[1].b >= pair[0].b));
+    }
+
+    #[test]
     fn long_names_are_cut_and_a_missing_device_says_so() {
         assert_eq!(short_name("Corto"), "Corto");
         let cut = short_name(&"x".repeat(80));
@@ -725,6 +843,8 @@ mod tests {
     fn laid_menu(view: &AudioMenu, hover: Option<&str>) -> limn::Frame {
         let look = Look::DARK;
         let mut tree = limn::UiTree::new(audio_menu(view, &look));
+        // About half an em a character, as the app's fonts measure.
+        tree.set_text_measurer(|text, size, _| text.chars().count() as f32 * size / 2.0);
         let size = Size::new(600.0, 700.0);
         if let Some(id) = hover {
             let frame = tree.layout(size);
@@ -756,11 +876,12 @@ mod tests {
             "Perfil de entrada",
             "Estudio",
             "Volumen de entrada",
-            "50 %",
             "Ajustes de voz",
         ] {
             assert!(painted.iter().any(|it| it == text), "{text}: {painted:?}");
         }
+        // As Discord's, the volume has no value beside it.
+        assert!(!painted.iter().any(|it| it.ends_with(" %")), "{painted:?}");
         // The device chosen under its row, cut to fit.
         assert!(painted
             .iter()
