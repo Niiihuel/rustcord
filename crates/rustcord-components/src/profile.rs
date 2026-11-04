@@ -768,11 +768,6 @@ fn custom_status(profile: &Profile) -> Option<(&str, Option<&crate::identity::Te
     }
 }
 
-/// Where a card's bubble stands, and the two dots that lead to it from the
-/// mark as Discord's thought bubble: measured on its popout.
-const BUBBLE_X: f32 = INSET + AVATAR + 9.0;
-const BUBBLE_TOP: f32 = 98.0;
-
 /// The sizes of a head: a card's (80 px mark at (16, 61) under a 105 px
 /// banner, a 16 px status) or the full profile's (120 at (32, 80) under 140).
 #[derive(Clone, Copy)]
@@ -804,8 +799,27 @@ const CARD_HEAD: HeadSize = HeadSize {
 /// decoration 1.2 times the mark, the status dot, and `bubble` beside it.
 /// A two-line bubble makes the head taller, as Discord's does.
 fn card_head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element {
-    let mut layers = vec![sized_head(profile, CARD_HEAD, look)];
+    let mut layers = bubbled_head(profile, CARD_HEAD, bubble, look);
+    // Over everything, so the buttons take their clicks.
+    layers.extend(banner_buttons(profile, look));
+    Element::stack(layers).size(Some(WIDTH), None)
+}
+
+/// The layers of a head of `size` with `bubble` beside its mark and the two
+/// dots that lead to it, as Discord's thought bubble: 9 right of the mark,
+/// its top 3 above the mark's middle, as measured on the popout.
+fn bubbled_head(
+    profile: &Profile,
+    size: HeadSize,
+    bubble: Option<Element>,
+    look: &Look,
+) -> Vec<Element> {
+    let mut layers = vec![sized_head(profile, size, look)];
     if let Some(bubble) = bubble {
+        let (x, top) = (
+            size.left + size.avatar + 9.0,
+            size.top + size.avatar / 2.0 - 3.0,
+        );
         let dot = |side: f32| {
             Element::panel(Element::spacer())
                 .size(Some(side), Some(side))
@@ -813,16 +827,14 @@ fn card_head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element
                 .background(raised(look, 16))
                 .border(hairline(look, 41), 1.0)
         };
-        layers.push(at(BUBBLE_X - 3.0, BUBBLE_TOP - 15.0, dot(10.0)));
-        layers.push(at(BUBBLE_X + 7.0, BUBBLE_TOP - 7.0, dot(20.0)));
+        layers.push(at(x - 3.0, top - 15.0, dot(10.0)));
+        layers.push(at(x + 7.0, top - 7.0, dot(20.0)));
         layers.push(Element::column(vec![
-            gap(0.0, BUBBLE_TOP),
-            Element::row(vec![gap(BUBBLE_X, 0.0), bubble.flex(1.0), gap(INSET, 0.0)]),
+            gap(0.0, top),
+            Element::row(vec![gap(x, 0.0), bubble.flex(1.0), gap(size.left, 0.0)]),
         ]));
     }
-    // Over everything, so the buttons take their clicks.
-    layers.extend(banner_buttons(profile, look));
-    Element::stack(layers).size(Some(WIDTH), None)
+    layers
 }
 
 /// A head of `size`: the banner, the mark ringed in the popout's ground with
@@ -1916,8 +1928,10 @@ fn full_card(full: &FullProfile, height: f32, look: &Look) -> Element {
     if let Some(note) = &profile.note {
         body.push(note_section(note, look));
     }
+    let bubble =
+        custom_status(profile).map(|(custom, emoji)| bubble(custom, emoji, false, None, look));
     let content = Element::column(vec![
-        sized_head(profile, FULL_HEAD, look),
+        Element::stack(bubbled_head(profile, FULL_HEAD, bubble, look)).size(Some(FULL_CARD), None),
         Element::row(vec![
             gap(FULL_HEAD.left, 0.0),
             Element::column(vec![
@@ -4141,6 +4155,16 @@ mod tests {
             tab.x > name.x + FULL_CARD - 64.0 && tab.y < name.y,
             "{name:?} {tab:?}"
         );
+        // The custom status in the popout's bubble, beside the 120 px mark, over the name.
+        let status = at(&laid, "leyendo");
+        assert!(
+            status.x > name.x + 120.0 + 9.0 && status.y < name.y - 32.0,
+            "{status:?} {name:?}"
+        );
+        assert!(laid.commands.iter().any(|command| matches!(command,
+            limn::DrawCommand::FillRect { rect, color, radius }
+                if *radius == 16.0 && *color == raised(&LOOK, 16) && rect.x > name.x + 120.0 && rect.y < status.y
+        )));
         // Too narrow for two columns: the tabs go under the card.
         let narrow = Size::new(700.0, 900.0);
         let (_, laid) = frame(

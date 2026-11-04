@@ -3,7 +3,7 @@
 //! the owner authorized on 2026-11-04 (see `docs/discord-reference.md`).
 
 use limn::{
-    BoxShadow, Color, ComponentPalette, ContextMenuMetrics, FontFamily, Point, Radius,
+    BoxShadow, Color, ComponentPalette, ContextMenuMetrics, Easing, FontFamily, Point, Radius,
     ScrollbarAppearance, Select, SelectVariant, Size, Tokens, TooltipOptions, TooltipShape,
     TooltipStyle,
 };
@@ -59,7 +59,8 @@ const SELECT_GAP: f32 = 8.0;
 
 /// Every hint, as Discord's: 70 ms after the pointer rests, 14 px medium
 /// text 8 × 12 inside a body rounded 8, a rounded pointer 16 wide and 10
-/// deep, growing from 0.95 as it fades in over 70 ms.
+/// deep, growing from 0.95 on a spring a little past full size and back,
+/// settled after 200 ms and opaque after about 55, as measured on Discord's.
 pub const HINT: TooltipOptions = TooltipOptions {
     delay_ms: 70,
     title_font_size: 14.0,
@@ -73,7 +74,8 @@ pub const HINT: TooltipOptions = TooltipOptions {
         caret: Size::new(16.0, 10.0),
     }),
     open_scale: 0.95,
-    enter_ms: Some(70),
+    enter_ms: Some(200),
+    enter_easing: Easing::Spring,
     ..TooltipOptions::DEFAULT
 };
 

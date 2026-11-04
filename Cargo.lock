@@ -3632,7 +3632,7 @@ dependencies = [
 [[package]]
 name = "limn"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#77f4ac3b6eb9d2637d26a7e7820d5b3c979ab13d"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#dec750ef1337c5ec99b413fdd9c4f5838204e222"
 dependencies = [
  "limn-editor",
  "unicode-linebreak",
@@ -3645,7 +3645,7 @@ dependencies = [
 [[package]]
 name = "limn-editor"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#77f4ac3b6eb9d2637d26a7e7820d5b3c979ab13d"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#dec750ef1337c5ec99b413fdd9c4f5838204e222"
 dependencies = [
  "regex",
  "ropey",
@@ -3657,7 +3657,7 @@ dependencies = [
 [[package]]
 name = "limn-egui"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#77f4ac3b6eb9d2637d26a7e7820d5b3c979ab13d"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-04#dec750ef1337c5ec99b413fdd9c4f5838204e222"
 dependencies = [
  "base64 0.22.1",
  "eframe",
