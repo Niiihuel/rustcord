@@ -220,13 +220,19 @@ impl Audio {
         }
         if player.state == VoiceState::Playing && clip.is_none() {
             let from = player.seek.take().unwrap_or(player.position);
+            // A voice message or a sound file is heard, never watched.
+            let start = if player.kind == Played::Video {
+                Clip::start
+            } else {
+                Clip::start_sound
+            };
             let started = match (&self.call, &self.playback) {
                 (Some((_, media, _)), _) => {
                     let (feed, tap) = rustcord_media::tap(CLIP_QUEUE);
                     media.play_alongside(tap);
-                    Some(Clip::start(ogg.clone(), feed, from))
+                    Some(start(ogg.clone(), feed, from))
                 }
-                (None, Some(playback)) => Some(Clip::start(ogg.clone(), playback.feed(), from)),
+                (None, Some(playback)) => Some(start(ogg.clone(), playback.feed(), from)),
                 (None, None) => None,
             };
             match started {

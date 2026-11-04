@@ -124,6 +124,21 @@ impl Clip {
     /// happens on its thread: a file it cannot play ends in
     /// [`ClipStatus::Failed`] with the reason.
     pub fn start(bytes: Arc<[u8]>, feed: Feed, from_secs: f32) -> Result<Self, MediaError> {
+        Self::begin(bytes, feed, from_secs, true)
+    }
+
+    /// Play only the sound of `bytes`, as [`Clip::start`]: a voice message or
+    /// sound file whose container also carries pictures plays as audio.
+    pub fn start_sound(bytes: Arc<[u8]>, feed: Feed, from_secs: f32) -> Result<Self, MediaError> {
+        Self::begin(bytes, feed, from_secs, false)
+    }
+
+    fn begin(
+        bytes: Arc<[u8]>,
+        feed: Feed,
+        from_secs: f32,
+        pictures: bool,
+    ) -> Result<Self, MediaError> {
         let shared = Arc::new(Shared {
             stop: AtomicBool::new(false),
             paused: AtomicBool::new(true),
@@ -145,7 +160,7 @@ impl Clip {
             .spawn(move || {
                 // A decoder that panics on a strange file ends this clip, not Rustcord.
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    open(&bytes, &worker_shared)
+                    open(&bytes, &worker_shared, pictures)
                         .and_then(|mut sound| run(sound.as_mut(), feed, &worker_shared))
                 }))
                 .unwrap_or_else(|_| Err(unreadable()));
@@ -309,8 +324,13 @@ pub(crate) fn sound_length(
     )))
 }
 
-/// Read `bytes` and start its pictures, if any; the sound it plays.
-fn open(bytes: &Arc<[u8]>, shared: &Arc<Shared>) -> Result<Box<dyn Sound>, MediaError> {
+/// Read `bytes` and start its pictures, if any and `pictures`; the sound it
+/// plays.
+fn open(
+    bytes: &Arc<[u8]>,
+    shared: &Arc<Shared>,
+    pictures: bool,
+) -> Result<Box<dyn Sound>, MediaError> {
     // A voice message, as before: the first packet names Opus.
     if bytes.starts_with(b"OggS") && bytes.get(28..36) == Some(b"OpusHead") {
         let sound = ogg::OggOpus::open(bytes)?;
@@ -326,7 +346,9 @@ fn open(bytes: &Arc<[u8]>, shared: &Arc<Shared>) -> Result<Box<dyn Sound>, Media
         ))
     };
     // The pictures, and how long they last when the file says.
-    let (video, seconds) = if bytes.get(4..8) == Some(b"ftyp") {
+    let (video, seconds) = if !pictures {
+        (None, None)
+    } else if bytes.get(4..8) == Some(b"ftyp") {
         match crate::mp4::video_track(bytes)
             .map_err(|_| MediaError(t("Rustcord no puede leer este archivo MP4.").into()))?
         {
@@ -645,6 +667,19 @@ mod tests {
         assert!(crate::rms(&heard) < 1e-6, "muted");
         clip.seek(1.9);
         wait(|| clip.status() == ClipStatus::Ended);
+    }
+
+    #[test]
+    fn a_video_played_as_sound_decodes_no_pictures() {
+        let (feed, _output) = Feed::pair(PLAYBACK_RATE as usize);
+        let clip = Clip::start_sound(fixture("clip.mp4"), feed, 0.0).unwrap();
+        wait(|| clip.duration().is_some());
+        assert!((clip.duration().unwrap() - 2.0).abs() < 0.1);
+        assert!(!clip.has_pictures());
+        clip.set_volume(0.0);
+        clip.set_paused(false);
+        wait(|| clip.position() > 0.3);
+        assert_eq!(clip.status(), ClipStatus::Open);
     }
 
     #[test]
