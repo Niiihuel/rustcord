@@ -30,7 +30,9 @@ use crate::channel_list::ChannelNotify;
 use crate::server_menu::{Notify, NotifyLevel};
 use crate::{Intent, Ui, ViewContext};
 
-/// A folder's color until one is chosen: the service's own blue.
+/// What the folder dialog offers until a color is chosen: the service's
+/// own blue. A new folder has none, as Discord's: grey, its glyph in the
+/// accent.
 const FOLDER_COLOR: Rgb = Rgb(0x58_65_F2);
 /// The folders open on the rail, kept for the account between runs.
 pub(crate) const OPEN_FOLDERS_SETTING: &str = "open_folders";
@@ -273,7 +275,7 @@ pub(crate) fn edited(
                         ServerFolder {
                             id: Some(id),
                             name: None,
-                            color: Some(FOLDER_COLOR),
+                            color: None,
                             servers: vec![server],
                         },
                     );
@@ -329,7 +331,6 @@ pub(crate) fn edited(
                         (Placement::Inside, _) => {
                             if layout[to].id.is_none() {
                                 layout[to].id = Some(fresh_id(&layout));
-                                layout[to].color = Some(FOLDER_COLOR);
                             }
                             layout[to].servers.push(server);
                         }
@@ -406,7 +407,7 @@ pub(crate) fn rail_entries(
                 RailEntry::Folder(RailFolder {
                     id: format!("folder:{id}"),
                     name: folder_name(folder, &servers),
-                    color: look.ink(folder.color.unwrap_or(FOLDER_COLOR)),
+                    color: folder.color.map(|color| look.ink(color)),
                     open: ui.account.open_folders.contains(&id),
                     servers: servers.into_iter().map(item).collect(),
                 })
