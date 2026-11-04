@@ -299,6 +299,7 @@ fn split_button(
     (arrow_id, arrow_hint): (&str, &str),
     on: bool,
     open: bool,
+    motion: Option<limn::IconMotion>,
     look: &Look,
 ) -> Element {
     let (lit, under, ink) = if on {
@@ -356,10 +357,16 @@ fn split_button(
     } else {
         Icon::ChevronDown
     };
+    // Only the action's glyph moves, as Discord's, not the arrow's.
+    let action = piece(id, glyph, 20.0, PANEL_BUTTON.0, main, hint);
+    let action = match motion {
+        Some(motion) => action.hover_motion(format!("{id}:motion"), motion),
+        None => action,
+    };
     Element::stack(vec![
         lit,
         Element::row(vec![
-            piece(id, glyph, 20.0, PANEL_BUTTON.0, main, hint),
+            action,
             gap(1.0, 0.0),
             piece(arrow_id, chevron, 14.0, ARROW, side, arrow_hint),
         ]),
@@ -441,6 +448,7 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
         (crate::profile::ids::INPUT, t("Opciones de entrada")),
         muted,
         open(false),
+        muted.then(crate::motion::muted_microphone),
         look,
     );
     let mut headphones = split_button(
@@ -456,6 +464,7 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
         (crate::profile::ids::OUTPUT, t("Opciones de salida")),
         deafened,
         open(true),
+        (!deafened).then(crate::motion::headphones),
         look,
     );
     if let Some((output, quick)) = panel.quick {
@@ -476,7 +485,8 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
         .width(PANEL_BUTTON.1)
         .variant(ButtonVariant::Ghost)
         .tooltip(t("Ajustes de usuario"))
-        .render();
+        .render()
+        .hover_motion("me:settings:motion", crate::motion::gear());
     let mut controls = vec![gap(8.0, 0.0), account.flex(1.0).centered_y(), gap(8.0, 0.0)];
     if panel.voice {
         controls.extend([

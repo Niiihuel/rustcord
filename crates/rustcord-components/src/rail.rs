@@ -336,6 +336,28 @@ fn pill(height: f32, look: &Look) -> Element {
     ])
 }
 
+/// The pill at a mark's edge: tall when `selected`, half under the pointer,
+/// a dot while `unread`. As Discord's it stretches about its middle, from
+/// the dot to the half and from the half to the tall one, and with no dot
+/// it also slides in from the edge.
+fn edge(id: &str, selected: bool, unread: bool, look: &Look) -> Element {
+    let hover = pill(PILL_HOVER, look).reveal_on_hover(format!("{id}:pill"));
+    if selected {
+        Element::stack(vec![
+            hover,
+            pill(PILL_SELECTED, look)
+                .animate_enter(format!("{id}:chosen"))
+                .grow_from(PILL_HOVER),
+        ])
+    } else if unread {
+        Element::stack(vec![pill(PILL_UNREAD, look), hover.grow_from(PILL_UNREAD)])
+    } else {
+        hover
+            .grow_from(PILL_UNREAD)
+            .enter_from(Point::new(-PILL_WIDTH, 0.0))
+    }
+}
+
 /// A pill showing `width` of itself past a column's left edge, as the
 /// official client's: twice as wide, rounded all round, its left half moved
 /// out and cut. A rectangle `width` across cannot take the rounding itself,
@@ -423,15 +445,7 @@ fn mark(item: RailItem, drag: Option<&RailDrag>, look: &Look) -> Element {
         hint
     }
     .render();
-    let edge = if item.selected {
-        pill(PILL_SELECTED, look)
-    } else {
-        let mut states = vec![pill(PILL_HOVER, look).reveal_on_hover(format!("{}:pill", item.id))];
-        if item.unread {
-            states.push(pill(PILL_UNREAD, look).conceal_on_hover(format!("{}:dot", item.id)));
-        }
-        Element::stack(states)
-    };
+    let edge = edge(&item.id, item.selected, item.unread, look);
     let marked = Element::row(vec![
         edge.size(Some(INSET), Some(MARK)),
         hinted,
@@ -538,16 +552,12 @@ fn folder_entry(folder: RailFolder, drag: &RailDrag, look: &Look) -> Element {
         button
     };
     let hinted = hint(button, folder.id.clone(), folder.name, look).render();
-    let edge = if selected && !folder.open {
-        pill(PILL_SELECTED, look)
-    } else {
-        let mut states =
-            vec![pill(PILL_HOVER, look).reveal_on_hover(format!("{}:pill", folder.id))];
-        if unread && !folder.open {
-            states.push(pill(PILL_UNREAD, look).conceal_on_hover(format!("{}:dot", folder.id)));
-        }
-        Element::stack(states)
-    };
+    let edge = edge(
+        &folder.id,
+        selected && !folder.open,
+        unread && !folder.open,
+        look,
+    );
     let marked = Element::row(vec![
         edge.size(Some(INSET), Some(MARK)),
         hinted,

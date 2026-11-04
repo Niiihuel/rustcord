@@ -27,6 +27,7 @@ pub mod look;
 pub mod members;
 pub mod message;
 pub mod message_actions;
+pub mod motion;
 pub mod private_call;
 pub mod profile;
 pub mod quick_voice;
