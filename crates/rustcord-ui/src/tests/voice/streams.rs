@@ -639,7 +639,8 @@ fn a_stream_focused_hides_its_controls_and_the_pointer_once_the_pointer_rests() 
 }
 
 #[test]
-fn a_stream_never_hides_its_controls_on_the_bar_with_a_menu_open_or_in_the_grid() {
+fn a_stream_never_hides_its_controls_on_the_bar_or_with_a_menu_open_and_the_grid_keeps_the_pointer()
+{
     let mut host = Host::new();
     let owner = host.tr_focused();
     // The pointer resting on the bar keeps it.
@@ -673,18 +674,32 @@ fn a_stream_never_hides_its_controls_on_the_bar_with_a_menu_open_or_in_the_grid(
     host.key(Key::Tab, false, false);
     host.tr_rest(10_000);
     assert!(host.tr_controls_show(owner), "the keyboard is at work");
-    // Back to the grid: nothing hides there, however long it rests.
+    // Back to the grid: it rests as Discord's stage does, the bar and the
+    // header fading, but the pointer stays; a move brings them back.
     host.click(&ids::stream_tile(owner.0));
     assert_eq!(host.ui.video.spotlight, None);
     let at = middle(host.tr_surface(owner));
     host.send(UiEvent::PointerMove(at));
-    host.tr_rest(10_000);
-    assert!(host.vz_usable(ids::MUTE));
+    assert!(host.vz_usable(ids::MUTE) && host.vz_usable(ids::CHAT));
+    assert_eq!(
+        crate::stream_idle_tick(&host.ui, &host.store, host.now),
+        Some(crate::video::IDLE_AFTER)
+    );
+    host.tr_rest(3_000);
+    assert!(!host.vz_usable(ids::MUTE) && !host.vz_usable(ids::CHAT));
+    assert!(host.vz_usable(&ids::stream_tile(owner.0)), "the tiles stay");
     assert_eq!(host.tree.cursor(), None);
     assert_eq!(
         crate::stream_idle_tick(&host.ui, &host.store, host.now),
         None
     );
+    host.send(UiEvent::PointerMove(at));
+    assert!(host.vz_usable(ids::MUTE) && host.vz_usable(ids::CHAT));
+    // The pointer resting on the header keeps it, as on the bar.
+    let chat = host.vz_rect(ids::CHAT);
+    host.send(UiEvent::PointerMove(middle(chat)));
+    host.tr_rest(10_000);
+    assert!(host.vz_usable(ids::MUTE) && host.vz_usable(ids::CHAT));
 }
 
 #[test]

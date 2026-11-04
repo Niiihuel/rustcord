@@ -572,19 +572,14 @@ pub(crate) fn call_view(
         .channel()
         .filter(|channel| callable(store, *channel) && ui.voice.stage != Some(*channel))?;
     let private = private_stage(ui, store, channel, look)?;
-    // Cameras take more of the conversation than faces do.
-    let video = ui.video.camera.on
-        || store
-            .voice_in(channel)
-            .iter()
-            .any(|state| state.camera && Some(state.user) != store.me());
+    // Discord's: 240 for faces, about 360 for tiles, its header over its top;
+    // outside the call, the invitation under its header.
     let height = if private.voice_mode {
-        // Discord's MINIMUM area, under the stage's header and its rule.
-        rustcord_components::voice::VOICE_HEIGHT + rustcord_components::sidebar::HEADER + 1.0
-    } else if video {
-        (context.window.height * 0.65).clamp(360.0, 640.0)
-    } else {
+        rustcord_components::voice::VOICE_HEIGHT
+    } else if private.invitation.is_some() {
         (context.window.height * 0.5).clamp(300.0, 480.0)
+    } else {
+        rustcord_components::voice::TILES_HEIGHT
     };
     let size = Size::new(width, height);
     voice::stage_of(

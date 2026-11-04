@@ -896,23 +896,28 @@ pub(crate) fn focused_view(
     ))
 }
 
-/// How long the pointer rests over a stream focused or full screen before
-/// its controls, the bar and the pointer itself hide, as the official
-/// client's stage (3000 ms).
+/// How long the pointer rests on the call's stage before its header, the
+/// bar and the names on the tiles hide, as the official client's (3000 ms);
+/// over a stream focused or full screen, its controls and the pointer too.
 pub const IDLE_AFTER: Duration = Duration::from_millis(3000);
 
-/// When what is over the stream focused or full screen hides unless the
-/// pointer moves first: `None` while nothing is to hide or something holds
-/// it (the pointer on the controls, a menu, the keyboard). The grid never
-/// hides.
+/// When what hides on the stage, or over the stream focused or full screen,
+/// does unless the pointer moves first: `None` while nothing is to hide or
+/// something holds it (the pointer on the controls, the bar or the header, a
+/// menu, the keyboard). A conversation's call under its header never hides.
 fn idle_at(ui: &Ui, store: &Store) -> Option<Instant> {
-    let shown = ui.video.focus.or(ui.video.spotlight).is_some_and(|owner| {
+    let streaming = ui.video.focus.or(ui.video.spotlight).is_some_and(|owner| {
         store
             .watching()
             .iter()
             .any(|watching| watching.owner == owner)
     });
-    if !shown || ui.video.held || held_by_menus(ui) {
+    let staged = ui.voice.preview.is_none()
+        && ui
+            .voice
+            .stage
+            .is_some_and(|channel| store.call().is_some_and(|call| call.channel == channel));
+    if !(streaming || staged) || ui.video.held || held_by_menus(ui) {
         return None;
     }
     Some(ui.video.stirred? + IDLE_AFTER)
@@ -927,8 +932,9 @@ fn held_by_menus(ui: &Ui) -> bool {
         || ui.voice.more
 }
 
-/// The stream focused or full screen rests at `now`: what is over it
-/// fades out, the bar too, and the pointer hides over it.
+/// The call's stage, or the stream focused or full screen, rests at `now`:
+/// what is over it fades out, the bar too, and the pointer hides over a
+/// stream.
 pub(crate) fn idle(ui: &Ui, store: &Store, now: Instant) -> bool {
     idle_at(ui, store).is_some_and(|at| now >= at)
 }
@@ -974,9 +980,9 @@ pub fn stir_window(ui: &mut Ui, owner: UserId, now: Instant) {
 /// popover open or a control focused from the keyboard keep what is over a
 /// stream from hiding.
 pub(crate) fn hold(ui: &mut Ui, tree: &limn::UiTree) {
-    let on_controls = tree
-        .hovered_region()
-        .is_some_and(|region| region == ids::BAR || region.starts_with(ids::STREAM_CONTROLS));
+    let on_controls = tree.hovered_region().is_some_and(|region| {
+        region == ids::BAR || region == ids::HEADER || region.starts_with(ids::STREAM_CONTROLS)
+    });
     ui.video.held = on_controls || tree.has_open_popover() || tree.has_keyboard_focus();
     // The zoom lasts while its stream stays focused; its tile is where the
     // wheel and the pan act.

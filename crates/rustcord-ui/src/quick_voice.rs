@@ -51,7 +51,6 @@ pub(crate) fn update(
         profile_ids::INPUT => (false, false, false),
         profile_ids::OUTPUT => (true, false, false),
         voice_ids::INPUT_OPTIONS => (false, true, false),
-        voice_ids::OUTPUT_OPTIONS => (true, true, false),
         voice_ids::CAMERA_OPTIONS => (false, true, true),
         ids::DISMISS => return Some(close(ui)),
         ids::SETTINGS => {
