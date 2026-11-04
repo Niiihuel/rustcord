@@ -28,18 +28,9 @@ pub(super) const ENTRIES: super::Entries = &[
         "Reading your account's setting…",
     ),
     (
-        "Tu cuenta muestra tu actividad. La privacidad de cada servidor y de tus amigos sigue valiendo.",
-        "Your account shows your activity. Each server's and your friends' privacy still applies.",
-    ),
-    (
         "Tu cuenta oculta tu actividad: aunque Rustcord detecte un juego, nadie lo ve.",
         "Your account hides your activity: even if Rustcord detects a game, nobody sees it.",
     ),
-    (
-        "Tu cuenta oculta tu actividad a los demás.",
-        "Your account hides your activity from others.",
-    ),
-    ("Activar en la cuenta", "Turn on for the account"),
     ("Activando…", "Turning on…"),
     (
         "Tu cuenta la muestra a los demás.",

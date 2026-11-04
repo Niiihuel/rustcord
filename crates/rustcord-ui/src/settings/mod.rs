@@ -1249,7 +1249,8 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
                 return Vec::new();
             }
             let mut intents = go_to_section(ui, store, page, section);
-            if page == SettingsPage::Profiles {
+            // The editor, and the connections «Conexiones» lists, read the profile.
+            if matches!(page, SettingsPage::Profiles | SettingsPage::Connection) {
                 intents.extend(crate::profile::request_own(ui, store));
             }
             return intents;

@@ -972,15 +972,17 @@ fn logo(service: &str) -> Option<RasterImage> {
     .map(|(_, image)| image.clone())
 }
 
-/// A connected service's mark on a 24 px white square, as Discord sets them:
-/// its logo, or for one Rustcord has none of a neutral glyph, dark.
-fn service_glyph(service: &str) -> Element {
+/// A connected service's mark on a white square `side` px wide (24 in a
+/// profile, 32 in the settings), as Discord sets them: its logo, or for one
+/// Rustcord has none of a neutral glyph, dark.
+pub(crate) fn service_glyph(service: &str, side: f32) -> Element {
+    let mark = side * 2.0 / 3.0;
     if let Some(image) = logo(service) {
         return Element::panel(centered(
-            Element::raster_image(image).size(Some(16.0), Some(16.0)),
+            Element::raster_image(image).size(Some(mark), Some(mark)),
         ))
-        .size(Some(24.0), Some(24.0))
-        .radius(6.0)
+        .size(Some(side), Some(side))
+        .radius(side / 4.0)
         .background(Color::rgb(255, 255, 255));
     }
     let glyph = match service {
@@ -992,10 +994,10 @@ fn service_glyph(service: &str) -> Element {
         _ => Icon::ExternalLink,
     };
     Element::panel(centered(
-        icon(glyph, Color::rgb(0, 0, 0)).size(Some(16.0), Some(16.0)),
+        icon(glyph, Color::rgb(0, 0, 0)).size(Some(mark), Some(mark)),
     ))
-    .size(Some(24.0), Some(24.0))
-    .radius(6.0)
+    .size(Some(side), Some(side))
+    .radius(side / 4.0)
     .background(Color::rgb(255, 255, 255))
 }
 
@@ -1009,7 +1011,7 @@ pub fn connections(rows: &[ConnectionRow], look: &Look) -> Element {
             .enumerate()
             .map(|(index, row)| {
                 let mut parts = vec![
-                    service_glyph(&row.service).centered_y(),
+                    service_glyph(&row.service, 24.0).centered_y(),
                     Element::column(vec![
                         line(row.label.clone(), 12.0, look.muted),
                         line(row.name.clone(), 14.0, look.text),

@@ -70,6 +70,8 @@ mod streams;
 mod voice_rows;
 // The «Activo ahora» column of the friends page.
 mod active_now;
+// Activity privacy, connections and the developer's settings.
+mod settings_apps;
 
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
@@ -123,4 +125,6 @@ pub(crate) const ALL: &[(&str, Entries)] = &[
     ("voice_rows", voice_rows::ENTRIES),
     // The «Activo ahora» column of the friends page.
     ("active_now", active_now::ENTRIES),
+    // Activity privacy, connections and the developer's settings.
+    ("settings_apps", settings_apps::ENTRIES),
 ];

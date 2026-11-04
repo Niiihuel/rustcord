@@ -319,50 +319,35 @@ fn seen(store: &rustcord_state::Store) -> Option<String> {
     })
 }
 
-/// Whether the account shows its activity, and the button that turns it
-/// on: never off from here.
+/// Discord's «Compartir mi actividad»: the account's own switch, each click
+/// the person's choice. A hidden activity says so while this device detects one.
 fn activity_sharing(ctx: &Ctx) -> Option<Element> {
     let (ui, store, look) = (ctx.ui, ctx.store, ctx.look);
     store
         .provider
         .as_ref()
         .filter(|info| info.capabilities.activity_sharing)?;
-    let detecting = ui.prefs.game_activity || ui.prefs.rich_presence;
-    let asked = store.activity_sharing_asked().is_some();
-    let (status, off) = match store.activity_sharing() {
-        None => (t("Leyendo el ajuste de tu cuenta…"), false),
-        Some(true) => (
-            t("Tu cuenta muestra tu actividad. La privacidad de cada servidor y de tus amigos sigue valiendo."),
-            false,
-        ),
-        Some(false) if detecting => (
-            t("Tu cuenta oculta tu actividad: aunque Rustcord detecte un juego, nadie lo ve."),
-            true,
-        ),
-        Some(false) => (t("Tu cuenta oculta tu actividad a los demás."), true),
+    let kept = store.activity_sharing();
+    let asked = store.activity_sharing_asked();
+    let denied = match (kept, asked) {
+        (None, _) => Some(t("Leyendo el ajuste de tu cuenta…")),
+        (_, Some(true)) => Some(t("Activando…")),
+        (_, Some(false)) => Some(t("Desactivando…")),
+        _ => None,
     };
-    let button = off.then(|| {
-        parts::secondary_button(
-            "us:activity-sharing-on",
-            if asked {
-                t("Activando…")
-            } else {
-                t("Activar en la cuenta")
-            },
-            !asked,
-            look,
-        )
-    });
-    // Discord's description of the switch, then the account's state.
-    let note = format!(
-        "{} {status}",
-        t("Comparte información de actividades de juegos y aplicaciones conectadas que utilizo, lo que incluye cuándo y cómo participo.")
-    );
-    Some(parts::setting(
+    let mut note = t("Comparte información de actividades de juegos y aplicaciones conectadas que utilizo, lo que incluye cuándo y cómo participo.").to_owned();
+    if kept == Some(false) && (ui.prefs.game_activity || ui.prefs.rich_presence) {
+        note = format!(
+            "{note} {}",
+            t("Tu cuenta oculta tu actividad: aunque Rustcord detecte un juego, nadie lo ve.")
+        );
+    }
+    Some(parts::toggle(
+        "us:activity-sharing",
         t("Compartir mi actividad"),
         Some(&note),
-        button,
-        true,
+        asked.or(kept).unwrap_or(false),
+        denied,
         look,
     ))
 }
