@@ -94,15 +94,14 @@ pub fn short_name(name: &str) -> String {
 /// name chosen, when cut, is whole in its hint.
 pub fn device_select(list: &DeviceList, width: f32, look: &Look) -> Element {
     let select = |current: &str, options: Vec<DropdownOption>, enabled: bool| {
-        Select::new(
+        look.select(Select::new(
             format!("us:select:{}", list.name),
             current,
             options,
             list.open && enabled,
             "us:select:dismiss",
             look.palette(),
-        )
-        .menu_palette(look.menu_palette())
+        ))
         .icon(list.glyph)
         .accessibility_label(list.label.as_str())
         .width(width)
@@ -154,9 +153,13 @@ pub fn device_options(list: &DeviceList, devices: &[Device]) -> Vec<DropdownOpti
     .selected(chosen.is_none())];
     options.extend(devices.iter().take(MAX_DEVICES).map(|device| {
         let shown = short_name(&device.name);
+        // On one line, as the list's other names; its hint says the rest.
+        // shortcut: a name under NAME_CHARS that the list's width still cuts
+        // has no hint; give one from the measured width if it matters.
         let option = DropdownOption::new(format!("us:{}={}", list.name, device.id), &shown)
             .icon(list.glyph)
-            .selected(chosen == Some(device.id.as_str()));
+            .selected(chosen == Some(device.id.as_str()))
+            .truncate();
         if shown == device.name {
             option
         } else {

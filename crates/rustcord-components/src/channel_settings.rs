@@ -13,7 +13,7 @@
 use limn::{
     Access, Button, ButtonSize, ButtonVariant, Color, Component, ControlSize, DropdownOption,
     Element, FontFamily, Icon, Popover, PopoverPlacement, Role, ScrollArea, ScrollbarAppearance,
-    Select, SelectVariant, Switch, TextField, TextSpan,
+    Select, Switch, TextField, TextSpan,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{ChannelKind, Permissions};
@@ -1010,21 +1010,18 @@ pub fn field_select(select: &FieldSelect, look: &Look) -> Element {
         .iter()
         .map(|(id, label, chosen)| DropdownOption::new(id.clone(), label.clone()).selected(*chosen))
         .collect();
-    Select::new(
+    look.select(Select::new(
         select.id.clone(),
         select.value.clone(),
         options,
         select.open,
         select.dismiss.clone(),
         look.palette(),
-    )
-    .variant(SelectVariant::Field)
+    ))
     .height(41.0)
-    .font_size(16.0)
     .max_visible_items(5)
     .ink(look.accent)
     .width(select.width)
-    .menu_palette(look.menu_palette())
     .placement(PopoverPlacement::BottomStart)
     .accessibility_label(select.name.clone())
     .enabled(select.enabled)

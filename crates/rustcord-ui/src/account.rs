@@ -10,9 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use limn::{
-    Component, ControlSize, DropdownOption, Element, Point, Select, SelectVariant, UiAction,
-};
+use limn::{Component, ControlSize, DropdownOption, Element, Point, Select, UiAction};
 use rustcord_components::channel_menu::{self as menu_parts, grouped, Entry, Item};
 use rustcord_components::folders::{self as folder_parts, FolderForm};
 use rustcord_components::profile::NoteField;
@@ -913,17 +911,16 @@ pub(crate) fn privacy_setting(
                             .enabled(denied.is_none())
                     })
                     .collect();
-                let control = Select::new(
-                    format!("us:select:{name}"),
-                    current,
-                    choices,
-                    open == Some(name.as_str()),
-                    "us:select:dismiss",
-                    look.palette(),
-                )
-                .menu_palette(look.menu_palette())
-                .variant(SelectVariant::Field)
-                .size(ControlSize::Spacious)
+                let control = look
+                    .select(Select::new(
+                        format!("us:select:{name}"),
+                        current,
+                        choices,
+                        open == Some(name.as_str()),
+                        "us:select:dismiss",
+                        look.palette(),
+                    ))
+                    .size(ControlSize::Spacious)
                 .accessibility_label(label)
                 .enabled(denied.is_none())
                 .width(180.0)
