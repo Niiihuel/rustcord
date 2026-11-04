@@ -1,11 +1,13 @@
-//! Threads from plain props: the list of a channel's threads (followed,
-//! active and archived, with «Cargar más»), the dialog that starts a thread
+//! Threads from plain props: the list of a channel's threads as Discord's
+//! popout (joined, other active and older ones, with «Cargar más»), the
+//! dialog that starts a thread
 //! or a forum post, the one that renames and tags one, and the question
 //! before deleting one. Every control's ID starts with `th:`.
 
 use limn::{
-    AlertDialog, Button, ButtonVariant, Checkbox, Component, ControlSize, Element, Icon, Modal,
-    TextArea, TextField, Toggle, ToggleVariant,
+    AlertDialog, Button, ButtonVariant, Checkbox, Color, Component, ControlSize, Element, Icon,
+    Modal, Popover, PopoverPlacement, RasterImage, ScrollArea, ScrollbarAppearance, TextArea,
+    TextField, Toggle, ToggleVariant,
 };
 
 use rustcord_i18n::{t, tr};
@@ -63,8 +65,12 @@ pub const WIDTH: f32 = 520.0;
 pub struct ThreadRow {
     pub thread: u64,
     pub name: String,
-    /// How many messages and when the last one, as a person reads it.
-    pub detail: String,
+    /// Who started it, their color and picture.
+    pub owner: String,
+    pub owner_accent: Color,
+    pub owner_image: Option<RasterImage>,
+    /// How long ago its last activity was, as a person reads it.
+    pub ago: String,
     pub private: bool,
     pub archived: bool,
     pub locked: bool,
@@ -149,25 +155,31 @@ pub struct EditThreadForm {
     pub denied: Option<String>,
 }
 
+/// One thread as Discord's popout card: its name over who started it and
+/// when it was last active, 72 high, raised and lighter under the pointer.
 fn row(thread: &ThreadRow, look: &Look) -> Element {
     let ink = if thread.archived && !thread.unread {
         look.muted
     } else {
         look.text
     };
-    let mut marks = Vec::new();
-    for (on, label) in [
-        (thread.followed, t("Seguido")),
-        (thread.private, t("Privado")),
-        // Not «Bloqueado»: that is a blocked person, «Blocked» in English.
-        (thread.locked, t("Hilo bloqueado")),
-        (thread.archived, t("Archivado")),
+    let mut title = Vec::new();
+    // Not «Bloqueado»: that is a blocked person, «Blocked» in English.
+    for (on, glyph, hint) in [
+        (thread.private, Icon::Lock, t("Privado")),
+        (thread.locked, Icon::Lock, t("Hilo bloqueado")),
     ] {
         if on {
-            marks.push(line(label, 12.0, look.faint));
+            title.push(
+                icon(glyph, look.faint)
+                    .size(Some(16.0), Some(16.0))
+                    .accessibility_label(hint)
+                    .centered_y(),
+            );
+            break;
         }
     }
-    let mut title = vec![strong_line(&thread.name, 14.0, ink).shrink_to_fit()];
+    title.push(strong_line(&thread.name, 16.0, ink).shrink_to_fit());
     if thread.unread {
         title.push(
             Element::panel(Element::spacer())
@@ -177,117 +189,205 @@ fn row(thread: &ThreadRow, look: &Look) -> Element {
                 .centered_y(),
         );
     }
+    let detail = Element::row(vec![
+        crate::avatar_with_image(
+            &thread.owner,
+            thread.owner_accent,
+            16.0,
+            thread.owner_image.clone(),
+        )
+        .centered_y(),
+        line(
+            tr!("Iniciado por {name}", name = thread.owner.as_str()),
+            14.0,
+            look.muted,
+        )
+        .centered_y()
+        .shrink_to_fit(),
+        line("•", 14.0, look.faint).centered_y(),
+        line(
+            tr!("Última actividad: {when}", when = thread.ago.as_str()),
+            14.0,
+            look.muted,
+        )
+        .centered_y()
+        .shrink_to_fit(),
+    ])
+    .gap(6.0);
     Element::clickable(
         format!("thread:{}", thread.thread),
-        Element::row(vec![
-            icon(
-                if thread.private {
-                    Icon::Lock
-                } else {
-                    Icon::Chat
-                },
-                look.faint,
-            )
-            .centered_y(),
-            Element::column(vec![
-                Element::row(title).gap(6.0),
-                Element::row(
-                    std::iter::once(line(&thread.detail, 12.0, look.muted))
-                        .chain(marks)
-                        .collect(),
-                )
-                .gap(8.0),
-            ])
-            .gap(2.0)
-            .flex(1.0)
-            .centered_y(),
-        ])
-        .gap(10.0)
-        .padding(8.0),
+        Element::column(vec![Element::row(title).gap(6.0), detail])
+            .gap(4.0)
+            .padding(15.0),
     )
-    .radius(6.0)
+    .size(None, Some(72.0))
+    .radius(8.0)
+    .background(look.raised)
+    .border(look.border, 1.0)
     .hover_background(look.hover)
     .accessible(limn::Access::new(limn::Role::ListItem).name(thread.name.clone()))
 }
 
-fn section(title: &str, rows: &[ThreadRow], empty: &str, look: &Look) -> Vec<Element> {
-    let mut parts = vec![strong_line(
-        format!("{title} — {}", rows.len()),
-        13.0,
-        look.muted,
-    )];
+/// A section's heading over its rows, as Discord's: small capitals.
+fn section(title: String, rows: &[ThreadRow], look: &Look) -> Vec<Element> {
     if rows.is_empty() {
-        parts.push(text(empty, 13.0, look.faint));
+        return Vec::new();
     }
+    let mut parts =
+        vec![strong_line(title.to_uppercase(), 12.0, look.muted).size(None, Some(24.0))];
     parts.extend(rows.iter().map(|thread| row(thread, look)));
     parts
 }
 
-/// The list of a channel's threads, over `root`.
-pub fn list(root: Element, view: &ThreadList, look: &Look) -> Element {
+/// Discord's popout: 35 % of the window, from 480 to 600 wide.
+pub fn popout_width(window: f32) -> f32 {
+    (window * 0.35).clamp(480.0, 600.0)
+}
+
+/// What the list shows, under its header: the joined threads, the other
+/// open ones, the older ones and the button for more; with none at all
+/// once everything was read, Discord's empty state.
+fn body(view: &ThreadList, look: &Look) -> Element {
     let palette = look.menu_palette();
-    let start = Button::new(
-        ids::start(view.channel),
-        t("Crear hilo"),
-        look.accent_palette(),
-    )
-    .size(ControlSize::Compact)
-    .enabled(view.start_denied.is_none())
-    .render();
-    let mut head = vec![start];
-    if let Some(reason) = &view.start_denied {
-        head.push(
-            text(reason.clone(), 12.0, look.muted)
-                .flex(1.0)
-                .centered_y(),
-        );
-    }
-    let mut parts = vec![Element::row(head).gap(10.0), gap(0.0, 4.0)];
-    parts.extend(section(
-        t("Seguidos"),
-        &view.followed,
-        t("No sigues ningún hilo de este canal."),
-        look,
-    ));
-    parts.push(gap(0.0, 6.0));
-    parts.extend(section(
-        t("Activos"),
-        &view.active,
-        t("No hay otros hilos activos."),
-        look,
-    ));
-    parts.push(gap(0.0, 6.0));
-    parts.extend(section(
-        t("Archivados"),
-        &view.archived,
-        t("Los hilos archivados se cargan cuando los pides."),
-        look,
-    ));
+    let none = view.followed.is_empty() && view.active.is_empty() && view.archived.is_empty();
     let (label, denied) = &view.more;
+    if none && denied.is_some() {
+        let mut empty = vec![
+            gap(0.0, 40.0),
+            crate::centered(
+                icon(Icon::Custom(crate::glyphs::THREAD), look.faint).size(Some(48.0), Some(48.0)),
+            )
+            .size(None, Some(48.0)),
+            crate::centered(strong_line(t("No hay hilos."), 16.0, look.text))
+                .size(None, Some(24.0)),
+            text(
+                t("Mantén el foco en una conversación con un hilo, un canal de texto temporal."),
+                14.0,
+                look.muted,
+            )
+            .centered_x(),
+        ];
+        if view.start_denied.is_none() {
+            empty.push(
+                Button::new(
+                    ids::start(view.channel),
+                    t("Crear hilo"),
+                    look.accent_palette(),
+                )
+                .render()
+                .centered_x(),
+            );
+        }
+        return Element::column(empty).gap(8.0).padding(16.0);
+    }
+    let mut parts = Vec::new();
+    parts.extend(section(
+        tr!(
+            "Hilos a los que te has unido: {count}",
+            count = view.followed.len()
+        ),
+        &view.followed,
+        look,
+    ));
+    parts.extend(section(
+        tr!("{count} hilos activos más", count = view.active.len()),
+        &view.active,
+        look,
+    ));
+    parts.extend(section(
+        t("Hilos antiguos").to_owned(),
+        &view.archived,
+        look,
+    ));
     let more = Button::new(ids::more(view.channel), label.clone(), palette)
         .variant(ButtonVariant::Secondary)
         .size(ControlSize::Compact)
         .enabled(denied.is_none())
         .render();
-    let mut footer = vec![more];
-    footer.push(match denied {
-        Some(reason) => text(reason.clone(), 12.0, look.muted)
-            .flex(1.0)
-            .centered_y(),
-        None => Element::spacer().flex(1.0),
-    });
-    // Under the list, so it stays in view however long the list grows.
+    parts.push(
+        Element::row(vec![
+            more,
+            match denied {
+                Some(reason) => text(reason.clone(), 12.0, look.muted)
+                    .flex(1.0)
+                    .centered_y(),
+                None => Element::spacer().flex(1.0),
+            },
+        ])
+        .gap(10.0),
+    );
+    ScrollArea::new(
+        format!("th:list:{}:scroll", view.channel),
+        Element::column(parts).gap(8.0).padding(16.0),
+    )
+    .appearance(ScrollbarAppearance::overlay().buttons(false))
+    .render()
+    .max_height(520.0)
+}
+
+/// The header of Discord's popout, 48 high over a line: its glyph and
+/// «Hilos», and «Crear» at the end when the account may start one.
+fn header(view: &ThreadList, look: &Look) -> Element {
+    let mut parts = vec![
+        gap(16.0, 0.0),
+        icon(Icon::Custom(crate::glyphs::THREAD), look.muted).centered_y(),
+        gap(8.0, 0.0),
+        strong_line(t("Hilos"), 16.0, look.text).centered_y(),
+        // shortcut: no «Buscar por nombre del hilo»; the providers have no
+        // search by name yet, add it with one.
+        Element::spacer().flex(1.0),
+    ];
+    if view.start_denied.is_none() {
+        parts.push(
+            Button::new(ids::start(view.channel), t("Crear"), look.accent_palette())
+                .size(ControlSize::Compact)
+                .render()
+                .centered_y(),
+        );
+    }
+    parts.push(gap(16.0, 0.0));
+    Element::column(vec![
+        Element::row(parts).size(None, Some(47.0)),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+    ])
+}
+
+/// The header's threads button with Discord's popout under it, its end on
+/// the button's, `width` wide (see [`popout_width`]), while `view` is shown.
+pub fn popout(button: Element, view: Option<&ThreadList>, width: f32, look: &Look) -> Element {
+    let Some(view) = view else {
+        return button;
+    };
+    let content = Element::column(vec![header(view, look), body(view, look)]).min_size(0.0, 400.0);
+    Popover::new(button, content, true, ids::CLOSE, look.menu_palette())
+        .placement(PopoverPlacement::BottomEnd)
+        .width(width)
+        .render()
+}
+
+/// The list of a channel's threads as a dialog over `root`, where the
+/// header has no room for its button.
+pub fn list(root: Element, view: &ThreadList, look: &Look) -> Element {
+    let mut head = Vec::new();
+    if view.start_denied.is_none() {
+        head.push(
+            Button::new(ids::start(view.channel), t("Crear"), look.accent_palette())
+                .size(ControlSize::Compact)
+                .render(),
+        );
+    }
     Modal::new(
         root,
         true,
         t("Hilos"),
         view.title.clone(),
         ids::CLOSE,
-        palette,
+        look.menu_palette(),
     )
     .width(WIDTH)
-    .body(Element::column(parts).gap(6.0))
-    .footer(Element::row(footer).gap(10.0))
+    .body(Element::column(vec![Element::row(head), body(view, look)]).gap(6.0))
     .render()
 }
 
@@ -580,7 +680,8 @@ mod tests {
         ThreadRow {
             thread: id,
             name: name.into(),
-            detail: "12 mensajes · Hoy a las 14:05".into(),
+            owner: "Ada".into(),
+            ago: "hace 3 h".into(),
             ..ThreadRow::default()
         }
     }
@@ -603,29 +704,41 @@ mod tests {
             }],
             more: ("Cargar más".into(), None),
         };
+        // Under the header's button, as Discord's popout.
+        let button =
+            Element::clickable("th:list:5", Element::spacer().size(Some(24.0), Some(24.0)));
+        let (_, laid) = frame(
+            Element::row(vec![
+                Element::spacer().flex(1.0),
+                popout(button, Some(&view), popout_width(1000.0), &Look::DARK),
+            ]),
+            Size::new(1000.0, 800.0),
+        );
+        let found = controls(&laid);
+        for id in ["thread:7", "thread:8", "th:start:5", "th:more:5"] {
+            assert!(found.contains(&id.to_owned()), "{id}: {found:?}");
+        }
+        let painted = texts(&laid);
+        for text in [
+            "Hilos",
+            "Crear",
+            "HILOS A LOS QUE TE HAS UNIDO: 1",
+            "HILOS ANTIGUOS",
+            "Iniciado por Ada",
+            "Última actividad: hace 3 h",
+        ] {
+            assert!(painted.contains(&text.to_owned()), "{text}: {painted:?}");
+        }
+        // No other open thread: no heading for them.
+        assert!(!painted.iter().any(|text| text.contains("ACTIVOS MÁS")));
+        // The narrow header's dialog shows the same and closes.
         let (_, laid) = frame(
             list(Element::spacer(), &view, &Look::DARK),
             Size::new(1000.0, 800.0),
         );
         let found = controls(&laid);
-        for id in [
-            "thread:7",
-            "thread:8",
-            "th:start:5",
-            "th:more:5",
-            "th:close:close",
-        ] {
+        for id in ["thread:7", "th:start:5", "th:close:close"] {
             assert!(found.contains(&id.to_owned()), "{id}: {found:?}");
-        }
-        let painted = texts(&laid);
-        for text in [
-            "Seguidos — 1",
-            "Activos — 0",
-            "Archivados — 1",
-            "Privado",
-            "Archivado",
-        ] {
-            assert!(painted.contains(&text.to_owned()), "{text}: {painted:?}");
         }
         let done = ThreadList {
             more: (
@@ -643,7 +756,25 @@ mod tests {
         assert!(
             !found.contains(&"th:more:5".to_owned()) && !found.contains(&"th:start:5".to_owned())
         );
-        assert!(texts(&laid).contains(&"No hay más hilos archivados".to_owned()));
+        let painted = texts(&laid);
+        assert!(painted.contains(&"No hay más hilos archivados".to_owned()));
+        assert!(
+            !painted.contains(&"Crear".to_owned()),
+            "hidden, not disabled"
+        );
+        // Nothing anywhere, all read: Discord's empty state.
+        let nothing = ThreadList {
+            followed: Vec::new(),
+            archived: Vec::new(),
+            start_denied: None,
+            ..done
+        };
+        let (_, laid) = frame(
+            list(Element::spacer(), &nothing, &Look::DARK),
+            Size::new(1000.0, 800.0),
+        );
+        assert!(texts(&laid).contains(&"No hay hilos.".to_owned()));
+        assert!(controls(&laid).contains(&"th:start:5".to_owned()));
     }
 
     #[test]

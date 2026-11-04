@@ -779,38 +779,69 @@ pub(crate) fn header_entry(store: &Store, channel: ChannelId) -> Option<Entry> {
     })
 }
 
-/// The button of a channel's header that opens its list of threads.
-pub(crate) fn header_tool(store: &Store, channel: ChannelId, look: &Look) -> Option<Element> {
+/// The button of a channel's header that opens its list of threads, with
+/// the list under it while open, as Discord's popout.
+pub(crate) fn header_tool(
+    ui: &Ui,
+    store: &Store,
+    channel: ChannelId,
+    look: &Look,
+    wall: Timestamp,
+    window: f32,
+) -> Option<Element> {
     if !has_list(store, channel) {
         return None;
     }
-    Some(
-        IconButton::new(ids::list(channel), Icon::Chat, look.menu_palette())
-            .variant(ButtonVariant::Ghost)
-            .tooltip(t("Hilos"))
-            .accessibility_label(t("Hilos"))
-            .ink(look.muted)
-            .render(),
+    let open = ui.threads.list == Some(channel);
+    let button = IconButton::new(
+        ids::list(channel),
+        Icon::Custom(rustcord_components::glyphs::THREAD),
+        look.menu_palette(),
     )
+    .variant(ButtonVariant::Ghost)
+    .tooltip(t("Hilos"))
+    .tooltip_placement(limn::TooltipPlacement::Below)
+    .accessibility_label(t("Hilos"))
+    .ink(if open { look.text } else { look.muted })
+    .hover_ink(look.text)
+    .active(open)
+    .render();
+    let view = open.then(|| list(ui, store, channel, wall, look)).flatten();
+    Some(parts::popout(
+        button,
+        view.as_ref(),
+        parts::popout_width(window),
+        look,
+    ))
 }
 
-fn messages(count: u32) -> String {
-    match count {
-        1 => t("1 mensaje").into(),
-        n => tr!("{n} mensajes", n),
+/// How long ago `at` was, as Discord's list of threads says it: in
+/// minutes (one at least), hours or days, and past a month no more.
+fn ago(at: Timestamp, wall: Timestamp) -> String {
+    let minutes = ((wall.0 - at.0) / 60_000).max(1);
+    match (minutes, minutes / 60, minutes / (60 * 24)) {
+        (minutes, 0, _) => tr!("hace {n} min", n = minutes),
+        (_, hours, 0) => tr!("hace {n} h", n = hours),
+        (_, _, days) if days <= 30 => tr!("hace {n} d", n = days),
+        _ => t("hace más de 30 días").to_owned(),
     }
 }
 
-fn row(ui: &Ui, store: &Store, thread: &Channel, wall: Timestamp) -> ThreadRow {
+fn row(ui: &Ui, store: &Store, thread: &Channel, wall: Timestamp, look: &Look) -> ThreadRow {
     let info = thread.thread.clone().unwrap_or_default();
+    let owner = info.owner;
     ThreadRow {
         thread: thread.id.0,
         name: thread.name.clone(),
-        detail: format!(
-            "{} · {}",
-            messages(info.messages),
-            rustcord_components::time::stamp(info.last_activity, wall)
+        owner: owner.map_or_else(
+            || t("Usuario desconocido").to_owned(),
+            |owner| store.display_name(owner, thread.server),
         ),
+        owner_accent: owner
+            .and_then(|owner| store.user(owner))
+            .map_or(look.faint, |account| look.ink(account.accent)),
+        owner_image: owner.and_then(|owner| ui.picture(store.avatar_in(thread.server, owner))),
+        ago: ago(info.last_activity, wall),
         private: info.private,
         archived: info.archived,
         locked: info.locked,
@@ -852,7 +883,13 @@ fn more(store: &Store, parent: ChannelId, forum: bool) -> (String, Option<String
     )
 }
 
-fn list(ui: &Ui, store: &Store, channel: ChannelId, wall: Timestamp) -> Option<ThreadList> {
+fn list(
+    ui: &Ui,
+    store: &Store,
+    channel: ChannelId,
+    wall: Timestamp,
+    look: &Look,
+) -> Option<ThreadList> {
     let found = store.channel(channel)?;
     let (followed, active): (Vec<&Channel>, Vec<&Channel>) = store
         .threads(channel, false)
@@ -862,7 +899,12 @@ fn list(ui: &Ui, store: &Store, channel: ChannelId, wall: Timestamp) -> Option<T
         .threads(channel, true)
         .into_iter()
         .filter(|thread| thread.thread.as_ref().is_some_and(|info| info.archived));
-    let rows = |threads: Vec<&Channel>| threads.iter().map(|t| row(ui, store, t, wall)).collect();
+    let rows = |threads: Vec<&Channel>| {
+        threads
+            .iter()
+            .map(|t| row(ui, store, t, wall, look))
+            .collect()
+    };
     Some(ThreadList {
         channel: channel.0,
         title: format!("#{}", found.name),
@@ -1173,11 +1215,14 @@ pub(crate) fn overlay(
     look: &Look,
     wall: Timestamp,
     room: f32,
+    narrow: bool,
 ) -> Element {
     let threads = &ui.threads;
+    // A wide header shows the list under its button instead.
     if let Some(view) = threads
         .list
-        .and_then(|channel| list(ui, store, channel, wall))
+        .filter(|_| narrow)
+        .and_then(|channel| list(ui, store, channel, wall, look))
     {
         root = parts::list(root, &view, look);
     }

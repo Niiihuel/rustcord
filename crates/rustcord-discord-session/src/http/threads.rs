@@ -6,7 +6,7 @@
 
 use reqwest::Method;
 use rustcord_i18n::es;
-use rustcord_model::{Channel, ChannelId, ServerId, TagId};
+use rustcord_model::{Channel, ChannelId, TagId};
 use rustcord_provider::{Command, Created, Event, ThreadEdit, ThreadScope};
 use serde_json::{json, Value};
 
@@ -203,17 +203,17 @@ impl Http {
         }
     }
 
-    /// One page of `parent`'s open threads, which the Gateway tells a
-    /// session only of when the account follows them. A forum's come from
-    /// the search (`offset` is the cursor, up to
-    /// [`MAX_ACTIVE`]); a channel's, and a forum's whose search is refused
-    /// on its first page, from the guild's list of open threads, in one page.
+    /// One page of `parent`'s open threads, as the official client reads
+    /// them. A forum's come from the search (`offset` is the cursor, up to
+    /// [`MAX_ACTIVE`]). A text channel's come from the Gateway, which the
+    /// guild's subscription asks for them (`THREAD_LIST_SYNC`), so its page
+    /// is empty and asks nothing: the guild's list of open threads is for
+    /// bots and refuses an account.
     pub(crate) async fn active_threads(
         &self,
         secret: &SessionSecret,
         request: rustcord_provider::RequestId,
         parent: ChannelId,
-        server: ServerId,
         forum: bool,
         before: Option<&str>,
     ) -> Result<Vec<Event>, RestError> {
@@ -228,52 +228,35 @@ impl Http {
                 )))
             }
         };
-        if forum {
-            let path = format!(
-                "/channels/{parent}/threads/search?archived=false&sort_by=last_message_time&sort_order=desc&limit={PAGE}&offset={offset}"
-            );
-            match self
-                .request(secret, Method::GET, &path, None, 2 * 1024 * 1024)
-                .await
+        if !forum {
+            let mut events = open_page(&json!({"threads": []}), parent, PAGE)?;
+            if let Some(Event::ThreadsLoaded {
+                request: answered, ..
+            }) = events.last_mut()
             {
-                Ok(value) => {
-                    let more = value["has_more"].as_bool().unwrap_or(false);
-                    let mut events = open_page(&value, parent, PAGE)?;
-                    // Every event but the page itself is one of its threads.
-                    let found = events.len() - 1;
-                    let next = (offset + found).min(MAX_ACTIVE);
-                    if let Some(Event::ThreadsLoaded {
-                        request: answered,
-                        next: following,
-                        ..
-                    }) = events.last_mut()
-                    {
-                        *answered = request;
-                        *following =
-                            (more && found > 0 && next < MAX_ACTIVE).then(|| next.to_string());
-                    }
-                    return Ok(events);
-                }
-                Err(error) if error.ends_session || offset > 0 => return Err(error),
-                // Not offered for this forum: the guild's list stands in.
-                Err(_) => {}
+                *answered = request;
             }
+            return Ok(events);
         }
+        let path = format!(
+            "/channels/{parent}/threads/search?archived=false&sort_by=last_message_time&sort_order=desc&limit={PAGE}&offset={offset}"
+        );
         let value = self
-            .request(
-                secret,
-                Method::GET,
-                &format!("/guilds/{server}/threads/active"),
-                None,
-                8 * 1024 * 1024,
-            )
+            .request(secret, Method::GET, &path, None, 2 * 1024 * 1024)
             .await?;
-        let mut events = open_page(&value, parent, usize::MAX)?;
+        let more = value["has_more"].as_bool().unwrap_or(false);
+        let mut events = open_page(&value, parent, PAGE)?;
+        // Every event but the page itself is one of its threads.
+        let found = events.len() - 1;
+        let next = (offset + found).min(MAX_ACTIVE);
         if let Some(Event::ThreadsLoaded {
-            request: answered, ..
+            request: answered,
+            next: following,
+            ..
         }) = events.last_mut()
         {
             *answered = request;
+            *following = (more && found > 0 && next < MAX_ACTIVE).then(|| next.to_string());
         }
         Ok(events)
     }

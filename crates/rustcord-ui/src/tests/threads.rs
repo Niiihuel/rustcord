@@ -213,9 +213,9 @@ fn the_list_of_threads_pages_open_then_archived_ones_once_each() {
     host.th_answer(sent);
     let painted = host.painted();
     for text in [
-        "Seguidos — 2",
-        "Activos — 0",
-        "Archivados — 0",
+        "Hilos",
+        "HILOS A LOS QUE TE HAS UNIDO: 2",
+        "Iniciado por Lucas",
         "Ver archivados",
     ] {
         assert!(painted.iter().any(|t| t == text), "{text}: {painted:?}");
@@ -240,20 +240,26 @@ fn the_list_of_threads_pages_open_then_archived_ones_once_each() {
         host.th_answer(sent);
     }
     assert_eq!(scopes, vec![ThreadScope::Archived, ThreadScope::Joined]);
-    // Opened again, the list asks for nothing more.
-    host.click("th:close:close");
+    // Opened again, the list asks for nothing more. A click outside the
+    // popout closes it.
+    host.th_choose("th:close");
+    assert!(!crate::threads::covering(&host.ui));
     let sent = host.sent.len();
     host.click(&format!("th:list:{gallery}"));
     assert_eq!(host.sent.len(), sent);
     let painted = host.painted();
     for text in [
-        "Archivados — 4",
+        "HILOS ANTIGUOS",
         "Salida al puerto de agosto",
         "Organización del concurso de agosto",
-        "No hay más hilos archivados",
     ] {
         assert!(painted.iter().any(|t| t == text), "{text}: {painted:?}");
     }
+    // Everything was read: the button under the list says so.
+    assert_eq!(
+        host.store.more_threads(gallery).reason(),
+        Some("No hay más hilos archivados")
+    );
     assert!(!painted.iter().any(|t| t == "Jurado de septiembre"));
     // An archived thread opens from the list, which closes.
     let old = thread_named(&host, "Salida al puerto de agosto");

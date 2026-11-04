@@ -75,7 +75,7 @@ pub(crate) fn frames(sent: Option<&Watch>, want: Option<&Watch>) -> Vec<Value> {
     let frame = |server: ServerId, typing: bool, channels: Value, people: &[UserId]| {
         let people: Vec<String> = people.iter().map(|user| user.to_string()).collect();
         json!({"subscriptions": {server.to_string(): {
-            "typing": typing, "threads": false, "activities": true, "member_updates": false,
+            "typing": typing, "threads": typing, "activities": true, "member_updates": false,
             "members": people, "channels": channels, "thread_member_lists": []
         }}})
     };

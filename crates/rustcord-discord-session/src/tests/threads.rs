@@ -381,14 +381,7 @@ async fn a_forums_open_page_says_what_each_card_shows_and_who_silenced_what() {
         "first_messages":[first, stray, {"broken":true}],"has_more":false});
     let (http, _) = fixtures(vec![response(200, &page.to_string())]).await;
     let events = http
-        .active_threads(
-            &secret(),
-            9,
-            ChannelId(23),
-            rustcord_model::ServerId(10),
-            true,
-            None,
-        )
+        .active_threads(&secret(), 9, ChannelId(23), true, None)
         .await
         .unwrap();
     let thread_of = |id: u64| match events
@@ -521,14 +514,7 @@ async fn open_posts_come_from_the_forum_search_and_a_channels_from_the_guild_lis
         "members":[{"id":"63","user_id":"9"}],"has_more":true,"total_results":3});
     let (http, lines) = fixtures(vec![response(200, &page.to_string())]).await;
     let events = http
-        .active_threads(
-            &secret(),
-            9,
-            ChannelId(23),
-            rustcord_model::ServerId(10),
-            true,
-            None,
-        )
+        .active_threads(&secret(), 9, ChannelId(23), true, None)
         .await
         .unwrap();
     assert_eq!(lines.await.unwrap(), vec![search(0)]);
@@ -544,48 +530,36 @@ async fn open_posts_come_from_the_forum_search_and_a_channels_from_the_guild_lis
             next: Some("2".into()),
         }
     );
-    // A forum whose search is refused: the guild's list, first page only.
-    let guild =
-        json!({"threads":[thread(62, 23, 11, None), thread(70, 20, 11, None)],"members":[]});
-    let (http, lines) = fixtures(vec![
-        response(404, r#"{"code":10003}"#),
-        response(200, &guild.to_string()),
-    ])
-    .await;
+    // A forum whose search is refused: a failure, never the guild's list
+    // of open threads, which is for bots.
+    let (http, lines) = fixtures(vec![response(404, r#"{"code":10003}"#)]).await;
+    assert!(http
+        .active_threads(&secret(), 10, ChannelId(23), true, None)
+        .await
+        .is_err());
+    assert_eq!(lines.await.unwrap(), vec![search(0)]);
+    // A text channel's open threads come from the Gateway: an empty page,
+    // nothing asked.
+    let (http, lines) = fixtures(vec![]).await;
     let events = http
-        .active_threads(
-            &secret(),
-            10,
-            ChannelId(23),
-            rustcord_model::ServerId(10),
-            true,
-            None,
-        )
+        .active_threads(&secret(), 13, ChannelId(20), false, None)
         .await
         .unwrap();
+    assert!(lines.await.unwrap().is_empty());
     assert_eq!(
-        lines.await.unwrap(),
-        vec![
-            search(0),
-            "GET /api/v10/guilds/10/threads/active HTTP/1.1".to_owned()
-        ]
-    );
-    // Only this forum's, and nothing more after the guild's list.
-    assert!(
-        matches!(events.last(), Some(Event::ThreadsLoaded { threads, next: None, request: 10, .. })
-        if *threads == vec![ChannelId(62)])
+        events,
+        vec![Event::ThreadsLoaded {
+            request: 13,
+            parent: ChannelId(20),
+            scope: ThreadScope::Active,
+            threads: Vec::new(),
+            next: None,
+        }]
     );
     // A later page that fails stays a failure.
     let (http, _) = fixtures(vec![response(500, "{}")]).await;
     assert!(http
-        .active_threads(
-            &secret(),
-            11,
-            ChannelId(23),
-            rustcord_model::ServerId(10),
-            true,
-            Some("25")
-        )
+        .active_threads(&secret(), 11, ChannelId(23), true, Some("25"))
         .await
         .is_err());
     // An archived thread in an open page is malformed.
@@ -593,14 +567,7 @@ async fn open_posts_come_from_the_forum_search_and_a_channels_from_the_guild_lis
         json!({"threads":[thread(62, 23, 11, Some("2026-09-10T12:00:00+00:00"))],"has_more":false});
     let (http, _) = fixtures(vec![response(200, &wrong.to_string())]).await;
     assert!(http
-        .active_threads(
-            &secret(),
-            12,
-            ChannelId(23),
-            rustcord_model::ServerId(10),
-            true,
-            None
-        )
+        .active_threads(&secret(), 12, ChannelId(23), true, None)
         .await
         .is_err());
 }

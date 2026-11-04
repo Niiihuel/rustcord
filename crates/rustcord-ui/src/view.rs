@@ -30,6 +30,12 @@ const NARROW_CONVERSATION_MIN: f32 = 280.0;
 /// Narrower windows fold some of the header's tools into a «más».
 const NARROW_HEADER: f32 = 800.0;
 
+/// Whether a window `width` wide folds the header's inbox and threads into
+/// a «más», the title needing the room.
+pub(crate) fn narrow_header(ui: &Ui, width: f32) -> bool {
+    width - crate::title_bar::room(ui) < NARROW_HEADER
+}
+
 /// Below this width the member list gives its room to the conversation;
 /// the panels are as wide as the person left them. `narrow`: the
 /// width when the person keeps it in narrow windows.
@@ -149,7 +155,15 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     let root = crate::private_calls::overlay(ui, store, root, look);
     let root = crate::relationships::overlay(ui, store, root, look);
     let root = crate::conversations::overlay(ui, store, root, window.height, look);
-    let root = crate::threads::overlay(ui, store, root, look, context.wall, window.height);
+    let root = crate::threads::overlay(
+        ui,
+        store,
+        root,
+        look,
+        context.wall,
+        window.height,
+        narrow_header(ui, window.width),
+    );
     let root = crate::attachments::overlay(ui, store, root, look, context);
     let root = crate::voice_messages::overlay(ui, store, root, look, context);
     let root = crate::documents::overlay(ui, store, root, look, context);
@@ -619,7 +633,7 @@ fn conversation(
     // Below 800 px the title needs the room: the inbox and the list of
     // threads fold into a «más».
     // The window's own buttons take the header's end.
-    let narrow = context.window.width - crate::title_bar::room(ui) < NARROW_HEADER;
+    let narrow = narrow_header(ui, context.window.width);
     let mut tools = channel_list::header_tools(ui, store, channel, look, context.wall, narrow);
     tools.extend(crate::conversations::header_tool(store, channel, look));
     // Private calls: to call, answer or join.
@@ -627,7 +641,14 @@ fn conversation(
     if narrow {
         tools.extend(channel_list::header_more(ui, store, channel, look));
     } else {
-        tools.extend(crate::threads::header_tool(store, channel, look));
+        tools.extend(crate::threads::header_tool(
+            ui,
+            store,
+            channel,
+            look,
+            context.wall,
+            context.window.width,
+        ));
     }
     // Last, where a server's member list has its toggle.
     if side_room {
