@@ -406,7 +406,12 @@ fn video_buttons(
         button(
             ids::SCREEN,
             controls.screen,
-            Icon::Screen,
+            // Discord's: a screen with an arrow, crossed out while shared.
+            Icon::Custom(if controls.screen {
+                SCREEN_STOP
+            } else {
+                crate::glyphs::SCREEN_SHARE
+            }),
             (t("Dejar de compartir"), t("Compartir pantalla")),
         ),
     ]
@@ -1207,12 +1212,14 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
 
 /// The voice section of the account's box, one card with it: 100 high, its
 /// two rows of 32 around 12 in and 12 apart (Discord's card).
-pub const PANEL_HEIGHT: f32 = 100.0;
-const PANEL_INSET: f32 = 12.0;
+pub const PANEL_HEIGHT: f32 = 104.0;
+const PANEL_INSET: f32 = 14.0;
+/// Between the panel's two rows, as Discord's.
+const PANEL_ROWS_GAP: f32 = 12.0;
 /// The signal and the panel's buttons are 32 square, 8 apart.
 const SIGNAL_SIZE: f32 = 32.0;
 const PANEL_BUTTON: f32 = 32.0;
-const PANEL_GAP: f32 = 8.0;
+const PANEL_GAP: f32 = 10.0;
 /// The connection's details: 319 wide.
 pub const DETAILS_WIDTH: f32 = 319.0;
 /// A person's row under a voice channel: 32 high (4, 24 of picture, 4, as
@@ -1442,12 +1449,12 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     };
     // The title reads «Detalles de voz» under the pointer: it opens them too.
     let heading = Element::stack(vec![
-        strong_line(title, 15.0, ink).conceal_on_hover("vz:details:title:phase"),
-        strong_line(t("Detalles de voz"), 15.0, ink).reveal_on_hover("vz:details:title:hover"),
+        strong_line(title, 16.0, ink).conceal_on_hover("vz:details:title:phase"),
+        strong_line(t("Detalles de voz"), 16.0, ink).reveal_on_hover("vz:details:title:hover"),
     ]);
     let summary = Element::clickable(
         ids::DETAILS_TITLE,
-        Element::column(vec![heading, line(subtitle, 12.0, look.muted)]).gap(1.0),
+        Element::column(vec![heading, strong_line(subtitle, 12.0, look.muted)]),
     )
     .hover_region()
     .accessibility_label(t("Detalles de voz"));
@@ -1541,8 +1548,12 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
         Element::row(first).gap(8.0).size(None, Some(PANEL_BUTTON)),
         second.size(None, Some(PANEL_BUTTON)),
     ];
-    let card = Element::panel(Element::column(rows).gap(PANEL_INSET).padding(PANEL_INSET))
-        .size(None, Some(PANEL_HEIGHT));
+    let card = Element::panel(
+        Element::column(rows)
+            .gap(PANEL_ROWS_GAP)
+            .padding(PANEL_INSET),
+    )
+    .size(None, Some(PANEL_HEIGHT));
     match &view.stream_source {
         Some(source) => Element::column(vec![
             stream_card(source, view.stream_quality.as_deref(), look),
@@ -3721,7 +3732,11 @@ fn bar(view: &Stage, look: &Look) -> Element {
     );
     let screen = bar_button(
         ids::SCREEN,
-        Icon::Screen,
+        Icon::Custom(if video.screen {
+            SCREEN_STOP
+        } else {
+            crate::glyphs::SCREEN_SHARE
+        }),
         (BAR_BUTTON, 20.0),
         corners(true, true),
         glow(video.screen, GREEN_GLOW),

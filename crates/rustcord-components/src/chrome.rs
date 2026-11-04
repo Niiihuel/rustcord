@@ -323,6 +323,7 @@ fn split_button(
             id,
             crate::centered(
                 Element::icon(glyph)
+                    .large_icon(size)
                     .foreground(ink)
                     .size(Some(size), Some(size)),
             ),
@@ -368,7 +369,7 @@ fn split_button(
         Element::row(vec![
             action,
             gap(1.0, 0.0),
-            piece(arrow_id, chevron, 14.0, ARROW, side, arrow_hint),
+            piece(arrow_id, chevron, 16.0, ARROW, side, arrow_hint),
         ]),
     ])
     .size(Some(PANEL_BUTTON.0 + 1.0 + ARROW), Some(PANEL_BUTTON.1))
