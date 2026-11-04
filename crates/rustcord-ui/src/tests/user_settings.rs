@@ -688,7 +688,7 @@ fn noise_suppression_offers_rnnoise_and_webrtc_honestly_and_survives_a_restart()
     assert!(painted_has(&mut host, "Supresión de ruido"));
     assert!(painted_has(
         &mut host,
-        "Suprime el ruido de fondo de tu micrófono."
+        "Reduce el ruido de fondo de tu micrófono."
     ));
     // The choices are a list now: they show once it is open.
     host.us_press("us:select:noise-suppression");
@@ -854,9 +854,10 @@ fn the_input_volume_sits_beside_the_output_and_is_kept() {
     host.click("us:page=voice");
     assert!(painted_has(&mut host, "Volumen del micrófono"));
     assert!(painted_has(&mut host, "Volumen del altavoz"));
+    // No value beside it, as Discord's: the slider is the value.
     host.us_slide("us:input-volume", 0.751, true);
     assert_eq!(host.ui.prefs.input_volume, 1.5);
-    assert!(painted_has(&mut host, "150 %"));
+    assert!(!painted_has(&mut host, "150 %"));
     assert_eq!(host.us_next_run().prefs.input_volume, 1.5);
 }
 
@@ -883,7 +884,7 @@ fn microphone_test_distinguishes_opening_raw_and_processed_levels_and_stops_on_l
     host.ui.audio.levels = vec![0.2];
     // Rustcord's own comparison, folded under the diagnostics.
     host.us_press("us:fold=voice-diagnostics");
-    host.us_press("us:jump=diagnostics");
+    host.us_press("us:jump=advanced");
     let frame = host.frame();
     let bar_height = |name| {
         let bounds = frame
@@ -949,23 +950,41 @@ fn the_advanced_and_diagnostic_settings_stay_folded_until_opened() {
     };
     let has = |list: &[String], wanted: &str| list.iter().any(|it| it == wanted);
     let (ids, texts) = tall(&mut host);
+    // Discord's rows stay in sight; the rest is folded under three rows.
+    for shown in ["us:echo-cancellation", "us:input=ptt", "us:sound=deafen"] {
+        assert!(has(&ids, shown), "{shown} is in sight");
+    }
     for folded in [
-        "us:echo-cancellation",
         "us:automatic-gain",
+        "us:loopback",
+        "us:auto-sensitivity",
+        "us:sound=camera_on",
         "us:speaker-test",
         "us:devices",
     ] {
         assert!(!has(&ids, folded), "{folded} is folded");
     }
-    assert!(has(&texts, "Mostrar ajustes avanzados de voz"), "{texts:?}");
-    assert!(has(&texts, "Mostrar ajustes de diagnóstico"));
+    for row in [
+        "Mostrar ajustes avanzados de voz",
+        "Mostrar 15 sonidos más",
+        "Cámara encendida, Cámara apagada, Desconexión o error y mucho más",
+        "Mostrar ajustes de diagnóstico",
+    ] {
+        assert!(has(&texts, row), "{row}: {texts:?}");
+    }
     host.us_press("us:fold=voice-advanced");
     let (ids, texts) = tall(&mut host);
-    assert!(has(&ids, "us:echo-cancellation") && has(&ids, "us:auto-sensitivity"));
+    assert!(has(&ids, "us:automatic-gain") && has(&ids, "us:auto-sensitivity"));
     assert!(!has(&ids, "us:speaker-test"), "one fold at a time");
     assert!(has(&texts, "Ocultar ajustes avanzados de voz"));
     host.us_press("us:fold=voice-advanced");
-    assert!(!has(&tall(&mut host).0, "us:echo-cancellation"));
+    assert!(!has(&tall(&mut host).0, "us:automatic-gain"));
+    host.us_press("us:fold=more-sounds");
+    assert!(has(&tall(&mut host).0, "us:sound=ring_out"));
+    // The microphone test's help opens the diagnostics and goes there.
+    host.us_press("us:diagnostics");
+    assert_eq!(host.ui.settings_state.section, Some("advanced"));
+    assert!(has(&tall(&mut host).0, "us:speaker-test"));
     // A search shows what it finds there, out of the fold.
     host.us_write(SEARCH, "actualizar dispositivos");
     let (ids, texts) = tall(&mut host);
@@ -978,10 +997,10 @@ fn the_microphone_test_turns_its_button_and_says_what_it_hears() {
     let mut host = Host::new();
     host.us_open();
     host.us_press("us:page=voice");
-    assert!(painted_has(&mut host, "Analicemos la grabación"));
+    assert!(painted_has(&mut host, "Prueba de micrófono"));
     host.us_press("us:meter");
     assert!(painted_has(&mut host, "Detener la prueba"));
-    assert!(!painted_has(&mut host, "Analicemos la grabación"));
+    assert!(!painted_has(&mut host, "Prueba de micrófono"));
     // About two seconds with nothing from the device.
     host.ui.audio.starting = false;
     host.ui.audio.raw_levels = vec![0.0; 24];
@@ -996,7 +1015,7 @@ fn the_microphone_test_turns_its_button_and_says_what_it_hears() {
     host.ui.audio.loopback = true;
     assert!(painted_has(&mut host, "Reproduciendo tu preciosa voz"));
     host.us_press("us:meter");
-    assert!(painted_has(&mut host, "Analicemos la grabación"));
+    assert!(painted_has(&mut host, "Prueba de micrófono"));
 }
 
 #[test]
@@ -1250,16 +1269,14 @@ fn the_speaker_its_volume_and_the_sound_test_are_settings_that_stop_on_leave() {
     host.us_press("us:speaker-default");
     assert_eq!(host.ui.audio.output, None);
 
-    assert!(painted_has(&mut host, "100 %"));
     host.us_slide("us:output-volume", 0.251, true);
     assert_eq!(host.ui.prefs.output_volume, 0.5);
-    assert!(painted_has(&mut host, "50 %"));
     assert_eq!(host.us_next_run().prefs.output_volume, 0.5);
 
-    // The output's test is a call sound, which goes into a call too; it
-    // and the volumes' reset are folded under the diagnostics.
+    // The output's test is a call sound, which goes into a call too; it is
+    // folded under the diagnostics, over the volumes' reset.
     host.us_press("us:fold=voice-diagnostics");
-    host.us_press("us:jump=diagnostics");
+    host.us_press("us:jump=advanced");
     host.us_press("us:speaker-test");
     assert_eq!(host.ui.call_sounds.preview, Some(crate::CallSound::Join));
     host.ui.call_sounds.preview = None;
@@ -1268,12 +1285,14 @@ fn the_speaker_its_volume_and_the_sound_test_are_settings_that_stop_on_leave() {
         &mut host,
         "Con el volumen de salida en 0 % no se oye."
     ));
-    // Changed volumes can go back as they start.
+    // Changed volumes can go back as they start; as they are, there is
+    // nothing to reset.
     assert!(painted_has(&mut host, "Restablecer niveles"));
+    assert!(host.us_buttons().contains(&"us:reset-levels".to_owned()));
     host.us_press("us:reset-levels");
     assert_eq!(host.ui.prefs.output_volume, 1.0);
     assert_eq!(host.ui.prefs.input_volume, 1.0);
-    assert!(!painted_has(&mut host, "Restablecer niveles"));
+    assert!(!host.us_buttons().contains(&"us:reset-levels".to_owned()));
     host.us_press("us:loopback");
     assert!(
         host.ui.audio.testing && host.ui.audio.loopback,

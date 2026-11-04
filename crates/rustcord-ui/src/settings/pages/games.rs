@@ -19,6 +19,7 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         // Discord's navigator to the activity privacy page.
         "related-activity" => parts::related(
             "us:page=activity",
+            limn::Icon::Gamepad,
             t("Privacidad de la actividad"),
             t("Controlar quién puede ver la información de actividades de juegos y aplicaciones conectadas que utilizo."),
             ctx.look,

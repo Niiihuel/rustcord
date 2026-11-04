@@ -1326,6 +1326,14 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
         return Vec::new();
     }
     ui.settings_state.select = None;
+    // The microphone test's help: the diagnostics, opened, at the page's end.
+    if rest == "diagnostics" {
+        let folds = &mut ui.settings_state.folds;
+        if !folds.iter().any(|open| open == "voice-diagnostics") {
+            folds.push("voice-diagnostics".to_owned());
+        }
+        return vec![jump(ui, SettingsPage::Voice, "advanced")];
+    }
     if let Some(fold) = rest.strip_prefix("fold=") {
         let folds = &mut ui.settings_state.folds;
         match folds.iter().position(|open| open == fold) {

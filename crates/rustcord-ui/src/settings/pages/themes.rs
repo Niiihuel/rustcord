@@ -64,6 +64,7 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Option<Element>> {
         "transparency" => Some(transparency(ctx)),
         "theme-related" => Some(parts::related(
             "us:page=accessibility",
+            limn::Icon::Sliders,
             t("Accesibilidad"),
             t("Cambia la saturación de los colores, activa el modo de alto contraste y mucho más"),
             ctx.look,

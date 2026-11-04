@@ -27,10 +27,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "La salida elegida no está conectada. Conéctala o elige otra.",
         "The chosen output isn't connected. Connect it or pick another.",
     ),
-    (
-        "100 % es el nivel original; más alto puede distorsionar.",
-        "100 % is the original level; higher may distort.",
-    ),
     ("Actualizar dispositivos", "Refresh devices"),
     ("Restablecer niveles", "Reset levels"),
     (
@@ -44,8 +40,8 @@ pub(super) const ENTRIES: super::Entries = &[
         "microphone speaker input output device headphones speakers volume gain",
     ),
     (
-        "sistema de audio actualizar dispositivos restablecer niveles volumen",
-        "audio system refresh devices reset levels volume",
+        "sistema de audio actualizar dispositivos buscar de nuevo",
+        "audio system refresh devices search again",
     ),
     (
         "antes y después del procesamiento entrada procesada niveles comparar supresión",

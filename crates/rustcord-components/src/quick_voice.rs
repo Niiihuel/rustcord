@@ -1,17 +1,17 @@
 //! The menus of the arrows beside the microphone and the headphones, as
 //! Discord has them, the camera's panel, and the
-//! pieces they share with the voice page: the device lists, the percent
-//! sliders and the level meter.
+//! pieces they share with the voice page: the device lists and the level
+//! meter.
 //!
 //! Their controls report the voice page's own actions (`us:…`), so choosing
 //! here and there is the same choice.
 
 use limn::{
     Button, ButtonVariant, Color, Component, DropdownMenu, DropdownMenuEntry, DropdownMenuItem,
-    DropdownOption, Element, FontFamily, Icon, ScrollArea, Select, SelectorSizing, Size, Slider,
-    SurfaceFit, Tooltip, TooltipSpec,
+    DropdownOption, Element, Icon, ScrollArea, Select, SelectorSizing, Size, SurfaceFit, Tooltip,
+    TooltipSpec,
 };
-use rustcord_i18n::{es, t, tr};
+use rustcord_i18n::{es, t};
 
 use crate::profile::Device;
 use crate::{line, strong_line, text, Look};
@@ -28,9 +28,6 @@ pub const ARROW_WIDTH: f32 = 20.0;
 pub const MAX_DEVICES: usize = 32;
 /// A device's name past this many characters is cut; its hint has it whole.
 const NAME_CHARS: usize = 40;
-/// The slider's track and the value beside it.
-const SLIDER_HEIGHT: f32 = 28.0;
-const VALUE_WIDTH: f32 = 52.0;
 /// Discord's «Nivel de entrada»: pills 4 wide every 8, 16 high, centered in
 /// a 28 px box; lit, each takes its place on a ramp from `--yellow-260` to
 /// `--green-360` across the whole meter.
@@ -173,40 +170,6 @@ pub fn device_options(list: &DeviceList, devices: &[Device]) -> Vec<DropdownOpti
     options
 }
 
-/// A volume from 0 to `most`, as a track with its value in percent at its
-/// right. It snaps to whole percents, so the arrow keys step by one.
-pub fn percent_slider(
-    id: &str,
-    label: &str,
-    value: f32,
-    most: f32,
-    width: f32,
-    look: &Look,
-) -> Element {
-    let percent = (value.clamp(0.0, most) * 100.0).round();
-    let stops = (most * 100.0).round() as usize + 1;
-    Element::row(vec![
-        Slider::new(id, value / most, look.palette())
-            .steps(stops)
-            .width((width - VALUE_WIDTH).max(40.0))
-            .ink(look.accent)
-            // Discord's knob and track, as the settings' other sliders.
-            .thumb(16.0, 20.0)
-            .bar(4.0, 6.0)
-            .accessibility_label(label)
-            .render()
-            .centered_y(),
-        Element::row(vec![
-            Element::spacer().flex(1.0),
-            line(tr!("{percent} %", percent), 13.0, look.text)
-                .font_family(FontFamily::Monospace)
-                .centered_y(),
-        ])
-        .size(Some(VALUE_WIDTH), None),
-    ])
-    .size(Some(width), Some(SLIDER_HEIGHT))
-}
-
 /// How many of `count` pills `level` (0 to 1) lights: whole pills, as
 /// Discord's meter moves by whole pills.
 pub fn lit_pills(level: Option<f32>, count: usize) -> usize {
@@ -267,15 +230,6 @@ fn pill_meter(id: &str, level: Option<f32>, width: f32, height: f32, look: &Look
 
 fn label(value: &str, look: &Look) -> Element {
     strong_line(value, 12.0, look.muted)
-}
-
-/// The note under the volumes: what 100 % is.
-pub fn volume_note(look: &Look) -> Element {
-    text(
-        t("100 % es el nivel original; más alto puede distorsionar."),
-        12.0,
-        look.muted,
-    )
 }
 
 /// The input profiles, as the voice page keeps them (`us:profile={key}`).

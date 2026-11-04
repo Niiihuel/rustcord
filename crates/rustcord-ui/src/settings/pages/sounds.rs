@@ -1,8 +1,9 @@
-//! «Sonidos de la llamada» (audio work): how loud, one switch and a «Probar»
-//! for each event, and the folder of one's own sounds with what the host
-//! found in it.
+//! «Sonidos» (audio work), as Discord's: a row for each of the call's
+//! sounds with its preview and its switch, the first four in sight and the
+//! rest folded; then how loud they are and the folder of one's own sounds,
+//! with what the host found in it.
 
-use limn::{Button, ButtonVariant, Component, ControlSize, Element, TextField};
+use limn::{Component, Element, TextField};
 
 use rustcord_components::{line, text, user_settings as parts};
 use rustcord_i18n::{es, t, tr};
@@ -11,11 +12,33 @@ use super::Ctx;
 use crate::call_sounds::FOLDER;
 use crate::CallSound;
 
-/// The section's settings, each with the words it is found by.
+/// The section's settings, each with the words it is found by: Discord's
+/// first four sounds, then [`MORE`], then Rustcord's own.
 pub(super) const ROWS: &[(&str, &str)] = &[
     (
-        "sound-volume",
-        es("volumen de los sonidos avisos llamada ensordecido probar"),
+        "sound:deafen",
+        es("sonido ensordecer auriculares sonido apagado"),
+    ),
+    (
+        "sound:undeafen",
+        es("sonido dejar de ensordecer auriculares"),
+    ),
+    ("sound:mute", es("sonido silenciar micrófono mute")),
+    (
+        "sound:unmute",
+        es("sonido dejar de silenciar micrófono unmute"),
+    ),
+    (
+        "sound:camera_on",
+        es("sonido encender cámara video activar enviar"),
+    ),
+    (
+        "sound:camera_off",
+        es("sonido apagar cámara video desactivar dejar de enviar"),
+    ),
+    (
+        "sound:disconnect",
+        es("sonido desconexión error se cortó la llamada"),
     ),
     (
         "sound:join",
@@ -30,19 +53,6 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         "sound:user_leave",
         es("sonido alguien sale se va otra persona"),
     ),
-    ("sound:mute", es("sonido silenciar micrófono mute")),
-    (
-        "sound:unmute",
-        es("sonido dejar de silenciar micrófono unmute"),
-    ),
-    (
-        "sound:deafen",
-        es("sonido ensordecer auriculares sonido apagado"),
-    ),
-    (
-        "sound:undeafen",
-        es("sonido dejar de ensordecer auriculares"),
-    ),
     (
         "sound:ptt_start",
         es("sonido pulsar para hablar activar micrófono abierto"),
@@ -50,14 +60,6 @@ pub(super) const ROWS: &[(&str, &str)] = &[
     (
         "sound:ptt_stop",
         es("sonido pulsar para hablar soltar micrófono cerrado"),
-    ),
-    (
-        "sound:camera_on",
-        es("sonido encender cámara video activar enviar"),
-    ),
-    (
-        "sound:camera_off",
-        es("sonido apagar cámara video desactivar dejar de enviar"),
     ),
     (
         "sound:stream_start",
@@ -72,10 +74,6 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         es("sonido alguien transmite comparte pantalla en vivo"),
     ),
     (
-        "sound:disconnect",
-        es("sonido desconexión error se cortó la llamada"),
-    ),
-    (
         "sound:message",
         es("sonido mensaje nuevo mención mensaje directo"),
     ),
@@ -88,6 +86,10 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         es("sonido llamando a alguien timbre esperar privado"),
     ),
     (
+        "sound-volume",
+        es("volumen de los sonidos avisos llamada ensordecido probar"),
+    ),
+    (
         "sound-folder",
         es("carpeta de sonidos propios archivos personalizados reemplazar ogg opus mp3 wav"),
     ),
@@ -95,6 +97,25 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         "related-notifications",
         es("notificaciones sonidos nuevos mensajes llamadas entrantes avisos"),
     ),
+];
+
+/// The sounds folded under «Mostrar N sonidos más», in their order in [`ROWS`].
+pub(super) const MORE: &[&str] = &[
+    "sound:camera_on",
+    "sound:camera_off",
+    "sound:disconnect",
+    "sound:join",
+    "sound:leave",
+    "sound:user_join",
+    "sound:user_leave",
+    "sound:ptt_start",
+    "sound:ptt_stop",
+    "sound:stream_start",
+    "sound:stream_stop",
+    "sound:user_stream",
+    "sound:message",
+    "sound:ring",
+    "sound:ring_out",
 ];
 
 /// The setting `key` of the section; `None` for the rest.
@@ -108,6 +129,7 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         // Discord's: the message and call sounds are Notificaciones'.
         "related-notifications" => Some(parts::related(
             "us:page=notifications",
+            limn::Icon::Bell,
             t("Notificaciones"),
             t("Activa o desactiva los sonidos para los nuevos mensajes y llamadas entrantes."),
             ctx.look,
@@ -116,34 +138,45 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
     }
 }
 
-/// One event: its name, «Probar» and its switch.
+/// One event: its name, the link that plays it, and its switch.
 fn event(ctx: &Ctx, sound: CallSound) -> Element {
     let (ui, look) = (ctx.ui, ctx.look);
     let on = ui.prefs.sound_on(sound);
-    let own = ui
+    let mut copy = vec![
+        text(sound.label(), 16.0, look.text).font_family(limn::FontFamily::SansMedium),
+        Element::row(vec![
+            parts::link(
+                &format!("us:sound-test={}", sound.key()),
+                t("Vista previa del sonido"),
+                &tr!("Probar «{sound}»", sound = sound.label()),
+                look,
+            ),
+            Element::spacer().flex(1.0),
+        ]),
+    ];
+    if let Some((_, file)) = ui
         .call_sounds
         .found
         .as_ref()
         .and_then(|found| found.taken.iter().find(|(taken, _)| *taken == sound))
-        .map(|(_, file)| tr!("Suena {file}, de tu carpeta.", file = file.as_str()));
-    let controls = Element::row(vec![
-        Button::new(
-            format!("us:sound-test={}", sound.key()),
-            t("Probar"),
-            parts::veil(look),
-        )
-        .variant(ButtonVariant::Secondary)
-        .size(ControlSize::Compact)
-        .accessibility_label(tr!("Probar «{sound}»", sound = sound.label()))
-        .render()
-        .size(None, Some(parts::SMALL_BUTTON_HEIGHT))
-        .min_size(60.0, 0.0),
-        parts::switch(format!("us:sound={}", sound.key()), on, look)
-            .accessibility_label(sound.label())
-            .render(),
-    ])
-    .gap(12.0);
-    parts::setting(sound.label(), own.as_deref(), Some(controls), true, look)
+    {
+        copy.push(text(
+            tr!("Suena {file}, de tu carpeta.", file = file.as_str()),
+            14.0,
+            look.muted,
+        ));
+    }
+    parts::listed(
+        Element::row(vec![
+            Element::column(copy).gap(4.0).flex(1.0).centered_y(),
+            parts::switch(format!("us:sound={}", sound.key()), on, look)
+                .accessibility_label(sound.label())
+                .render()
+                .centered_y(),
+        ])
+        .gap(24.0),
+        look,
+    )
 }
 
 /// How loud they play, and what deafening leaves.

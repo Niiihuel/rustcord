@@ -33,11 +33,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Insignias", "Badges"),
     ("Voz", "Voice"),
     ("Prueba de micrófono", "Mic Test"),
-    (
-        "¿Tienes problemas con el micrófono? Comienza una prueba y di algo divertido; con «Escucharte» activado, reproduciremos tu voz.",
-        "Having mic issues? Start a test and say something fun; with “Hear yourself” on, we'll play your voice back to you.",
-    ),
-    ("Analicemos la grabación", "Let's Check"),
     ("Reproduciendo tu preciosa voz", "Playing back your beautiful voice"),
     (
         "Rustcord no detecta ninguna entrada de tu micrófono.",
@@ -51,10 +46,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Ocultar ajustes avanzados de voz", "Hide Advanced Voice Settings"),
     ("Mostrar ajustes de diagnóstico", "Show Diagnostic Settings"),
     ("Ocultar ajustes de diagnóstico", "Hide Diagnostic Settings"),
-    (
-        "Activa o desactiva los sonidos que se reproducen cuando estás en una llamada.",
-        "Turn on or off the sounds that play while you're in a call.",
-    ),
     ("Perfil de entrada", "Input profile"),
     ("Video", "Video"),
     ("Tema", "Theme"),
@@ -121,10 +112,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "mark servers with unread messages badge server list unread",
     ),
     ("número de menciones insignia globo rojo", "mention count number badge red bubble"),
-    (
-        "prueba de micrófono nivel medidor probar comprobar analicemos la grabación",
-        "mic test microphone level meter check let's check recording",
-    ),
     (
         "escucharme oírme retorno monitor auriculares acople",
         "hear myself loopback monitor headphones feedback",
@@ -285,16 +272,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Aislamiento de voz", "Voice isolation"),
     ("Estudio", "Studio"),
     ("Supresión de ruido", "Noise suppression"),
-    (
-        "Suprime el ruido de fondo de tu micrófono.",
-        "Suppress background noise from your mic.",
-    ),
     ("Ninguna", "None"),
     ("Cancelación de eco", "Echo cancellation"),
-    (
-        "Evita que el micrófono capte lo que suena en tus auriculares.",
-        "Keeps the microphone from picking up what plays in your headphones.",
-    ),
     (
         "cancelar el sonido de la pc juegos música videos eco referencia del sistema salida",
         "cancel pc sound games music videos echo system reference output",
@@ -467,10 +446,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Automatically adjust input sensitivity",
     ),
     (
-        "Controla cuánto sonido transmite Rustcord desde tu micrófono. Habla para probarlo; si el medidor se llena, Rustcord está transmitiendo tu hermosa voz.",
-        "Controls how much sound Rustcord transmits from your mic. Speak to test it; if the meter fills, Rustcord is transmitting your beautiful voice.",
-    ),
-    (
         "Rustcord sigue el ruido de la sala: tu voz tiene que superarlo por 15 dB.",
         "Rustcord follows the room's noise: your voice has to beat it by 15 dB.",
     ),
@@ -533,7 +508,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Escribe la ruta completa de la carpeta, desde / o ~/.",
         "Type the folder's full path, from / or ~/.",
     ),
-    ("Probar", "Try"),
     ("Probar «{sound}»", "Try “{sound}”"),
     ("Suena {file}, de tu carpeta.", "Plays {file}, from your folder."),
     ("Volumen de los sonidos", "Sound volume"),
@@ -638,7 +612,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("¿Realmente quieres cerrar sesión?", "Are you sure you want to sign out?"),
     // The call's encryption, on Datos y privacidad.
     ("Cifrado de extremo a extremo de voz", "Voice end-to-end encryption"),
-    ("Activa tu micrófono solo cuando mantienes presionada una tecla designada.", "Turns your microphone on only while you hold a designated key."),
     ("Activar el movimiento reducido", "Turn on Reduced Motion"),
     ("Ajusta el espaciado entre los grupos de mensajes.", "Adjust the spacing between message groups."),
     ("Ajusta el tamaño de la fuente del chat.", "Adjust the size of the chat font."),
@@ -648,7 +621,46 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Al unirse un usuario", "User Join"),
     ("Atajo de teclado «Pulsar para hablar»", "Push to Talk keybind"),
     ("Audio puro: micrófono abierto sin procesamiento", "Pure audio: open microphone with no processing"),
-    ("Diagnósticos", "Diagnostics"),
+    ("Avanzado", "Advanced"),
+    (
+        "Ajustes para revisar el audio y el video: probar sonido, antes y después del procesamiento, sistema de audio y aceleración por hardware",
+        "Settings for checking audio and video: test sound, before and after processing, audio system and hardware acceleration",
+    ),
+    (
+        "Control automático de ganancia, Escucharte, Cancelar sonido del equipo y sensibilidad automática",
+        "Automatic gain control, Hear yourself, Cancel computer audio and automatic sensitivity",
+    ),
+    ("Controla cuánto sonido transmite Rustcord desde tu micrófono.", "Controls how much sound Rustcord transmits from your mic."),
+    ("Reduce el ruido de fondo de tu micrófono.", "Reduces background noise from your mic."),
+    ("Quita también el teclado y los ruidos que cambian.", "Also removes typing and changing noises."),
+    (
+        "Deja la voz más limpia con ruido constante, pero deja pasar más el teclado y usa más procesador, con 20 ms más de retraso.",
+        "Leaves the voice cleaner under constant noise, but lets more typing through and uses more CPU, with 20 ms more delay.",
+    ),
+    ("Más liviano, para ruido constante como un ventilador.", "Lighter, for constant noise such as a fan."),
+    ("Mostrar {count} sonidos más", "Show {count} more sounds"),
+    ("Mostrar menos sonidos", "Show fewer sounds"),
+    ("{names} y mucho más", "{names} and much more"),
+    ("Vista previa del sonido", "Preview sound"),
+    ("Reiniciar", "Reset"),
+    (
+        "Devuelve el volumen del micrófono y el del altavoz al 100 %.",
+        "Puts the microphone and speaker volumes back at 100 %.",
+    ),
+    ("¿Necesitas ayuda? Revisa los ", "Need help? Check the "),
+    ("ajustes de diagnóstico", "diagnostic settings"),
+    (
+        "ajusta automáticamente la sensibilidad de entrada umbral automático",
+        "automatically adjust input sensitivity threshold automatic",
+    ),
+    (
+        "prueba de micrófono nivel medidor probar comprobar detener",
+        "mic test microphone level meter test check stop",
+    ),
+    (
+        "restablecer niveles reiniciar volumen micrófono altavoz",
+        "reset levels restart volume microphone speaker",
+    ),
     ("Cambia el tema de la aplicación", "Change the app's theme"),
     ("Cambia la apariencia de los mensajes de chat.", "Change the appearance of chat messages."),
     ("Cambia la saturación de los colores, activa el modo de alto contraste y mucho más", "Change saturation of colors, enable high-contrast mode, and more"),
@@ -672,7 +684,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Por ejemplo, cuando escribes :), Rustcord lo convierte a 🙂. El código y los enlaces no cambian.", "For example, when you type :), Rustcord converts it to 🙂. Code and links don't change."),
     ("Predeterminado", "Default"),
     ("Lo elige el perfil; cambiar algo aquí lo pasa a Personalizar.", "The profile chooses it; changing it here switches to Custom."),
-    ("RNNoise quita también el teclado y los ruidos que cambian; DeepFilterNet deja la voz más limpia con ruido constante, pero deja pasar más el teclado y usa más procesador, con 20 ms más de retraso; WebRTC es más liviano, para ruido constante como un ventilador.", "RNNoise also removes keyboard and changing noises; DeepFilterNet leaves the voice cleaner under constant noise, but lets more typing through and uses more CPU, with 20 ms more delay; WebRTC is lighter, for constant noise such as a fan."),
     ("Reduce la cantidad y la intensidad de las animaciones, los efectos al pasar el cursor y otros efectos en movimiento.", "Reduces the amount and intensity of animations, hover effects, and other moving effects."),
     ("Selecciona un idioma", "Select a Language"),
     ("Sensibilidad de la entrada", "Input Sensitivity"),

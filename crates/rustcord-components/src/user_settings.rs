@@ -10,9 +10,9 @@
 //! 696 px column of settings centered in what is left.
 
 use limn::{
-    Accordion, AccordionItem, Button, ButtonVariant, Color, Component, ComponentPalette,
-    ControlSize, Element, FontFamily, Icon, LevelBars, MarkStyle, Point, RadioGroup, RadioMetrics,
-    RadioOption, RadioVariant, ScrollArea, ScrollbarAppearance, SearchField, Size, Slider, Switch,
+    Button, ButtonSizing, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element,
+    FontFamily, Icon, LevelBars, MarkStyle, Point, RadioGroup, RadioMetrics, RadioOption,
+    RadioVariant, ScrollArea, ScrollbarAppearance, SearchField, Size, Slider, Switch,
     SwitchVariant, Tooltip,
 };
 use rustcord_model::{
@@ -80,8 +80,8 @@ pub const COLUMN_WIDTH: f32 = 696.0;
 const COLUMN_EDGE: f32 = 16.0;
 const COLUMN_SPACE: f32 = 64.0;
 const COLUMN_SPACE_FULL: f32 = 80.0;
-/// Room over and under the line between two sections.
-const SECTION_SPACE: f32 = 40.0;
+/// Room over and under the line between two sections, Discord's.
+const SECTION_SPACE: f32 = 50.0;
 /// Room between two settings of a section.
 const ROW_GAP: f32 = 8.0;
 /// How tall the preview over the accessibility settings is.
@@ -544,8 +544,8 @@ pub fn page(
     .render()
 }
 
-/// The line between two sections.
-fn divider(look: &Look) -> Element {
+/// The line between two sections, or two groups of one.
+pub fn divider(look: &Look) -> Element {
     Element::column(vec![
         gap(0.0, SECTION_SPACE),
         Element::panel(Element::spacer())
@@ -555,7 +555,7 @@ fn divider(look: &Look) -> Element {
     ])
 }
 
-/// A section: its title, 24 px regular on one line, with an action beside it
+/// A section: its title, 24 px medium on one line, with an action beside it
 /// when there is one, and under it an optional note and its settings, 8 px
 /// apart. `anchor` is where its link in the sidebar jumps.
 pub fn section(
@@ -566,7 +566,10 @@ pub fn section(
     rows: Vec<Element>,
     look: &Look,
 ) -> Element {
-    let mut head = vec![line(title, 24.0, look.text).flex(1.0).centered_y()];
+    let mut head = vec![line(title, 24.0, look.text)
+        .font_family(FontFamily::SansMedium)
+        .flex(1.0)
+        .centered_y()];
     if let Some(trailing) = trailing {
         head.push(trailing.centered_y());
     }
@@ -597,26 +600,77 @@ pub fn rows(rows: Vec<Element>) -> Element {
     Element::column(spaced(rows))
 }
 
-/// What a [`fold`] keeps at each side of the settings it holds: limn's
-/// accordion inset and its outline.
-pub const FOLD_INSET: f32 = 2.0 * (12.0 + 1.0);
+/// The square that opens a [`fold_row`].
+pub const FOLD_BUTTON: f32 = 48.0;
 
-/// Settings folded under a header that opens them, as Discord's advanced
-/// voice settings: `show` names it while closed and `hide` while open. Its
-/// rows are laid out [`FOLD_INSET`] narrower than the column.
-pub fn fold(
-    id: &str,
-    show: &str,
-    hide: &str,
-    open: bool,
-    settings: Vec<Element>,
-    look: &Look,
-) -> Element {
-    let title = if open { hide } else { show };
-    let item = AccordionItem::new(id, title, rows(settings)).open(open);
-    Accordion::new(format!("{id}:group"), vec![item], look.palette())
-        .bordered(true)
-        .size(ControlSize::Spacious)
+/// A row that opens more settings under it, as Discord's: its label and
+/// what it holds at the left, and at the right a 48 px square with a
+/// chevron that reports `id`.
+pub fn fold_row(id: &str, label: &str, note: &str, open: bool, look: &Look) -> Element {
+    let veil = veil(look);
+    let chevron = if open {
+        Icon::ChevronUp
+    } else {
+        Icon::ChevronDown
+    };
+    let button = Element::clickable(
+        id,
+        crate::centered(icon(chevron, look.text).large_icon(24.0)),
+    )
+    .size(Some(FOLD_BUTTON), Some(FOLD_BUTTON))
+    .radius(8.0)
+    .background(veil.raised)
+    .hover_background(veil.hover)
+    .accessible(
+        limn::Access::new(limn::Role::Button)
+            .name(label.to_owned())
+            .expanded(open),
+    );
+    Element::column(vec![
+        gap(0.0, 8.0),
+        Element::row(vec![
+            Element::column(vec![
+                text(label, 16.0, look.text).font_family(FontFamily::SansMedium),
+                text(note, 14.0, look.muted),
+            ])
+            .gap(4.0)
+            .flex(1.0)
+            .centered_y(),
+            button.centered_y(),
+        ])
+        .gap(24.0),
+        gap(0.0, 8.0),
+    ])
+}
+
+/// A row of a list whose rows are parted by lines, such as the call's
+/// sounds: the row and a line under it, about 18 px from each.
+pub fn listed(row: Element, look: &Look) -> Element {
+    Element::column(vec![
+        gap(0.0, 10.0),
+        row,
+        gap(0.0, 19.0),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+    ])
+}
+
+/// Text that does something when clicked, in the links' blue: 14 px, as
+/// Discord's «Vista previa del sonido». `name` is what it is called to the
+/// platform where the text alone says too little.
+pub fn link(id: &str, label: &str, name: &str, look: &Look) -> Element {
+    Button::new(id, label, look.palette())
+        .variant(ButtonVariant::Link)
+        .sizing(ButtonSizing {
+            height: 18.0,
+            font_size: 14.0,
+            icon_size: 14.0,
+            horizontal_padding: 0.0,
+            inner_spacing: 4.0,
+        })
+        .ink(look.palette().link())
+        .accessibility_label(name)
         .render()
 }
 
@@ -915,8 +969,13 @@ pub fn card(content: Element, look: &Look) -> Element {
 }
 
 /// A card that leads to settings on another page, under the heading «Ajustes
-/// relacionados»: a row with its title, its note and a chevron.
-pub fn related(id: &str, title: &str, note: &str, look: &Look) -> Element {
+/// relacionados»: a row with the page's glyph on a rounded square, its
+/// title, its note and a chevron.
+pub fn related(id: &str, glyph: Icon, title: &str, note: &str, look: &Look) -> Element {
+    let square = Element::panel(crate::centered(icon(glyph, look.text).large_icon(20.0)))
+        .size(Some(48.0), Some(48.0))
+        .radius(8.0)
+        .background(veil(look).raised);
     Element::column(vec![
         gap(0.0, 8.0),
         line(t("Ajustes relacionados"), 16.0, look.muted).font_family(FontFamily::SansSemibold),
@@ -924,6 +983,7 @@ pub fn related(id: &str, title: &str, note: &str, look: &Look) -> Element {
         Element::clickable(
             id,
             Element::row(vec![
+                square.centered_y(),
                 Element::column(vec![
                     line(title, 16.0, look.text).font_family(FontFamily::SansMedium),
                     text(note, 14.0, look.muted),
@@ -997,16 +1057,19 @@ pub fn level_bars(id: &str, levels: &[f32], width: f32, look: &Look) -> Element 
 
 /// The level that counts as voice, over the microphone's level: a bar as
 /// wide as the slider under it, filled to the level heard (green once it
-/// passes the threshold), with a mark at the threshold.
+/// passes the threshold), with a mark at the threshold. With nothing heard
+/// it is Discord's track: yellow under the threshold, green over it.
 pub fn sensitivity(level: Option<f32>, threshold: f32, width: f32, look: &Look) -> Element {
     const INSET: f32 = 6.0;
     let share = |value: f32| value.clamp(0.0005, 0.9995);
-    let level = level.unwrap_or(0.0).clamp(0.0, 1.0);
-    let fill = if level >= threshold {
+    let heard = level.is_some();
+    let level = level.map_or(threshold, |level| level.clamp(0.0, 1.0));
+    let fill = if heard && level >= threshold {
         look.online
     } else {
         look.idle
     };
+    let rest = if heard { look.selected } else { look.online };
     let bar = |fraction: f32, color: Color| {
         Element::row(vec![
             Element::panel(Element::spacer())
@@ -1030,7 +1093,7 @@ pub fn sensitivity(level: Option<f32>, threshold: f32, width: f32, look: &Look) 
                 gap(0.0, 4.0),
                 Element::stack(vec![
                     Element::panel(Element::spacer())
-                        .background(look.selected)
+                        .background(rest)
                         .radius(4.0),
                     bar(level, fill),
                 ])
@@ -1046,7 +1109,7 @@ pub fn sensitivity(level: Option<f32>, threshold: f32, width: f32, look: &Look) 
     .accessible(
         limn::Access::new(limn::Role::ProgressIndicator)
             .name(t("Nivel del micrófono"))
-            .value(level),
+            .value(if heard { level } else { 0.0 }),
     )
 }
 
@@ -1220,6 +1283,19 @@ pub fn primary_button(id: &str, label: &str, enabled: bool, look: &Look) -> Elem
         .enabled(enabled)
         .render()
         .size(None, Some(BUTTON_HEIGHT))
+        .min_size(100.0, 0.0)
+}
+
+/// A settings action that undoes or resets, as Discord's «Reiniciar»: the
+/// quiet button of the page, its label in the danger color.
+pub fn destructive_button(id: &str, label: &str, enabled: bool, look: &Look) -> Element {
+    Button::new(id, label, veil(look))
+        .variant(ButtonVariant::Secondary)
+        .size(ControlSize::Spacious)
+        .ink(look.danger)
+        .enabled(enabled)
+        .render()
+        .size(None, Some(FIELD_HEIGHT))
         .min_size(100.0, 0.0)
 }
 
@@ -1558,27 +1634,72 @@ mod tests {
     }
 
     #[test]
-    fn a_fold_keeps_its_settings_out_until_it_is_open() {
+    fn a_fold_row_has_its_square_button_at_the_end_that_says_if_it_is_open() {
         let look = Look::DARK;
-        let inside = || vec![Element::button("inside", "Dentro").size(None, Some(40.0))];
-        let (_, closed) = frame(
-            fold("f", "Mostrar", "Ocultar", false, inside(), &look),
-            Size::new(400.0, 200.0),
+        let (_, laid) = frame(
+            fold_row("f", "Mostrar más", "Esto y aquello", false, &look),
+            Size::new(400.0, 100.0),
         );
-        assert_eq!(controls(&closed), ["f"]);
-        assert!(texts(&closed).contains(&"Mostrar".to_owned()));
+        assert_eq!(controls(&laid), ["f"]);
+        let button = laid.regions.iter().find(|region| region.id == "f").unwrap();
+        assert_eq!((button.rect.width, button.rect.height), (48.0, 48.0));
+        assert_eq!(button.rect.x + button.rect.width, 400.0, "at the row's end");
+        let said = |frame: &limn::Frame| {
+            frame
+                .access
+                .iter()
+                .find(|node| node.id == "f")
+                .map(|node| node.expanded)
+        };
+        assert_eq!(said(&laid), Some(Some(false)));
         let (_, open) = frame(
-            fold("f", "Mostrar", "Ocultar", true, inside(), &look),
-            Size::new(400.0, 200.0),
+            fold_row("f", "Mostrar más", "Esto y aquello", true, &look),
+            Size::new(400.0, 100.0),
         );
-        assert!(controls(&open).contains(&"inside".to_owned()));
-        assert!(texts(&open).contains(&"Ocultar".to_owned()));
-        let row = open
-            .regions
+        assert_eq!(said(&open), Some(Some(true)));
+        assert!(texts(&open).contains(&"Esto y aquello".to_owned()));
+    }
+
+    #[test]
+    fn a_reset_is_written_in_the_danger_color_while_it_can_be_used() {
+        let look = Look::DARK;
+        let inks = |enabled: bool| {
+            let (_, laid) = frame(
+                destructive_button("r", "Reiniciar", enabled, &look),
+                Size::new(200.0, 60.0),
+            );
+            laid.commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::Text { color, .. } => Some(*color),
+                    _ => None,
+                })
+                .collect::<Vec<Color>>()
+        };
+        assert_eq!(inks(true), [look.danger]);
+        assert!(
+            !inks(false).contains(&look.danger),
+            "a disabled one is muted"
+        );
+    }
+
+    #[test]
+    fn a_related_card_leads_to_its_page_with_its_glyph() {
+        let look = Look::DARK;
+        let (_, laid) = frame(
+            related("us:page=x", Icon::Bell, "Notificaciones", "Una nota", &look),
+            Size::new(400.0, 120.0),
+        );
+        assert_eq!(controls(&laid), ["us:page=x"]);
+        let squares = laid
+            .commands
             .iter()
-            .find(|region| region.id == "inside")
-            .unwrap();
-        assert_eq!(row.rect.width, 400.0 - FOLD_INSET);
+            .filter(|command| {
+                matches!(command, limn::DrawCommand::FillRect { rect, .. }
+                    if rect.width == 48.0 && rect.height == 48.0)
+            })
+            .count();
+        assert_eq!(squares, 1, "the glyph's square");
     }
 
     #[test]

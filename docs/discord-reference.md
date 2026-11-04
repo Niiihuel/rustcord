@@ -188,6 +188,56 @@ Measured motion (20 px icons):
   hover 24 %, ink `#73c48b`). Transitions 50 ms ease-in, 150 ms ease-out on
   hover.
 
+## User settings
+
+Measured on 2026-11-04 in the web client (build stable 663810, es-419,
+1440 wide), in an isolated browser profile the owner signed into.
+
+- Sidebar, in order: the account's card («Editar perfiles»), «Buscar»;
+  «Cuenta» (its sections listed under it while open: «Información de
+  cuenta», «Contraseña y seguridad», «Estado de la cuenta», «Centro
+  familiar»), «Datos y privacidad», «Permisos de mensajes»,
+  «Notificaciones»; «Facturación»: Nitro, «Mejora del servidor»,
+  «Suscripciones», «Inventario de regalos», «Facturación»; then «Voz y
+  video», «Apariencia», «Accesibilidad», «Sistema», «Idioma y hora»;
+  «Privacidad de la actividad», «Aplicaciones conectadas»;
+  «Desarrollador», «Cerrar sesión», and the build at the foot.
+- Content: a 696 wide column (a 728 panel with 16 of padding each side).
+- Section heading: 24 px, weight 500, line 32, `--text-strong`. Sections
+  are parted by a 1 px line (`--border-subtle`, `#9595a2` at 20 %) with
+  50 px above and below it.
+- Row: its label 16 px weight 500 (line 20, `--text-strong`), its
+  description under it 14 px regular (line 18, `--text-subtle`), its control
+  at the right end (switch, a 40 high select, or a button). A radio option:
+  16 px regular, its description 14 px under it, the radio at the left.
+- A fold is a row too: its label («Mostrar ajustes avanzados de voz»,
+  «Mostrar 18 sonidos más», «Mostrar ajustes de diagnóstico»), a
+  description naming what it holds, and at the right a 48 × 48 button,
+  radius 8, `#97979f` at 12 %, with a chevron.
+- «Ajustes relacionados» (16 px weight 600, `--text-muted`) over a card
+  row: an icon on a rounded square, the page's name (16 / 500), a line
+  (14), and a chevron at the right end; it opens that page.
+- A destructive action is a dark button with red text (`#eb5f5e`), as
+  «Reiniciar».
+- «Voz y video»: «Voz» (Micrófono and Altavoz selects side by side, their
+  volume sliders under them, no value shown; a brand button «Prueba de
+  micrófono» beside the level pill; «¿Necesitas ayuda? Revisa nuestra guía
+  de solución de problemas.»), a line, «Perfil de entrada» (a 16 px label,
+  not a heading) and its three radios, «Sensibilidad de la entrada» (its
+  slider yellow below the threshold and green above), «Supresión de
+  ruido» (select at the right), «Cancelación de eco» (switch), «Pulsar para
+  hablar», the fold «Mostrar ajustes avanzados de voz» («Control automático
+  de ganancia, Actividad avanzada de voz y Cambiar la advertencia del canal
+  de voz»); «Cámara» (a preview box with «Probar video» in its middle,
+  «Siempre mostrar vista previa del video», the «Cámara» select);
+  «Transmitiendo» («Mostrar vistas previas de transmisiones»); «Sonidos»
+  (each sound a row with «Vista previa del sonido» as a link under its
+  name and a switch, rows parted by lines; four, then the fold «Mostrar 18
+  sonidos más»), «Ajustes relacionados» → Notificaciones; «Panel de
+  sonidos» (volume slider, «Sonidos de entrada» with its selects);
+  «Avanzado» (the fold «Mostrar ajustes de diagnóstico», «Restablecer
+  todos los ajustes de voz y video» with «Reiniciar»).
+
 ## Threads popout (text channel)
 
 Read from the web bundle the desktop client cached (2026-11-04).
