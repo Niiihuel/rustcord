@@ -11,7 +11,10 @@ pub(super) const ENTRIES: super::Entries = &[
     // The account's line while in a call.
     ("En el canal de voz", "In a voice channel"),
     // The account's card: its noise popout and its stream.
-    ("Filtra el ruido de fondo de tu micrófono.", "Filters background noise from your microphone."),
+    (
+        "Filtra el ruido de fondo de tu micrófono.",
+        "Filters background noise from your microphone.",
+    ),
     ("{height}p {fps} FPS", "{height}p {fps} FPS"),
     // The camera's panel.
     ("Todos los ajustes de voz", "All voice settings"),
@@ -30,12 +33,23 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Actualizar dispositivos", "Refresh devices"),
     ("Restablecer niveles", "Reset levels"),
-    ("{level} dBFS · umbral {threshold} dBFS", "{level} dBFS · threshold {threshold} dBFS"),
+    (
+        "{level} dBFS · umbral {threshold} dBFS",
+        "{level} dBFS · threshold {threshold} dBFS",
+    ),
     ("{level} dBFS", "{level} dBFS"),
     // The voice page.
     (
-        "micrófono altavoz dispositivo de entrada salida auriculares parlantes volumen ganancia actualizar restablecer niveles",
-        "microphone speaker input output device headphones speakers volume gain refresh reset levels",
+        "micrófono altavoz dispositivo de entrada salida auriculares parlantes volumen ganancia",
+        "microphone speaker input output device headphones speakers volume gain",
+    ),
+    (
+        "sistema de audio actualizar dispositivos restablecer niveles volumen",
+        "audio system refresh devices reset levels volume",
+    ),
+    (
+        "antes y después del procesamiento entrada procesada niveles comparar supresión",
+        "before and after processing input processed levels compare suppression",
     ),
     (
         "probar sonido prueba de salida altavoz auriculares sonido de la llamada",
@@ -57,15 +71,13 @@ pub(super) const ENTRIES: super::Entries = &[
         "Suena el sonido de entrar a la llamada en la salida elegida.",
         "The join sound plays on the chosen output.",
     ),
-    ("Empezar la prueba", "Start test"),
     ("Detener la prueba", "Stop test"),
-    (
-        "Empieza la prueba y di algo: la barra muestra tu nivel, y la marca, dónde empieza a contar como voz. Es local; no se envía nada.",
-        "Start the test and say something: the bar shows your level, and the mark where it starts counting as voice. It's local; nothing is sent.",
-    ),
     (
         "En la llamada mide el mismo micrófono que usa ella, sin cambiar lo que se envía.",
         "In a call it measures the call's own microphone, without changing what is sent.",
     ),
-    ("Antes y después del procesamiento", "Before and after processing"),
+    (
+        "Antes y después del procesamiento",
+        "Before and after processing",
+    ),
 ];

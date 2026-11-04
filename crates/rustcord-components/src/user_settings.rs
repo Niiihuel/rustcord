@@ -10,9 +10,10 @@
 //! 696 px column of settings centered in what is left.
 
 use limn::{
-    Button, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element, FontFamily,
-    Icon, LevelBars, MarkStyle, Point, RadioGroup, RadioMetrics, RadioOption, RadioVariant,
-    ScrollArea, ScrollbarAppearance, SearchField, Size, Slider, Switch, SwitchVariant, Tooltip,
+    Accordion, AccordionItem, Button, ButtonVariant, Color, Component, ComponentPalette,
+    ControlSize, Element, FontFamily, Icon, LevelBars, MarkStyle, Point, RadioGroup, RadioMetrics,
+    RadioOption, RadioVariant, ScrollArea, ScrollbarAppearance, SearchField, Size, Slider, Switch,
+    SwitchVariant, Tooltip,
 };
 use rustcord_model::{
     ChannelId, Delivery, Message, MessageId, MessageKind, Reaction, Timestamp, UserId,
@@ -594,6 +595,29 @@ fn spaced(rows: Vec<Element>) -> Vec<Element> {
 /// Rows that stand one under the other, as a group of their own.
 pub fn rows(rows: Vec<Element>) -> Element {
     Element::column(spaced(rows))
+}
+
+/// What a [`fold`] keeps at each side of the settings it holds: limn's
+/// accordion inset and its outline.
+pub const FOLD_INSET: f32 = 2.0 * (12.0 + 1.0);
+
+/// Settings folded under a header that opens them, as Discord's advanced
+/// voice settings: `show` names it while closed and `hide` while open. Its
+/// rows are laid out [`FOLD_INSET`] narrower than the column.
+pub fn fold(
+    id: &str,
+    show: &str,
+    hide: &str,
+    open: bool,
+    settings: Vec<Element>,
+    look: &Look,
+) -> Element {
+    let title = if open { hide } else { show };
+    let item = AccordionItem::new(id, title, rows(settings)).open(open);
+    Accordion::new(format!("{id}:group"), vec![item], look.palette())
+        .bordered(true)
+        .size(ControlSize::Spacious)
+        .render()
 }
 
 /// A title inside a section, over the settings it groups: 16 px semibold,
@@ -1531,6 +1555,30 @@ mod tests {
             .unwrap()
             .rect;
         assert_eq!(field.height, 40.0, "{field:?}");
+    }
+
+    #[test]
+    fn a_fold_keeps_its_settings_out_until_it_is_open() {
+        let look = Look::DARK;
+        let inside = || vec![Element::button("inside", "Dentro").size(None, Some(40.0))];
+        let (_, closed) = frame(
+            fold("f", "Mostrar", "Ocultar", false, inside(), &look),
+            Size::new(400.0, 200.0),
+        );
+        assert_eq!(controls(&closed), ["f"]);
+        assert!(texts(&closed).contains(&"Mostrar".to_owned()));
+        let (_, open) = frame(
+            fold("f", "Mostrar", "Ocultar", true, inside(), &look),
+            Size::new(400.0, 200.0),
+        );
+        assert!(controls(&open).contains(&"inside".to_owned()));
+        assert!(texts(&open).contains(&"Ocultar".to_owned()));
+        let row = open
+            .regions
+            .iter()
+            .find(|region| region.id == "inside")
+            .unwrap();
+        assert_eq!(row.rect.width, 400.0 - FOLD_INSET);
     }
 
     #[test]

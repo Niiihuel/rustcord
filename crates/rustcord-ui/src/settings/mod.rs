@@ -793,6 +793,8 @@ pub struct SettingsState {
     pub log_out_asked: bool,
     /// «Borrar datos locales» waits for its confirmation.
     pub forget_asked: bool,
+    /// The folds the account opened (`voice-advanced`…); all closed at first.
+    pub folds: Vec<String>,
 }
 
 /// Whether the host should hand its next key press to [`record_key`].
@@ -1324,6 +1326,16 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
         return Vec::new();
     }
     ui.settings_state.select = None;
+    if let Some(fold) = rest.strip_prefix("fold=") {
+        let folds = &mut ui.settings_state.folds;
+        match folds.iter().position(|open| open == fold) {
+            Some(at) => {
+                folds.remove(at);
+            }
+            None => folds.push(fold.to_owned()),
+        }
+        return Vec::new();
+    }
     if let Some(intents) = crate::language::clicked(ui, store, rest) {
         return intents;
     }

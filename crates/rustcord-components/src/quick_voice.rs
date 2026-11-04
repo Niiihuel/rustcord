@@ -28,10 +28,6 @@ pub const ARROW_WIDTH: f32 = 20.0;
 pub const MAX_DEVICES: usize = 32;
 /// A device's name past this many characters is cut; its hint has it whole.
 const NAME_CHARS: usize = 40;
-/// The meter's height, and where its yellow and its red start.
-const METER_HEIGHT: f32 = 9.0;
-const YELLOW: f32 = 0.7;
-const RED: f32 = 0.9;
 /// The slider's track and the value beside it.
 const SLIDER_HEIGHT: f32 = 28.0;
 const VALUE_WIDTH: f32 = 52.0;
@@ -194,6 +190,9 @@ pub fn percent_slider(
             .steps(stops)
             .width((width - VALUE_WIDTH).max(40.0))
             .ink(look.accent)
+            // Discord's knob and track, as the settings' other sliders.
+            .thumb(16.0, 20.0)
+            .bar(4.0, 6.0)
             .accessibility_label(label)
             .render()
             .centered_y(),
@@ -208,78 +207,6 @@ pub fn percent_slider(
     .size(Some(width), Some(SLIDER_HEIGHT))
 }
 
-/// How much of the meter each color takes at `level` (0 to 1): green to
-/// 70 %, yellow to 90 %, red past it, and what is left empty.
-pub fn meter_zones(level: f32) -> [f32; 4] {
-    let level = if level.is_nan() {
-        0.0
-    } else {
-        level.clamp(0.0, 1.0)
-    };
-    [
-        level.min(YELLOW),
-        (level.min(RED) - YELLOW).max(0.0),
-        (level - RED).max(0.0),
-        1.0 - level,
-    ]
-}
-
-/// The microphone's level as a bar, green, yellow and red as it gets loud,
-/// and the threshold where voice starts as a mark over it.
-pub fn level_meter(
-    id: &str,
-    level: Option<f32>,
-    threshold: Option<f32>,
-    width: f32,
-    look: &Look,
-) -> Element {
-    let zones = meter_zones(level.unwrap_or(0.0));
-    let bar = |share: f32, color| {
-        Element::panel(Element::spacer())
-            .background(color)
-            .flex(share.max(0.0001))
-    };
-    let fill = Element::row(vec![
-        bar(zones[0], look.online),
-        bar(zones[1], look.idle),
-        bar(zones[2], look.danger),
-        Element::spacer().flex(zones[3].max(0.0001)),
-    ])
-    .radius(METER_HEIGHT / 2.0)
-    .clip_children();
-    let track = Element::stack(vec![
-        Element::panel(Element::spacer())
-            .background(look.selected)
-            .radius(METER_HEIGHT / 2.0),
-        fill,
-    ])
-    .size(None, Some(METER_HEIGHT));
-    let mut layers = vec![Element::column(vec![
-        Element::spacer().flex(1.0),
-        track,
-        Element::spacer().flex(1.0),
-    ])];
-    if let Some(threshold) = threshold {
-        let threshold = threshold.clamp(0.0005, 0.9995);
-        layers.push(Element::row(vec![
-            Element::spacer().flex(threshold),
-            Element::panel(Element::spacer())
-                .size(Some(2.0), None)
-                .radius(1.0)
-                .background(look.text),
-            Element::spacer().flex(1.0 - threshold),
-        ]));
-    }
-    Element::stack(layers)
-        .size(Some(width), Some(METER_HEIGHT + 8.0))
-        .accessible(
-            limn::Access::new(limn::Role::ProgressIndicator)
-                .id(id)
-                .name(t("Nivel del micrófono"))
-                .value(level.unwrap_or(0.0)),
-        )
-}
-
 /// How many of `count` pills `level` (0 to 1) lights: whole pills, as
 /// Discord's meter moves by whole pills.
 pub fn lit_pills(level: Option<f32>, count: usize) -> usize {
@@ -290,6 +217,16 @@ pub fn lit_pills(level: Option<f32>, count: usize) -> usize {
 /// The microphone's level as Discord's menu shows it: a row of pills that
 /// light from the left, yellow shading to green, the rest grey.
 pub fn input_meter(id: &str, level: Option<f32>, width: f32, look: &Look) -> Element {
+    pill_meter(id, level, width, PILL_HEIGHT, look)
+}
+
+/// The same meter as the voice page's «Prueba de micrófono» draws it: its
+/// pills as tall as the box less 2 above and below.
+pub fn test_meter(id: &str, level: Option<f32>, width: f32, look: &Look) -> Element {
+    pill_meter(id, level, width, PILLS_HEIGHT - 4.0, look)
+}
+
+fn pill_meter(id: &str, level: Option<f32>, width: f32, height: f32, look: &Look) -> Element {
     let count = ((width + PILL_PITCH - PILL) / PILL_PITCH).floor().max(1.0) as usize;
     let lit = lit_pills(level, count);
     // Discord's #36373e on its menu, from the text so it holds on every theme.
@@ -312,12 +249,12 @@ pub fn input_meter(id: &str, level: Option<f32>, width: f32, look: &Look) -> Ele
             Element::panel(Element::spacer())
                 .background(color)
                 .radius(PILL / 2.0)
-                .size(Some(PILL), Some(PILL_HEIGHT))
+                .size(Some(PILL), Some(height))
         })
         .collect();
     Element::row(pills)
         .gap(PILL_PITCH - PILL)
-        .size(Some(width), Some(PILL_HEIGHT))
+        .size(Some(width), Some(height))
         .centered_y()
         .size(Some(width), Some(PILLS_HEIGHT))
         .accessible(
@@ -718,18 +655,6 @@ mod tests {
             chosen: chosen.map(str::to_owned),
             open,
         }
-    }
-
-    #[test]
-    fn the_meter_is_green_then_yellow_then_red() {
-        assert_eq!(meter_zones(0.5), [0.5, 0.0, 0.0, 0.5]);
-        let [green, yellow, red, rest] = meter_zones(0.95);
-        assert_eq!(green, 0.7);
-        assert!((yellow - 0.2).abs() < 1e-6 && (red - 0.05).abs() < 1e-6);
-        assert!((rest - 0.05).abs() < 1e-6);
-        assert_eq!(meter_zones(f32::NAN), [0.0, 0.0, 0.0, 1.0]);
-        let [_, yellow, red, rest] = meter_zones(3.0);
-        assert!((yellow - 0.2).abs() < 1e-6 && (red - 0.1).abs() < 1e-6 && rest == 0.0);
     }
 
     #[test]

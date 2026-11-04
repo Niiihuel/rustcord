@@ -200,44 +200,26 @@ const SECTIONS: &[Section] = &[
             ("mention-badges", es("número de menciones insignia globo rojo")),
         ],
     },
+    // Discord's voice page: its categories in its order, Rustcord's own
+    // extras last, under «Diagnósticos». The rows of a fold (`FOLDS`) stay
+    // together.
     Section {
         page: Voice,
         key: "voice",
-        // Discord's «Voz»: the devices and their levels, the test, the input
-        // mode and the sensitivity, with push-to-talk's key and delay.
+        // The devices and their volumes, then the microphone test.
         title: es("Voz"),
         rows: &[
             (
                 "devices",
-                es("micrófono altavoz dispositivo de entrada salida auriculares parlantes volumen ganancia actualizar restablecer niveles"),
-            ),
-            (
-                "volumes",
-                es("probar sonido prueba de salida altavoz auriculares sonido de la llamada"),
+                es("micrófono altavoz dispositivo de entrada salida auriculares parlantes volumen ganancia"),
             ),
             (
                 "meter",
-                es("prueba de micrófono nivel medidor probar comprobar entrada procesada"),
+                es("prueba de micrófono nivel medidor probar comprobar analicemos la grabación"),
             ),
             (
                 "loopback",
                 es("escucharme oírme retorno monitor auriculares acople"),
-            ),
-            (
-                "input-mode",
-                es("modo de entrada detección actividad de voz pulsar para hablar ptt"),
-            ),
-            (
-                "sensitivity",
-                es("sensibilidad de entrada automáticamente umbral detección de voz indicador habla"),
-            ),
-            (
-                "ptt-key",
-                es("atajo tecla pulsar para hablar grabar global fuera de la ventana ptt"),
-            ),
-            (
-                "ptt-release",
-                es("retraso al soltar pulsar para hablar demora ptt"),
             ),
         ],
     },
@@ -251,8 +233,25 @@ const SECTIONS: &[Section] = &[
                 es("perfil aislamiento de voz estudio personalizado procesamiento"),
             ),
             (
+                "input-mode",
+                es("modo de entrada detección actividad de voz pulsar para hablar ptt"),
+            ),
+            (
+                "ptt-key",
+                es("atajo tecla pulsar para hablar grabar global fuera de la ventana ptt"),
+            ),
+            (
+                "ptt-release",
+                es("retraso al soltar pulsar para hablar demora ptt"),
+            ),
+            (
                 "noise-suppression",
                 es("supresión reducción de ruido fondo krisp rnnoise deepfilternet webrtc estándar teclado ventilador"),
+            ),
+            // «Mostrar ajustes avanzados de voz».
+            (
+                "sensitivity",
+                es("sensibilidad de entrada automáticamente umbral detección de voz indicador habla"),
             ),
             (
                 "echo-cancellation",
@@ -284,14 +283,30 @@ const SECTIONS: &[Section] = &[
         // Call sounds (audio): drawn in `sounds`.
         rows: sounds::ROWS,
     },
+    // What Discord's page has not: the tests and the system's side, folded
+    // under «Mostrar ajustes de diagnóstico».
     Section {
         page: Voice,
-        key: "advanced",
-        title: es("Avanzado"),
-        rows: &[(
-            "video-hardware",
-            es("aceleración por hardware gpu h264 codificador decodificador va-api nvenc nvdec openh264 procesador"),
-        )],
+        key: "diagnostics",
+        title: es("Diagnósticos"),
+        rows: &[
+            (
+                "volumes",
+                es("probar sonido prueba de salida altavoz auriculares sonido de la llamada"),
+            ),
+            (
+                "processing-levels",
+                es("antes y después del procesamiento entrada procesada niveles comparar supresión"),
+            ),
+            (
+                "audio-system",
+                es("sistema de audio actualizar dispositivos restablecer niveles volumen"),
+            ),
+            (
+                "video-hardware",
+                es("aceleración por hardware gpu h264 codificador decodificador va-api nvenc nvdec openh264 procesador"),
+            ),
+        ],
     },
     Section {
         page: Appearance,
@@ -461,6 +476,42 @@ const SECTIONS: &[Section] = &[
     },
 ];
 
+/// Settings folded under a header until it is opened (`us:fold={key}`), as
+/// Discord's advanced voice settings: the fold's key, its header closed and
+/// open, and the rows it holds, which follow each other in [`SECTIONS`]. A
+/// search shows what it finds in them without the fold.
+struct Fold {
+    key: &'static str,
+    show: &'static str,
+    hide: &'static str,
+    rows: &'static [&'static str],
+}
+
+const FOLDS: &[Fold] = &[
+    Fold {
+        key: "voice-advanced",
+        show: es("Mostrar ajustes avanzados de voz"),
+        hide: es("Ocultar ajustes avanzados de voz"),
+        rows: &[
+            "sensitivity",
+            "echo-cancellation",
+            "system-echo",
+            "automatic-gain",
+        ],
+    },
+    Fold {
+        key: "voice-diagnostics",
+        show: es("Mostrar ajustes de diagnóstico"),
+        hide: es("Ocultar ajustes de diagnóstico"),
+        rows: &[
+            "volumes",
+            "processing-levels",
+            "audio-system",
+            "video-hardware",
+        ],
+    },
+];
+
 /// A line of the sidebar: a page, or the action that signs out.
 #[derive(Clone, Copy)]
 enum Entry {
@@ -602,6 +653,7 @@ fn note(key: &str) -> Option<&'static str> {
     Some(match key {
         "shortcuts" => es("Los atajos de teclado son combinaciones personalizadas que te permiten realizar acciones específicas en Rustcord sin necesidad de hacer clic en los menús."),
         "friend-requests" => es("Controla quién puede enviarte solicitudes de amistad y cómo aparecen."),
+        "call-sounds" => es("Activa o desactiva los sonidos que se reproducen cuando estás en una llamada."),
         _ => return None,
     })
 }
@@ -850,16 +902,21 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
     }
     let query = searching(ctx.ui).unwrap_or("");
     let mut sections = shown(page, query, ctx.ui, ctx.store);
+    // What a search found shows as it is, out of its fold.
+    let found = !query.is_empty() && !sections.is_empty();
     if sections.is_empty() {
         sections = shown(page, "", ctx.ui, ctx.store);
     }
     let sections = sections
         .into_iter()
         .filter_map(|(section, keys)| {
-            let rows: Vec<Element> = keys
-                .into_iter()
-                .filter_map(|key| setting(ctx, key))
-                .collect();
+            let rows = if found {
+                keys.into_iter()
+                    .filter_map(|key| setting(ctx, key))
+                    .collect()
+            } else {
+                folded(ctx, keys)
+            };
             (!rows.is_empty()).then(|| {
                 parts::section(
                     &anchor(section.key),
@@ -881,6 +938,53 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
         sections,
         ctx.look,
     )
+}
+
+/// The settings of `keys`, those of a fold gathered under its header.
+fn folded(ctx: &Ctx, keys: Vec<&'static str>) -> Vec<Element> {
+    let mut rows = Vec::new();
+    let mut keys = keys.into_iter().peekable();
+    while let Some(key) = keys.next() {
+        let Some(fold) = FOLDS.iter().find(|fold| fold.rows.contains(&key)) else {
+            rows.extend(setting(ctx, key));
+            continue;
+        };
+        let mut inside = vec![key];
+        while let Some(next) = keys.next_if(|next| fold.rows.contains(next)) {
+            inside.push(next);
+        }
+        let open = ctx
+            .ui
+            .settings_state
+            .folds
+            .iter()
+            .any(|open| open == fold.key);
+        // Drawn only while open, as narrow as the fold leaves them.
+        let settings: Vec<Element> = if open {
+            let narrow = Ctx {
+                geometry: Geometry {
+                    column: ctx.geometry.column - parts::FOLD_INSET,
+                    ..ctx.geometry
+                },
+                ..*ctx
+            };
+            inside
+                .into_iter()
+                .filter_map(|key| setting(&narrow, key))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        rows.push(parts::fold(
+            &format!("us:fold={}", fold.key),
+            t(fold.show),
+            t(fold.hide),
+            open,
+            settings,
+            ctx.look,
+        ));
+    }
+    rows
 }
 
 /// The «Perfiles» page: the profile's editor, as wide as the column and
@@ -1132,6 +1236,8 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "devices" => devices(ctx),
         "volumes" => volumes(ctx),
         "meter" => meter(ctx),
+        "processing-levels" => processing_levels(ctx),
+        "audio-system" => audio_system(ctx),
         "loopback" => {
             let note = if ui.audio.loopback && ui.audio.output_starting {
                 t("Abriendo la salida…")
@@ -1186,13 +1292,14 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
                 .iter()
                 .map(|(id, name, chosen)| (*id, *name, *chosen, true))
                 .collect();
+            let mut note = vec![t("Suprime el ruido de fondo de tu micrófono.")];
+            if !custom {
+                note.push(t("Lo elige el perfil; cambiar algo aquí lo pasa a Personalizar."));
+            }
+            note.push(engines);
             parts::setting(
                 t("Supresión de ruido"),
-                Some(&if custom {
-                    format!("{} {engines}", t("Quita el ruido de fondo. Lo eliges tú."))
-                } else {
-                    format!("{} {engines}", t("Quita el ruido de fondo. Lo elige el perfil; cambiar algo aquí lo pasa a Personalizar."))
-                }),
+                Some(&note.join(" ")),
                 Some(select(
                     ctx,
                     "noise-suppression",
@@ -1229,7 +1336,7 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "automatic-gain" => toggle(
             "us:automatic-gain",
             t("Control automático de ganancia"),
-            Some(t("Mantiene tu voz a un nivel parejo. No cambia el volumen del micrófono.")),
+            Some(t("Ajusta automáticamente el nivel de tu voz para mantenerlo claro y constante. No cambia el volumen del micrófono.")),
             prefs.effective_processing().automatic_gain,
         ),
         "camera" => camera(ctx),
@@ -1710,8 +1817,7 @@ fn display_name(ctx: &Ctx) -> Element {
 }
 
 /// The microphone and the speaker, side by side from 480 px and one under
-/// the other below, each with its volume; and
-/// finding them again, or putting the volumes back once they changed.
+/// the other below, each with its volume.
 fn devices(ctx: &Ctx) -> Element {
     let (ui, look) = (ctx.ui, ctx.look);
     let width = ctx.geometry.column;
@@ -1760,18 +1866,27 @@ fn devices(ctx: &Ctx) -> Element {
         pair,
         quick::volume_note(look),
     ];
-    match &ui.audio.devices {
-        Some(Err(error)) => column.push(text(
+    if let Some(Err(error)) = &ui.audio.devices {
+        column.push(text(
             tr!("No se pudieron leer los dispositivos: {error}", error),
             13.0,
             look.danger,
-        )),
-        Some(Ok(found)) => column.push(line(
+        ));
+    }
+    Element::column(column).gap(8.0)
+}
+
+/// The audio system in use, finding the devices again, and putting the
+/// volumes back once they changed.
+fn audio_system(ctx: &Ctx) -> Element {
+    let (ui, look) = (ctx.ui, ctx.look);
+    let mut column = Vec::new();
+    if let Some(Ok(found)) = &ui.audio.devices {
+        column.push(line(
             tr!("Sistema de audio: {backend}", backend = found.backend),
             12.0,
             look.muted,
-        )),
-        None => {}
+        ));
     }
     let link = |id: &str, label: &str, glyph: Icon| {
         Button::new(id, label, look.palette())
@@ -1818,31 +1933,64 @@ fn volumes(ctx: &Ctx) -> Element {
     ])
 }
 
-/// «Comprobemos el micrófono»: one button, the level as the
-/// call would use it, in dBFS, with where voice starts marked on it; and,
-/// for comparing the suppressors, the levels before and after processing.
-/// In a call it measures the call's own microphone: nothing more is sent.
+/// The test's button: as wide as its longer label, so it keeps its size
+/// when it turns, and as tall as Discord's small buttons.
+const MIC_TEST_BUTTON: Size = Size::new(184.0, 32.0);
+/// The host keeps the last levels 80 ms apart, 24 of them (`push_level` in
+/// the desktop's audio): a full row of silence is about two seconds of it.
+// shortcut: counts the host's samples, not time; stamp the silence in
+// `Audio` if the sampling changes.
+const SILENT_SAMPLES: usize = 24;
+
+/// Discord's «Prueba de micrófono»: one button, and beside it the level
+/// as pills with what is happening under them. In a call it measures the
+/// call's own microphone: nothing more is sent.
 fn meter(ctx: &Ctx) -> Element {
     let (ui, look) = (ctx.ui, ctx.look);
-    let button = if ui.audio.testing {
-        parts::secondary_button("us:meter", t("Detener la prueba"), true, look)
+    let audio = &ui.audio;
+    let live = audio.testing && !audio.starting;
+    let button = Button::new(
+        "us:meter",
+        if audio.testing {
+            t("Detener la prueba")
+        } else {
+            t("Analicemos la grabación")
+        },
+        parts::veil(look),
+    )
+    .variant(ButtonVariant::Secondary)
+    .size(limn::ControlSize::Regular)
+    .render()
+    .size(Some(MIC_TEST_BUTTON.width), Some(MIC_TEST_BUTTON.height));
+    // Nothing at all from the device, before any processing, for a while.
+    let silent = live
+        && audio.raw_levels.len() >= SILENT_SAMPLES
+        && audio.raw_levels.iter().all(|level| *level <= 0.0);
+    let caption: Vec<String> = if !audio.testing {
+        Vec::new()
+    } else if audio.starting {
+        vec![t("Abriendo micrófono…").to_owned()]
+    } else if silent {
+        vec![
+            t("Rustcord no detecta ninguna entrada de tu micrófono.").to_owned(),
+            t("Asegúrate de haber seleccionado el dispositivo de entrada correcto.").to_owned(),
+        ]
+    } else if audio.loopback {
+        vec![t("Reproduciendo tu preciosa voz").to_owned()]
     } else {
-        parts::primary_button("us:meter", t("Empezar la prueba"), true, look)
+        vec![crate::quick_voice::reading(ui).unwrap_or_else(|| t("Escuchando.").to_owned())]
     };
-    let status = if ui.audio.testing && ui.audio.starting {
-        t("Abriendo micrófono…").to_owned()
-    } else if ui.audio.testing {
-        crate::quick_voice::reading(ui).unwrap_or_else(|| t("Escuchando.").to_owned())
-    } else {
-        String::new()
-    };
-    let width = ctx.geometry.column;
-    let live = ui.audio.testing && !ui.audio.starting;
-    let mut rows = vec![parts::subtitle(t("Probar micrófono"), look), text(
-        t("Empieza la prueba y di algo: la barra muestra tu nivel, y la marca, dónde empieza a contar como voz. Es local; no se envía nada."),
-        14.0,
-        look.muted,
-    )];
+    // One pill every 8 px in what the button leaves.
+    let width = ctx.geometry.column - MIC_TEST_BUTTON.width - 16.0;
+    let width = (width / 8.0).floor() * 8.0;
+    let mut rows = vec![
+        parts::subtitle(t("Prueba de micrófono"), look),
+        text(
+            t("¿Tienes problemas con el micrófono? Comienza una prueba y di algo divertido; con «Escucharte» activado, reproduciremos tu voz."),
+            14.0,
+            look.muted,
+        ),
+    ];
     if ctx.store.call().is_some() {
         rows.push(text(
             t("En la llamada mide el mismo micrófono que usa ella, sin cambiar lo que se envía."),
@@ -1850,26 +1998,40 @@ fn meter(ctx: &Ctx) -> Element {
             look.muted,
         ));
     }
+    let level = audio.levels.last().copied().filter(|_| live);
     rows.extend([
         Element::spacer().size(None, Some(4.0)),
         Element::row(vec![
             button,
-            line(status, 13.0, look.muted).centered_y(),
-            Element::spacer().flex(1.0),
+            Element::column(vec![
+                quick::test_meter("us:level", level, width.max(8.0), look),
+                Element::column(
+                    caption
+                        .into_iter()
+                        .map(|said| text(said, 12.0, look.muted))
+                        .collect(),
+                )
+                .min_size(0.0, 32.0),
+            ])
+            .gap(4.0)
+            .flex(1.0),
         ])
-        .gap(12.0),
-        quick::level_meter(
-            "us:level",
-            ui.audio.levels.last().copied().filter(|_| live),
-            crate::quick_voice::threshold(ui),
-            width,
-            look,
-        ),
-        Element::spacer().size(None, Some(4.0)),
+        .gap(16.0),
+    ]);
+    Element::column(rows).gap(8.0)
+}
+
+/// For comparing the suppressors: the test's levels before and after
+/// processing.
+fn processing_levels(ctx: &Ctx) -> Element {
+    let (ui, look) = (ctx.ui, ctx.look);
+    let live = ui.audio.testing && !ui.audio.starting;
+    let width = (ctx.geometry.column - 92.0).max(40.0);
+    let mut rows = vec![
+        Element::spacer().size(None, Some(8.0)),
         line(t("Antes y después del procesamiento"), 13.0, look.text)
             .font_family(limn::FontFamily::SansMedium),
-    ]);
-    let width = (width - 92.0).max(40.0);
+    ];
     for (id, label, levels) in [
         ("us:raw-levels", t("Entrada"), &ui.audio.raw_levels),
         ("us:levels", t("Procesada"), &ui.audio.levels),
@@ -2072,19 +2234,9 @@ fn camera(ctx: &Ctx) -> Element {
         )),
     };
     let supported = cfg!(any(target_os = "linux", windows));
+    // Discord's order: the preview and its test, then the camera to use.
     let mut rows = vec![
         Element::spacer().size(None, Some(16.0)),
-        line(t("Cámara"), 16.0, look.text).font_family(limn::FontFamily::SansMedium),
-        select,
-    ];
-    if video.cameras.is_empty() {
-        rows.push(line(
-            t("Las cámaras aparecen cuando el sistema da acceso."),
-            12.0,
-            look.muted,
-        ));
-    }
-    rows.extend([
         Element::panel(picture)
             .size(Some(size.width), Some(size.height))
             .radius(8.0)
@@ -2112,7 +2264,17 @@ fn camera(ctx: &Ctx) -> Element {
             13.0,
             look.muted,
         ),
-    ]);
+        Element::spacer().size(None, Some(8.0)),
+        line(t("Cámara"), 16.0, look.text).font_family(limn::FontFamily::SansMedium),
+        select,
+    ];
+    if video.cameras.is_empty() {
+        rows.push(line(
+            t("Las cámaras aparecen cuando el sistema da acceso."),
+            12.0,
+            look.muted,
+        ));
+    }
     Element::column(rows).gap(8.0)
 }
 
@@ -2138,9 +2300,14 @@ fn sensitivity(ctx: &Ctx) -> Element {
         .flatten();
     let mut column = vec![
         parts::subtitle(t("Sensibilidad de la entrada"), look),
+        text(
+            t("Controla cuánto sonido transmite Rustcord desde tu micrófono. Habla para probarlo; si el medidor se llena, Rustcord está transmitiendo tu hermosa voz."),
+            14.0,
+            look.muted,
+        ),
         parts::toggle(
             "us:auto-sensitivity",
-            t("Determinar automáticamente la sensibilidad de entrada"),
+            t("Ajusta automáticamente la sensibilidad de entrada"),
             Some(if prefs.speech_gate() {
                 t("Decide sola: pasa tu voz, y el teclado, la respiración y el ruido de fondo no abren el micrófono.")
             } else if prefs.auto_sensitivity {
@@ -2409,8 +2576,26 @@ mod tests {
     fn voice_and_video_shows_discord_s_categories_in_their_order() {
         assert_eq!(
             section_keys(SettingsPage::Voice),
-            ["voice", "input-profile", "video", "call-sounds", "advanced"]
+            [
+                "voice",
+                "input-profile",
+                "video",
+                "call-sounds",
+                "diagnostics"
+            ]
         );
+    }
+
+    #[test]
+    fn a_fold_s_rows_follow_each_other_in_one_section() {
+        for fold in FOLDS {
+            let section = sections()
+                .find(|section| section.rows.iter().any(|(key, _)| fold.rows.contains(key)))
+                .unwrap_or_else(|| panic!("{} has its rows", fold.key));
+            let keys: Vec<&str> = section.rows.iter().map(|(key, _)| *key).collect();
+            let at = keys.iter().position(|key| *key == fold.rows[0]).unwrap();
+            assert_eq!(&keys[at..at + fold.rows.len()], fold.rows, "{}", fold.key);
+        }
     }
 
     #[test]

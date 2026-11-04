@@ -686,7 +686,10 @@ fn noise_suppression_offers_rnnoise_and_webrtc_honestly_and_survives_a_restart()
     host.us_write(SEARCH, "krisp");
     host.click("us:page=voice");
     assert!(painted_has(&mut host, "Supresión de ruido"));
-    assert!(painted_has(&mut host, "Quita el ruido de fondo."));
+    assert!(painted_has(
+        &mut host,
+        "Suprime el ruido de fondo de tu micrófono."
+    ));
     // The choices are a list now: they show once it is open.
     host.us_press("us:select:noise-suppression");
     let buttons = host.us_buttons();
@@ -878,8 +881,9 @@ fn microphone_test_distinguishes_opening_raw_and_processed_levels_and_stops_on_l
     host.ui.audio.starting = false;
     host.ui.audio.raw_levels = vec![0.8];
     host.ui.audio.levels = vec![0.2];
-    // Under the devices and their volumes.
-    host.us_press("us:jump=mic-test");
+    // Rustcord's own comparison, folded under the diagnostics.
+    host.us_press("us:fold=voice-diagnostics");
+    host.us_press("us:jump=diagnostics");
     let frame = host.frame();
     let bar_height = |name| {
         let bounds = frame
@@ -921,6 +925,81 @@ fn microphone_test_distinguishes_opening_raw_and_processed_levels_and_stops_on_l
 }
 
 #[test]
+fn the_advanced_and_diagnostic_settings_stay_folded_until_opened() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=voice");
+    // What a window tall enough for the whole page has: its controls and texts.
+    let tall = |host: &mut Host| -> (Vec<String>, Vec<String>) {
+        let frame = host.us_layout(Size::new(1280.0, 6000.0));
+        let ids = frame
+            .regions
+            .iter()
+            .map(|region| region.id.clone())
+            .collect();
+        let texts = frame
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        (ids, texts)
+    };
+    let has = |list: &[String], wanted: &str| list.iter().any(|it| it == wanted);
+    let (ids, texts) = tall(&mut host);
+    for folded in [
+        "us:echo-cancellation",
+        "us:automatic-gain",
+        "us:speaker-test",
+        "us:devices",
+    ] {
+        assert!(!has(&ids, folded), "{folded} is folded");
+    }
+    assert!(has(&texts, "Mostrar ajustes avanzados de voz"), "{texts:?}");
+    assert!(has(&texts, "Mostrar ajustes de diagnóstico"));
+    host.us_press("us:fold=voice-advanced");
+    let (ids, texts) = tall(&mut host);
+    assert!(has(&ids, "us:echo-cancellation") && has(&ids, "us:auto-sensitivity"));
+    assert!(!has(&ids, "us:speaker-test"), "one fold at a time");
+    assert!(has(&texts, "Ocultar ajustes avanzados de voz"));
+    host.us_press("us:fold=voice-advanced");
+    assert!(!has(&tall(&mut host).0, "us:echo-cancellation"));
+    // A search shows what it finds there, out of the fold.
+    host.us_write(SEARCH, "actualizar dispositivos");
+    let (ids, texts) = tall(&mut host);
+    assert!(has(&ids, "us:devices"));
+    assert!(!has(&texts, "Mostrar ajustes de diagnóstico"));
+}
+
+#[test]
+fn the_microphone_test_turns_its_button_and_says_what_it_hears() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=voice");
+    assert!(painted_has(&mut host, "Analicemos la grabación"));
+    host.us_press("us:meter");
+    assert!(painted_has(&mut host, "Detener la prueba"));
+    assert!(!painted_has(&mut host, "Analicemos la grabación"));
+    // About two seconds with nothing from the device.
+    host.ui.audio.starting = false;
+    host.ui.audio.raw_levels = vec![0.0; 24];
+    host.ui.audio.levels = vec![0.0; 24];
+    assert!(painted_has(
+        &mut host,
+        "Rustcord no detecta ninguna entrada de tu micrófono."
+    ));
+    // Heard back while «Escucharte» is on; otherwise its level.
+    host.ui.audio.raw_levels.push(0.5);
+    assert!(!painted_has(&mut host, "no detecta ninguna entrada"));
+    host.ui.audio.loopback = true;
+    assert!(painted_has(&mut host, "Reproduciendo tu preciosa voz"));
+    host.us_press("us:meter");
+    assert!(painted_has(&mut host, "Analicemos la grabación"));
+}
+
+#[test]
 fn changing_microphone_clears_old_levels_and_sensitivity_follows_the_room_by_default() {
     let mut host = Host::new();
     host.us_open();
@@ -943,7 +1022,7 @@ fn changing_microphone_clears_old_levels_and_sensitivity_follows_the_room_by_def
     host.us_write(SEARCH, "sensibilidad");
     assert!(painted_has(
         &mut host,
-        "Determinar automáticamente la sensibilidad de entrada"
+        "Ajusta automáticamente la sensibilidad de entrada"
     ));
     // With RNNoise, the default, its gate decides, and says so.
     assert!(painted_has(&mut host, "Umbral: lo que suena como voz"));
@@ -1177,7 +1256,10 @@ fn the_speaker_its_volume_and_the_sound_test_are_settings_that_stop_on_leave() {
     assert!(painted_has(&mut host, "50 %"));
     assert_eq!(host.us_next_run().prefs.output_volume, 0.5);
 
-    // The output's test is a call sound, which goes into a call too.
+    // The output's test is a call sound, which goes into a call too; it
+    // and the volumes' reset are folded under the diagnostics.
+    host.us_press("us:fold=voice-diagnostics");
+    host.us_press("us:jump=diagnostics");
     host.us_press("us:speaker-test");
     assert_eq!(host.ui.call_sounds.preview, Some(crate::CallSound::Join));
     host.ui.call_sounds.preview = None;
