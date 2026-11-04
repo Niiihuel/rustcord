@@ -1019,36 +1019,47 @@ async fn a_stream_picture_that_did_not_load_is_failed_and_asked_again_unlike_oth
 }
 
 #[test]
-fn dominant_color_is_the_most_common_opaque_color() {
-    let fill = |rgba: [u8; 4], from: u32, to: u32| {
-        image::RgbaImage::from_fn(32, 32, |x, _| {
-            if (from..to).contains(&x) {
-                image::Rgba(rgba)
-            } else {
-                image::Rgba([0, 0, 0, 0])
-            }
-        })
-    };
+fn dominant_color_is_the_first_of_a_median_cut_palette() {
     let red = [255, 0, 0, 255];
+    // One color: the middle of its 5-bit cell.
     assert_eq!(
         dominant_color(&image::RgbaImage::from_pixel(8, 8, image::Rgba(red))),
-        Some(Rgb(0xff_00_00))
+        Some(Rgb(0xfc_04_04))
     );
-    // Half red, a quarter blue and a quarter green: red wins.
-    let mut mixed = image::RgbaImage::new(32, 32);
-    for (x, y, pixel) in mixed.enumerate_pixels_mut() {
-        *pixel = image::Rgba(match (x < 16, x < 24, y) {
-            (true, _, _) => red,
-            (false, true, _) => [0, 0, 255, 255],
+    // Half red, a quarter blue and a quarter green (at 80 px, so no
+    // resampling blends their edges): green, as Discord's. The palette's
+    // first is the most pixels times room, not the most common color: red's
+    // box shrinks to its one cell while green's keeps its room.
+    let mixed = image::RgbaImage::from_fn(80, 80, |x, _| {
+        image::Rgba(match x {
+            0..40 => red,
+            40..60 => [0, 0, 255, 255],
             _ => [0, 255, 0, 255],
-        });
-    }
-    assert_eq!(dominant_color(&mixed), Some(Rgb(0xff_00_00)));
-    // Transparent pixels do not count, however many there are.
-    assert_eq!(
-        dominant_color(&fill([0, 0, 255, 255], 0, 8)),
-        Some(Rgb(0xff))
-    );
+        })
+    });
+    assert_eq!(dominant_color(&mixed), Some(Rgb(0x04_fc_04)));
+    // A broad light face beats a flat black block, which the most common
+    // color alone would have taken: the tile of a dark-haired avatar.
+    let face = image::RgbaImage::from_fn(80, 80, |x, y| {
+        if x >= 56 {
+            image::Rgba([0, 0, 0, 255])
+        } else {
+            let shade = (x + y) as u8 / 4;
+            image::Rgba([200 + shade, 188 + shade, 160 + shade, 255])
+        }
+    });
+    let Rgb(found) = dominant_color(&face).unwrap();
+    let channels = [found >> 16, found >> 8 & 0xff, found & 0xff];
+    assert!(channels.iter().all(|channel| *channel > 150), "{found:06x}");
+    // Clear and near-white pixels do not count, however many there are.
+    let blue_on_white = image::RgbaImage::from_fn(80, 80, |x, _| {
+        image::Rgba(match x {
+            0..20 => [0, 0, 255, 255],
+            20..40 => [0, 255, 0, 10],
+            _ => [255, 255, 255, 255],
+        })
+    });
+    assert_eq!(dominant_color(&blue_on_white), Some(Rgb(0x04_04_fc)));
     assert_eq!(
         dominant_color(&image::RgbaImage::from_pixel(
             8,

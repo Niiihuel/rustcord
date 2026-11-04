@@ -969,28 +969,180 @@ fn still(
     })
 }
 
-/// The most common color of `frame`'s opaque pixels, on a 32-pixel copy,
-/// with 4 bits a channel. Ties go to the lower bucket, so the same picture
-/// always gives the same color. `None` if no pixel is opaque.
+/// The color Discord paints behind a picture (a call's tile, a profile
+/// without a banner): the first of a five-color median cut palette (MMCQ,
+/// 5 bits a channel) of `frame` at 80 px, leaving out clear and near-white
+/// pixels. Boxes split by their pixels until four, then by their pixels
+/// times their volume; the first color is the average of the box with the
+/// most pixels times volume. `None` when no pixel counts.
 pub fn dominant_color(frame: &image::RgbaImage) -> Option<Rgb> {
-    let small = image::imageops::thumbnail(frame, 32, 32);
-    // Per bucket: the pixel count and the sum of each channel.
-    let mut buckets: HashMap<u16, (u64, [u64; 3])> = HashMap::new();
-    for pixel in small.pixels().filter(|pixel| pixel[3] >= 128) {
-        let key = u16::from(pixel[0] >> 4) << 8
-            | u16::from(pixel[1] >> 4) << 4
-            | u16::from(pixel[2] >> 4);
-        let (count, sums) = buckets.entry(key).or_default();
-        *count += 1;
-        for (sum, channel) in sums.iter_mut().zip(pixel.0) {
-            *sum += u64::from(channel);
+    const COLORS: usize = 5;
+    let small = image::imageops::thumbnail(frame, 80, 80);
+    let mut histogram = vec![0_u32; 1 << 15];
+    let (mut low, mut high) = ([31_usize; 3], [0_usize; 3]);
+    for pixel in small.pixels() {
+        let [red, green, blue, alpha] = pixel.0;
+        if alpha < 125 || (red > 250 && green > 250 && blue > 250) {
+            continue;
+        }
+        let at = [red, green, blue].map(|channel| usize::from(channel >> 3));
+        histogram[cell(at)] += 1;
+        for axis in 0..3 {
+            low[axis] = low[axis].min(at[axis]);
+            high[axis] = high[axis].max(at[axis]);
         }
     }
-    let (_, (count, sums)) = buckets
-        .into_iter()
-        .max_by_key(|(key, (count, _))| (*count, std::cmp::Reverse(*key)))?;
-    let [red, green, blue] = sums.map(|sum| (sum / count) as u32);
+    let first = Cube::new(&histogram, low, high);
+    if first.count == 0 {
+        return None;
+    }
+    let mut cubes = vec![first];
+    // Three quarters of the colors (3.75, so four) by population, the rest
+    // by room too.
+    split_until(&histogram, &mut cubes, COLORS * 3 / 4 + 1, false);
+    split_until(&histogram, &mut cubes, COLORS, true);
+    let chosen = take_largest(&mut cubes, true)?;
+    let [red, green, blue] = chosen.average(&histogram).map(u32::from);
     Some(Rgb(red << 16 | green << 8 | blue))
+}
+
+fn cell([red, green, blue]: [usize; 3]) -> usize {
+    red << 10 | green << 5 | blue
+}
+
+/// A box of the 32 × 32 × 32 histogram, ends included, and its pixels.
+#[derive(Clone, Copy, Debug)]
+struct Cube {
+    low: [usize; 3],
+    high: [usize; 3],
+    count: u32,
+}
+
+impl Cube {
+    fn new(histogram: &[u32], low: [usize; 3], high: [usize; 3]) -> Self {
+        let mut count = 0;
+        for red in low[0]..=high[0] {
+            for green in low[1]..=high[1] {
+                for blue in low[2]..=high[2] {
+                    count += histogram[cell([red, green, blue])];
+                }
+            }
+        }
+        Self { low, high, count }
+    }
+
+    fn volume(&self) -> u64 {
+        (0..3)
+            .map(|axis| (self.high[axis] + 1).saturating_sub(self.low[axis]) as u64)
+            .product()
+    }
+
+    /// Its cells' middles weighted by their pixels; its own middle when empty.
+    fn average(&self, histogram: &[u32]) -> [u8; 3] {
+        let mut sums = [0.0_f64; 3];
+        let mut total = 0.0;
+        for red in self.low[0]..=self.high[0] {
+            for green in self.low[1]..=self.high[1] {
+                for blue in self.low[2]..=self.high[2] {
+                    let pixels = f64::from(histogram[cell([red, green, blue])]);
+                    total += pixels;
+                    for (sum, at) in sums.iter_mut().zip([red, green, blue]) {
+                        *sum += pixels * (at as f64 + 0.5) * 8.0;
+                    }
+                }
+            }
+        }
+        std::array::from_fn(|axis| {
+            let value = if total > 0.0 {
+                sums[axis] / total
+            } else {
+                (self.low[axis] + self.high[axis] + 1) as f64 * 4.0
+            };
+            value.min(255.0) as u8
+        })
+    }
+}
+
+/// Take the box with the most pixels (times its volume, `by_volume`); the
+/// last one put in among equals, as a stable sort and a pop would.
+fn take_largest(cubes: &mut Vec<Cube>, by_volume: bool) -> Option<Cube> {
+    let key = |cube: &Cube| u64::from(cube.count) * if by_volume { cube.volume() } else { 1 };
+    let (index, _) = cubes.iter().enumerate().max_by_key(|(_, cube)| key(cube))?;
+    Some(cubes.remove(index))
+}
+
+/// Split the largest box in two until there are `target`, or nothing splits.
+fn split_until(histogram: &[u32], cubes: &mut Vec<Cube>, target: usize, by_volume: bool) {
+    for _ in 0..1_000 {
+        if cubes.len() >= target {
+            return;
+        }
+        let Some(cube) = take_largest(cubes, by_volume) else {
+            return;
+        };
+        if cube.count == 0 {
+            cubes.push(cube);
+            continue;
+        }
+        let Some((one, other)) = median_cut(histogram, cube) else {
+            cubes.push(cube);
+            return;
+        };
+        cubes.push(one);
+        cubes.extend(other);
+    }
+}
+
+/// Cut `cube` across its longest side, past the middle of its pixels and
+/// halfway into the longer part; `None` for the other half of a box of one
+/// pixel.
+fn median_cut(histogram: &[u32], cube: Cube) -> Option<(Cube, Option<Cube>)> {
+    if cube.count == 1 {
+        return Some((cube, None));
+    }
+    let widths: [usize; 3] = std::array::from_fn(|axis| cube.high[axis] + 1 - cube.low[axis]);
+    let longest = *widths.iter().max()?;
+    let axis = widths.iter().position(|width| *width == longest)?;
+    let (low, high) = (cube.low[axis], cube.high[axis]);
+    // The pixels up to and including each slice along that side.
+    let mut partial = vec![0_u32; high + 1];
+    let mut total = 0;
+    for (slice, sum) in partial.iter_mut().enumerate().skip(low) {
+        let (mut from, mut to) = (cube.low, cube.high);
+        from[axis] = slice;
+        to[axis] = slice;
+        total += Cube::new(histogram, from, to).count;
+        *sum = total;
+    }
+    let partial_at = |at: isize| {
+        usize::try_from(at)
+            .ok()
+            .filter(|at| (low..=high).contains(at))
+            .map_or(0, |at| partial[at])
+    };
+    let past = (low..=high).find(|slice| f64::from(partial[*slice]) > f64::from(total) / 2.0)?;
+    let (left, right) = ((past - low) as isize, (high - past) as isize);
+    let past = past as isize;
+    let mut cut = if left <= right {
+        (high as isize - 1).min(past + right / 2)
+    } else {
+        (low as isize).max(past - 1 - (left + 1) / 2)
+    };
+    while partial_at(cut) == 0 {
+        cut += 1;
+    }
+    // Never empty on the far side when the near side can give.
+    while total == partial_at(cut) && partial_at(cut - 1) != 0 {
+        cut -= 1;
+    }
+    let cut = cut as usize;
+    let (mut one_high, mut other_low) = (cube.high, cube.low);
+    one_high[axis] = cut;
+    other_low[axis] = cut + 1;
+    Some((
+        Cube::new(histogram, cube.low, one_high),
+        Some(Cube::new(histogram, other_low, cube.high)),
+    ))
 }
 
 /// A clip, such as a GIF site's: its first picture as the still and every
