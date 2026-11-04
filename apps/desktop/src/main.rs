@@ -696,10 +696,11 @@ fn main() -> eframe::Result {
     // The opening screen's splash: a small tile in the middle of the screen
     // until the session says more than its stage, then the usual window
     // (`WindowFrame::grow`). Captures, the benchmark and a start in the
-    // tray open at the usual size, and so does Hyprland: it floats a window
-    // of fixed size and keeps it at its least size when it asks to grow.
+    // tray open at the usual size, and so do Hyprland and niri: they float a
+    // window of fixed size and keep it at its least size when it asks to grow.
     #[cfg(target_os = "linux")]
-    let tiling = rustcord_platform::hyprland::socket().is_some();
+    let tiling = rustcord_platform::hyprland::socket().is_some()
+        || std::env::var_os("NIRI_SOCKET").is_some_and(|socket| !socket.is_empty());
     #[cfg(not(target_os = "linux"))]
     let tiling = false;
     let compact =
