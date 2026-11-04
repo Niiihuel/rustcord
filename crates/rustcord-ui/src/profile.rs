@@ -1840,6 +1840,8 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
             .call()
             .is_some_and(|call| call.channel == state.channel)
     });
+    // In a call, and not sharing: Discord's speaker and «En el canal de voz».
+    let in_voice = held.is_some() && !sharing;
     chrome::user_panel(
         UserPanel {
             image: user.and_then(|user| ui.picture(user.picture())),
@@ -1855,7 +1857,9 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
             handle: user.map(|user| user.name.clone()).unwrap_or_default(),
             accent: user.map_or(look.faint, |user| look.ink(user.accent)),
             status: has_presence(store).then(|| look.status(presence.status)),
-            status_label: if sharing {
+            status_label: if in_voice {
+                t("En el canal de voz").into()
+            } else if sharing {
                 match game {
                     Some(game) => tr!("Transmitiendo {name}", name = game.name.as_str()),
                     None => t("Compartiendo su pantalla").into(),
@@ -1868,6 +1872,8 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
             } else {
                 user.map(|user| user.name.clone()).unwrap_or_default()
             },
+            in_voice,
+            speaking: held.is_some_and(|state| state.speaking),
             muted: ui.muted,
             deafened: ui.deafened,
             server_muted: held.is_some_and(|state| state.server_muted),

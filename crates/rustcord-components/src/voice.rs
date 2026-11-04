@@ -45,6 +45,11 @@ pub mod ids {
     /// The camera and the screen of the account, on and off.
     pub const CAMERA: &str = "vz:camera";
     pub const SCREEN: &str = "vz:screen";
+    /// The panel's camera, screen and hang-up: the bar's actions under ids of
+    /// their own, as limn keeps a control's fill and hover by its id.
+    pub const PANEL_CAMERA: &str = "vz:panel:camera";
+    pub const PANEL_SCREEN: &str = "vz:panel:screen";
+    pub const PANEL_LEAVE: &str = "vz:panel:leave";
     /// «Dejar de compartir» and «Apagar la cámara» on their previews.
     pub const STOP_SCREEN: &str = "vz:stop-screen";
     /// The account's own stream as a card in the grid (Discord's «¡Estás en
@@ -90,7 +95,6 @@ pub mod ids {
     pub const NOISE_DISMISS: &str = "vz:noise:dismiss";
     pub const NOISE_SWITCH: &str = "us:noise";
     pub const NOISE_SETTINGS: &str = "us:page=voice";
-    /// The action row's two buttons Rustcord cannot act on yet.
     /// The surfaces the host presents the previews' frames on.
     pub const SCREEN_SURFACE: &str = "video:screen";
     pub const CAMERA_SURFACE: &str = "video:camera";
@@ -374,9 +378,8 @@ fn video_buttons(
                 .tooltip_with(
                     TooltipSpec::new(if on { titles.0 } else { titles.1 }).description(
                         match (id, &controls.screen_note, &controls.camera_note) {
-                            (ids::SCREEN, Some(note), _) | (ids::CAMERA, _, Some(note)) => {
-                                note.clone()
-                            }
+                            (ids::PANEL_SCREEN, Some(note), _)
+                            | (ids::PANEL_CAMERA, _, Some(note)) => note.clone(),
                             _ => controls.note.clone(),
                         },
                     ),
@@ -388,13 +391,13 @@ fn video_buttons(
         match edge {
             Some(lit) => rendered
                 .radius(RadiusRole::Card.px())
-                .border(if on { lit } else { look.border }, 1.0),
+                .border(if on { lit } else { GROUP_EDGE }, 1.0),
             None => rendered,
         }
     };
     [
         button(
-            ids::CAMERA,
+            ids::PANEL_CAMERA,
             controls.camera,
             if controls.camera {
                 Icon::Video
@@ -404,7 +407,7 @@ fn video_buttons(
             (t("Apagar la cámara"), t("Encender la cámara")),
         ),
         button(
-            ids::SCREEN,
+            ids::PANEL_SCREEN,
             controls.screen,
             // Discord's: a screen with an arrow, crossed out while shared.
             Icon::Custom(if controls.screen {
@@ -1220,6 +1223,14 @@ const PANEL_ROWS_GAP: f32 = 12.0;
 const SIGNAL_SIZE: f32 = 32.0;
 const PANEL_BUTTON: f32 = 32.0;
 const PANEL_GAP: f32 = 10.0;
+/// The panel's colors, Discord's whatever the theme: the signal's green
+/// ground while connected, and the action buttons' fill (`#94949c` at 12 %,
+/// `#9696a0` at 20 % under the pointer).
+const SIGNAL_GROUND: Color = Color::rgb(0x00, 0x80, 0x40);
+const PANEL_FILL: (Color, Color) = (
+    Color::rgba(0x94, 0x94, 0x9c, 31),
+    Color::rgba(0x96, 0x96, 0xa0, 51),
+);
 /// The connection's details: 319 wide.
 pub const DETAILS_WIDTH: f32 = 319.0;
 /// A person's row under a voice channel: 32 high (4, 24 of picture, 4, as
@@ -1274,7 +1285,7 @@ const GROUP_FILL: Color = Color::rgb(0x0a, 0x0a, 0x0c);
 const GROUP_EDGE: Color = Color::rgba(0x95, 0x95, 0xa2, 41);
 const PLAIN_INK: Color = Color::rgb(255, 255, 255);
 const PLAIN_HOVER: Color = Color::rgba(0x99, 0x99, 0x99, 20);
-const RED_GLOW: (Color, Color, Color) = (
+pub(crate) const RED_GLOW: (Color, Color, Color) = (
     Color::rgba(0xd6, 0x29, 0x3a, 31),
     Color::rgba(0xd3, 0x2c, 0x38, 41),
     Color::rgb(0xda, 0x3e, 0x44),
@@ -1398,7 +1409,10 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     // No quality grade reaches the panel: the title's color (green, amber,
     // red) carries it.
     let (fill, hover) = if connected {
-        (Look::alpha(ink, 20), Look::alpha(ink, 36))
+        (
+            Look::alpha(SIGNAL_GROUND, 20),
+            Look::alpha(SIGNAL_GROUND, 36),
+        )
     } else {
         (look.raised, lighter(look.raised, 14))
     };
@@ -1420,7 +1434,9 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     .ink(ink)
     .hover_ink(ink)
     .tooltip(latency)
-    .render();
+    .render()
+    .radius(RadiusRole::Card.px())
+    .border(GROUP_EDGE, 1.0);
     let signal = match details {
         Some(details) => Element::popover(
             signal,
@@ -1448,39 +1464,42 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
         _ => place,
     };
     // The title reads «Detalles de voz» under the pointer: it opens them too.
+    // Discord's lines, 16 on 20 and 12 on 16, in the regular face: Ubuntu's
+    // medium is much heavier than gg sans'. Their glyphs sit 1 px lower than
+    // Discord's, and the column overflows the row by 4: 3 up.
     let heading = Element::stack(vec![
-        strong_line(title, 16.0, ink).conceal_on_hover("vz:details:title:phase"),
-        strong_line(t("Detalles de voz"), 16.0, ink).reveal_on_hover("vz:details:title:hover"),
-    ]);
+        line(title, 16.0, ink).conceal_on_hover("vz:details:title:phase"),
+        line(t("Detalles de voz"), 16.0, ink).reveal_on_hover("vz:details:title:hover"),
+    ])
+    .size(None, Some(20.0));
     let summary = Element::clickable(
         ids::DETAILS_TITLE,
-        Element::column(vec![heading, strong_line(subtitle, 12.0, look.muted)]),
+        Element::column(vec![
+            heading,
+            line(subtitle, 12.0, look.muted).size(None, Some(16.0)),
+        ]),
     )
     .hover_region()
-    .accessibility_label(t("Detalles de voz"));
-    let wave = IconButton::new(
-        ids::NOISE,
-        Icon::Custom(crate::glyphs::NOISE),
-        look.sidebar_palette(),
-    )
-    .variant(ButtonVariant::Ghost)
-    .sizing(ButtonSizing {
-        height: PANEL_BUTTON,
-        font_size: 14.0,
-        icon_size: 20.0,
-        horizontal_padding: 9.0,
-        inner_spacing: 6.0,
-    })
-    .radius(RadiusRole::Card)
-    .ink(if view.noise_suppression {
-        look.text
-    } else {
-        look.muted
-    })
-    .hover_ink(look.text)
-    .tooltip(t("Supresión de ruido"))
-    .render()
-    .centered_y();
+    .accessibility_label(t("Detalles de voz"))
+    .translate(limn::Point::new(0.0, -3.0));
+    // Plain glyphs, lit by Discord's `#999999` at 8 % under the pointer.
+    let plain = filled(Color::TRANSPARENT, PLAIN_HOVER, look);
+    let wave = IconButton::new(ids::NOISE, Icon::Custom(crate::glyphs::NOISE), plain)
+        .variant(ButtonVariant::Ghost)
+        .sizing(ButtonSizing {
+            height: PANEL_BUTTON,
+            font_size: 14.0,
+            icon_size: 20.0,
+            horizontal_padding: 9.0,
+            inner_spacing: 6.0,
+        })
+        .radius(RadiusRole::Card)
+        // Grey on or off, as Discord's: its popout says which.
+        .ink(look.muted)
+        .hover_ink(look.text)
+        .tooltip(t("Supresión de ruido"))
+        .render()
+        .centered_y();
     let wave = if view.noise_open {
         Element::popover(
             wave,
@@ -1492,7 +1511,7 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
     } else {
         wave
     };
-    let hang_up = IconButton::new(ids::LEAVE, Icon::HangUp, look.sidebar_palette())
+    let hang_up = IconButton::new(ids::PANEL_LEAVE, Icon::HangUp, plain)
         .variant(ButtonVariant::Ghost)
         .sizing(ButtonSizing {
             height: PANEL_BUTTON,
@@ -1534,7 +1553,7 @@ pub fn panel(view: &Panel, details: Option<Element>, look: &Look) -> Element {
         let actions = video_buttons(
             &view.video,
             PANEL_BUTTON,
-            (look.hover, look.selected),
+            PANEL_FILL,
             (Look::alpha(look.online, 31), Look::alpha(look.online, 61)),
             Some(Look::alpha(look.online, 31)),
             look,
@@ -2753,7 +2772,7 @@ fn ringed_speaker(person: &Participant) -> bool {
 
 /// Discord's fallback ring of a speaker: 2 px of green just inside the
 /// picture's edge, and 1 px of black inside that.
-fn voice_ring(face: f32, look: &Look) -> Element {
+pub(crate) fn voice_ring(face: f32, look: &Look) -> Element {
     let inside = face - 4.0;
     Element::stack(vec![
         Element::panel(Element::spacer())
@@ -4855,10 +4874,10 @@ mod tests {
         assert!(shown.contains(&"General / Rustcord prueba".to_owned()));
         let ids = controls(&laid);
         assert!(ids.contains(&ids::DETAILS.to_owned()));
-        assert!(ids.contains(&ids::LEAVE.to_owned()));
+        assert!(ids.contains(&ids::PANEL_LEAVE.to_owned()));
         // No video on this system: the camera and the screen are drawn, not usable.
-        assert!(!ids.contains(&ids::CAMERA.to_owned()));
-        assert!(!ids.contains(&ids::SCREEN.to_owned()));
+        assert!(!ids.contains(&ids::PANEL_CAMERA.to_owned()));
+        assert!(!ids.contains(&ids::PANEL_SCREEN.to_owned()));
         let local = Panel {
             video: VideoControls::default(),
             ..connected()
@@ -4866,7 +4885,8 @@ mod tests {
         let (_, usable) = frame(panel(&local, None, &look), Size::new(357.5, 300.0));
         let usable = controls(&usable);
         assert!(
-            usable.contains(&ids::CAMERA.to_owned()) && usable.contains(&ids::SCREEN.to_owned())
+            usable.contains(&ids::PANEL_CAMERA.to_owned())
+                && usable.contains(&ids::PANEL_SCREEN.to_owned())
         );
         // Its signal starts 12 down, its buttons end 12 up: 100 high.
         let (_, placed) = frame(panel(&local, None, &look), Size::new(357.5, 300.0));
@@ -4878,7 +4898,7 @@ mod tests {
                 .map(|region| region.rect)
                 .unwrap()
         };
-        let (signal, camera) = (rect(ids::DETAILS), rect(ids::CAMERA));
+        let (signal, camera) = (rect(ids::DETAILS), rect(ids::PANEL_CAMERA));
         assert_eq!((signal.y, signal.height), (PANEL_INSET, 32.0));
         assert_eq!(camera.y + camera.height, PANEL_HEIGHT - PANEL_INSET);
         assert_eq!(camera.height, 32.0);
@@ -4921,7 +4941,10 @@ mod tests {
             ..connected()
         };
         let (_, laid) = frame(panel(&local, None, &look), Size::new(357.5, 300.0));
-        let (camera, screen) = (rect_of(&laid, ids::CAMERA), rect_of(&laid, ids::SCREEN));
+        let (camera, screen) = (
+            rect_of(&laid, ids::PANEL_CAMERA),
+            rect_of(&laid, ids::PANEL_SCREEN),
+        );
         // 357.5 less the card's 12 on each side, two buttons and a gap of 8.
         let width = (357.5 - 2.0 * PANEL_INSET - PANEL_GAP) / 2.0;
         assert!((camera.width - width).abs() < 0.01, "{}", camera.width);
@@ -4933,7 +4956,7 @@ mod tests {
     fn the_wave_sits_beside_the_hang_up_and_opens_the_noise_popout() {
         let look = Look::DARK;
         let (_, laid) = frame(panel(&connected(), None, &look), Size::new(357.5, 300.0));
-        let (wave, leave) = (rect_of(&laid, ids::NOISE), rect_of(&laid, ids::LEAVE));
+        let (wave, leave) = (rect_of(&laid, ids::NOISE), rect_of(&laid, ids::PANEL_LEAVE));
         assert_eq!(wave.y, leave.y);
         assert!((wave.x + wave.width + 4.0 - leave.x).abs() < 0.01);
         assert!(!controls(&laid).contains(&ids::NOISE_SWITCH.to_owned()));

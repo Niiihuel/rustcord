@@ -9,7 +9,7 @@ use limn::{
 
 use rustcord_i18n::{t, tr};
 
-use crate::{icon, line, strong_line, with_status, Look};
+use crate::{icon, line, strong_line, Look};
 
 use crate::gap;
 
@@ -247,6 +247,11 @@ pub struct UserPanel {
     /// Under the name: the custom status, or the status. The handle takes
     /// its place while the pointer is over the account.
     pub status_label: String,
+    /// In a call: a green speaker before that line, as Discord's «En el
+    /// canal de voz».
+    pub in_voice: bool,
+    /// Speaking in the call: the picture ringed in green.
+    pub speaking: bool,
     pub muted: bool,
     pub deafened: bool,
     /// The server holds the microphone closed, or the sound off, in the call.
@@ -265,8 +270,11 @@ pub struct UserPanel {
 /// it, are drawn by the column (`rustcord-ui`), one box for both.
 pub const USER_PANEL_HEIGHT: f32 = 56.0;
 /// Around the account's box: left, right (the column's divider included)
-/// and bottom.
-pub const USER_PANEL_MARGIN: (f32, f32, f32) = (11.5, 12.0, 11.0);
+/// and bottom, as Discord's 10.
+pub const USER_PANEL_MARGIN: (f32, f32, f32) = (10.0, 11.0, 10.0);
+/// The edge of the account's box and the hairlines between its sections:
+/// Discord's `#9595a2` at 16 %, whatever the theme.
+pub const USER_PANEL_EDGE: Color = Color::rgba(0x95, 0x95, 0xa2, 41);
 /// The buttons of the account's panel are 32 square; the microphone's and the
 /// headphones' are this wide, before the arrow of their options.
 const PANEL_BUTTON: (f32, f32) = (32.0, 32.0);
@@ -302,12 +310,10 @@ fn split_button(
     motion: Option<limn::IconMotion>,
     look: &Look,
 ) -> Element {
+    // On, Discord's red glow whatever the theme, as the call bar's.
+    let (rest, red, glow_ink) = crate::voice::RED_GLOW;
     let (lit, under, ink) = if on {
-        (
-            Look::alpha(look.danger, 46),
-            Look::alpha(look.danger, 61),
-            look.danger,
-        )
+        (Look::alpha(red, 46), Look::alpha(red, 61), glow_ink)
     } else {
         (look.hover, look.selected, look.muted)
     };
@@ -331,11 +337,11 @@ fn split_button(
         .size(Some(width), Some(PANEL_BUTTON.1))
         .corner_radii(radii)
         .hover_background(under)
-        .hover_foreground(if on { look.danger } else { look.text })
+        .hover_foreground(if on { glow_ink } else { look.text })
         .accessible(limn::Access::new(limn::Role::Button).name(name));
         let piece = if on {
-            // On Ónix a faint red, #1a0607.
-            piece.background(Look::alpha(look.danger, 31))
+            // On black, #1a0507.
+            piece.background(rest)
         } else {
             piece
         };
@@ -376,6 +382,29 @@ fn split_button(
     .hover_region()
 }
 
+/// The presence dot on the account's picture, as Discord's there: 10
+/// across on its bottom right corner, cut 3 px out of the picture.
+fn status_dot(face: Element, side: f32, status: Color, cut: Color) -> Element {
+    let dot = Element::panel(crate::centered(
+        Element::panel(Element::spacer())
+            .size(Some(10.0), Some(10.0))
+            .radius(5.0)
+            .background(status),
+    ))
+    .size(Some(16.0), Some(16.0))
+    .radius(8.0)
+    .background(cut)
+    .translate(limn::Point::new(3.0, 3.0));
+    Element::stack(vec![
+        face,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            Element::row(vec![Element::spacer().flex(1.0), dot]),
+        ]),
+    ])
+    .size(Some(side), Some(side))
+}
+
 /// The account's row: its mark and name (which open its profile popout), the
 /// microphone and the headphones with the arrows of their options, and the
 /// settings. The box around it is the column's.
@@ -392,33 +421,61 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
         |side| {
             let face =
                 crate::avatar_with_image(&panel.name, panel.accent, side, panel.image.clone());
+            let face = if panel.speaking {
+                Element::stack(vec![face, crate::voice::voice_ring(side, look)])
+                    .size(Some(side), Some(side))
+            } else {
+                face
+            };
             match panel.status {
-                Some(status) => with_status(face, side, status, look.rail),
+                Some(status) => status_dot(face, side, status, look.rail),
                 None => face,
             }
         },
         box_size,
         panel.decoration.clone(),
     );
+    let status = line(&panel.status_label, 12.0, look.muted);
+    let status = if panel.in_voice {
+        Element::row(vec![
+            icon(Icon::Volume, look.online)
+                .small_icon(12.0)
+                .size(Some(12.0), Some(12.0))
+                .centered_y()
+                .translate(limn::Point::new(0.0, 1.0)),
+            status.flex(1.0),
+        ])
+        .gap(4.0)
+    } else {
+        status
+    };
     let second = Element::stack(vec![
-        line(&panel.status_label, 12.0, look.muted).conceal_on_hover("me:line:status"),
+        status.conceal_on_hover("me:line:status"),
         line(&panel.handle, 12.0, look.muted).reveal_on_hover("me:line:handle"),
     ]);
+    // Discord's account button: 42 high, the picture 6 in, the name 8 after it.
     let account = Element::clickable(
         "me:status",
         Element::row(vec![
-            gap(4.0 - inset, 0.0),
+            gap(6.0 - inset, 0.0),
             face.centered_y(),
-            gap(10.5 - inset, 0.0),
-            Element::column(vec![strong_line(&panel.name, 14.0, look.text), second])
-                .gap(1.0)
-                .flex(1.0)
-                .centered_y(),
+            gap(8.0 - inset, 0.0),
+            // Discord's lines, 16 on 18 and 12 on 13, in the regular face
+            // (Ubuntu's medium is much heavier than gg sans'); the name's
+            // glyphs sit 2 px lower than Discord's.
+            Element::column(vec![
+                line(&panel.name, 16.0, look.text)
+                    .size(None, Some(18.0))
+                    .translate(limn::Point::new(0.0, -2.0)),
+                second.size(None, Some(13.0)),
+            ])
+            .flex(1.0)
+            .centered_y(),
             gap(4.0, 0.0),
         ]),
     )
-    .size(None, Some(40.0))
-    .radius(6.0)
+    .size(None, Some(42.0))
+    .radius(4.0)
     .hover_background(look.hover)
     .hover_region()
     .accessibility_label(match panel.status {
@@ -482,13 +539,26 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
         )
         .popover_gap(10.0);
     }
+    // Grey, lit by Discord's `#9696a0` at 20 % under the pointer.
+    let palette = limn::ComponentPalette {
+        hover: Color::rgba(0x96, 0x96, 0xa0, 51),
+        ..palette
+    };
     let settings = panel_button(IconButton::new("me:settings", Icon::Settings, palette))
         .width(PANEL_BUTTON.1)
         .variant(ButtonVariant::Ghost)
+        .ink(look.muted)
+        .hover_ink(look.text)
         .tooltip(t("Ajustes de usuario"))
         .render()
         .hover_motion("me:settings:motion", crate::motion::gear());
-    let mut controls = vec![gap(8.0, 0.0), account.flex(1.0).centered_y(), gap(8.0, 0.0)];
+    // As measured on Discord's: the account button 8 in, 10 before the
+    // controls, which end 14 in.
+    let mut controls = vec![
+        gap(8.0, 0.0),
+        account.flex(1.0).centered_y(),
+        gap(10.0, 0.0),
+    ];
     if panel.voice {
         controls.extend([
             microphone.centered_y(),
@@ -497,7 +567,7 @@ pub fn user_panel(panel: UserPanel, look: &Look) -> Element {
             gap(8.0, 0.0),
         ]);
     }
-    controls.extend([settings.centered_y(), gap(8.0, 0.0)]);
+    controls.extend([settings.centered_y(), gap(14.0, 0.0)]);
     let body = Element::panel(Element::row(controls)).size(None, Some(USER_PANEL_HEIGHT));
     // The plate spans the box; its artwork is the still one, as it stays under the pointer.
     let body = crate::identity::on_plate(body, USER_PANEL_HEIGHT, panel.plate.as_ref(), "me");
