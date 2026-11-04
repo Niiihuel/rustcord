@@ -265,6 +265,9 @@ pub(crate) fn update(
         _ => {}
     }
     let (channel, rest) = id.strip_prefix("group:")?.split_once(':')?;
+    // The × on a direct row has ids of its own (`x-leave`, `x-close`): limn keeps
+    // hover state by id, and its row menu offers the same actions.
+    let rest = rest.strip_prefix("x-").unwrap_or(rest);
     let channel = ChannelId(channel.parse().ok()?);
     let refuse = |ui: &mut Ui, permit: &Permit| {
         if let Permit::Denied(reason) = permit {
@@ -401,7 +404,7 @@ fn new_group(
     now: Instant,
 ) -> Option<Vec<Intent>> {
     match id {
-        ids::NEW => {
+        ids::NEW | rustcord_components::friends::NEW_GROUP => {
             if let Permit::Denied(reason) = store.create_group() {
                 ui.notify(t("No se puede"), Some(reason), true, now);
             } else {

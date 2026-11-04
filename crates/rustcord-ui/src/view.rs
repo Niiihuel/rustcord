@@ -478,14 +478,14 @@ fn direct_rows(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Vec<Elem
                         .filter(|can| can.leave.allowed())
                         .map(|_| {
                             (
-                                format!("group:{}:leave", channel.id),
+                                format!("group:{}:x-leave", channel.id),
                                 t("Abandonar grupo").to_owned(),
                             )
                         })
                 } else {
                     store.close_direct(channel.id).allowed().then(|| {
                         (
-                            format!("group:{}:close", channel.id),
+                            format!("group:{}:x-close", channel.id),
                             t("Cerrar conversación").to_owned(),
                         )
                     })
