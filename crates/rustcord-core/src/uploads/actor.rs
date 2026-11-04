@@ -403,7 +403,7 @@ pub(super) async fn run(
                 Some(Job::Insert { account, channel, prepared }) => {
                     let metadata = prepared.metadata().clone();
                     let mut state = shared.lock().unwrap();
-                    state.tokens.insert(metadata.token, TokenControl { account, channel, metadata: metadata.clone(), path: None });
+                    state.tokens.insert(metadata.token, TokenControl { account, channel, metadata: metadata.clone(), path: None, bytes: prepared.bytes() });
                     entries.insert(metadata.token, prepared);
                     wake();
                 }
@@ -486,6 +486,7 @@ pub(super) fn publish_batch(
                 channel,
                 metadata: summary.clone(),
                 path: None,
+                bytes: file.bytes(),
             },
         );
         entries.insert(summary.token, file);

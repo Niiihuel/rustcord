@@ -21,6 +21,10 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             wanted.push(source.clone());
         }
     };
+    // The pictures of the files chosen for messages, decoded here.
+    for file in ui.uploads.drafts.values().flatten() {
+        add(file.preview().as_ref());
+    }
     // The remembered accounts' pictures, where they are listed.
     if crate::auth::visible(store) || ui.settings.is_some() {
         for account in &store.accounts {

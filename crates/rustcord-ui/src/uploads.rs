@@ -1,7 +1,8 @@
 //! Outgoing file controls contain only tokens and display metadata.
 
 use crate::{Intent, Ui};
-use limn::{Element, UiAction};
+use limn::UiAction;
+use rustcord_components::uploads::Thumbnail;
 use rustcord_i18n::{t, tr};
 use rustcord_model::{ChannelId, MessageId, PendingAttachment, Timestamp, UploadToken, UserId};
 use rustcord_provider::{ConnectionState, RequestId, UploadError, UploadLimits, UploadUpdate};
@@ -882,14 +883,13 @@ pub(crate) fn on_applied(ui: &mut Ui, store: &Store, _applied: &Applied) -> Vec<
     intents
 }
 
-pub(crate) fn with_draft(
-    surface: Element,
+/// The files chosen for `channel`'s message, as its composer shows them,
+/// while there are any or a choice is prepared.
+pub(crate) fn draft(
     ui: &Ui,
     channel: ChannelId,
-    width: f32,
     window_height: f32,
-    look: &rustcord_components::Look,
-) -> Element {
+) -> Option<rustcord_components::uploads::DraftUploads<'_>> {
     let files = ui
         .uploads
         .drafts
@@ -898,24 +898,39 @@ pub(crate) fn with_draft(
     let pick = draft_pick(ui, channel);
     let picking = pick.map(|pick| pick.request);
     if files.is_empty() && picking.is_none() {
-        return surface;
+        return None;
     }
-    let stage = rustcord_components::uploads::draft_uploads(
-        rustcord_components::uploads::DraftUploads {
-            channel,
-            files,
-            picking,
-            selecting: pick.is_some_and(|pick| pick.source == AttachmentImportSource::Picker),
-            cancelling: pick.is_some_and(|pick| pick.cancelling),
-            submitting: ui
-                .uploads
-                .submissions
-                .values()
-                .any(|pending| pending.channel == channel),
-            width,
-            max_list_height: (window_height / 5.0).min(152.0),
-        },
-        look,
-    );
-    Element::column(vec![stage, surface]).gap(4.0)
+    Some(rustcord_components::uploads::DraftUploads {
+        channel,
+        files,
+        thumbnails: thumbnails(ui, files),
+        picking,
+        selecting: pick.is_some_and(|pick| pick.source == AttachmentImportSource::Picker),
+        cancelling: pick.is_some_and(|pick| pick.cancelling),
+        submitting: ui
+            .uploads
+            .submissions
+            .values()
+            .any(|pending| pending.channel == channel),
+        width: 0.0,
+        // Discord's cards from a window 760 tall; below, they shrink with
+        // it, to a row 96 tall at the smallest window (480), as it was.
+        max_list_height: 96.0 + (window_height - 480.0) * (224.0 - 96.0) / (760.0 - 480.0),
+    })
+}
+
+/// What each of `files` shows: its picture once decoded here, the box's
+/// fill until then, its glyph when it is not one.
+pub(crate) fn thumbnails(ui: &Ui, files: &[PendingAttachment]) -> Vec<Thumbnail> {
+    files
+        .iter()
+        .map(|file| match file.preview() {
+            Some(source) => match ui.images.get(&source) {
+                Some(image) => Thumbnail::Picture(image.clone()),
+                None if ui.image_failures.contains(&source) => Thumbnail::File,
+                None => Thumbnail::Loading,
+            },
+            None => Thumbnail::File,
+        })
+        .collect()
 }

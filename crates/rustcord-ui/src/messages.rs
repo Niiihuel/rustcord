@@ -1322,12 +1322,11 @@ pub(crate) fn composer(
             completions: crate::commands::completions(ui, store, channel)
                 .or_else(|| completions(ui, store, channel)),
             actions,
+            attachments: crate::uploads::draft(ui, channel, context.window.height),
         },
         look,
     );
     let surface = crate::commands::with_form(surface, ui, store, channel, width, context.now, look);
-    let surface =
-        crate::uploads::with_draft(surface, ui, channel, width, context.window.height, look);
     let surface = crate::onboarding::with_steps(surface, ui, store, server, look);
     crate::expressions::with_sticker_stage(surface, ui, store, channel, look)
 }

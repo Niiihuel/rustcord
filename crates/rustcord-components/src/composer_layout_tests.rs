@@ -33,6 +33,7 @@ fn view(width: f32, draft: &str) -> ComposerView<'static> {
         completions: None,
         highlights: Vec::new(),
         actions: Default::default(),
+        attachments: None,
     }
 }
 
@@ -275,4 +276,47 @@ fn a_long_reason_not_to_write_wraps_onto_further_lines_in_a_narrow_window() {
             |command| matches!(command, DrawCommand::Text { text, .. } if text.contains('…'))
         ));
     }
+}
+
+/// As Discord's: the chosen files are cards inside the box, above the
+/// editor's row, 21 from the box's top and left.
+#[test]
+fn chosen_files_are_cards_inside_the_box_above_the_editor() {
+    let files = [rustcord_model::PendingAttachment {
+        token: rustcord_model::UploadToken(3),
+        filename: "imagen.png".into(),
+        size_bytes: 9,
+    }];
+    let mut view = view(600.0, "");
+    view.attachments = Some(crate::uploads::DraftUploads {
+        channel: rustcord_model::ChannelId(1),
+        files: &files,
+        thumbnails: vec![crate::uploads::Thumbnail::Loading],
+        picking: None,
+        selecting: false,
+        cancelling: false,
+        submitting: false,
+        width: 0.0,
+        max_list_height: 400.0,
+    });
+    let mut tree = UiTree::new(composer(view, &Look::DARK));
+    tree.set_reduced_motion(true);
+    let frame = tree.layout(Size::new(600.0, 400.0));
+    let rect = |id: &str| {
+        frame
+            .regions
+            .iter()
+            .find(|region| region.id == id)
+            .unwrap_or_else(|| panic!("{id}"))
+            .rect
+    };
+    let row = rect("composer:1:uploads");
+    let editor = rect("composer:fixture");
+    assert_eq!((row.x, row.y), (11.0, 21.0));
+    assert_eq!(
+        row.width,
+        600.0 - 22.0,
+        "10 clear of each side, inside the border"
+    );
+    assert!(row.y + row.height <= editor.y, "{row:?} over {editor:?}");
 }

@@ -948,6 +948,7 @@ fn new_form(ui: &Ui, store: &Store, new: &NewThread) -> Option<NewThreadForm> {
         files: post.then(|| PostFiles {
             forum: new.parent.0,
             files: crate::uploads::post_files(ui, new.parent).to_vec(),
+            thumbnails: crate::uploads::thumbnails(ui, crate::uploads::post_files(ui, new.parent)),
             picking: crate::uploads::post_picking(ui, new.parent),
             waiting: new.waiting.is_some(),
             denied: store.post_files(new.parent).reason().map(str::to_owned),

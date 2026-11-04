@@ -394,6 +394,8 @@ impl Client {
             info.capabilities.idempotent_send,
             config.wake.clone(),
         );
+        // The pictures of the files prepared to be sent.
+        images.prepared = Some(uploads.previews());
         let (sender, events) = mpsc::channel(1024);
         let latest = LatestValues::default();
         let sink = EventSink::new(sender, latest.clone(), config.wake.clone());

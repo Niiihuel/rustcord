@@ -837,6 +837,42 @@ async fn a_picture_the_provider_keeps_loads_without_any_origin() {
     assert_eq!(images.failures(&wanted), HashSet::from([elsewhere]));
 }
 
+/// A file prepared to be sent shows its picture, decoded off the caller's
+/// thread from its prepared bytes: pending is not a failure, one that is
+/// not a picture or no longer prepared is.
+#[tokio::test]
+async fn a_prepared_picture_decodes_from_its_bytes_and_anything_else_fails() {
+    let (wake, mut woken) = mpsc::channel(8);
+    let mut images = Images::new(
+        Handle::current(),
+        &[],
+        Arc::new(move || {
+            let _ = wake.try_send(());
+        }),
+    );
+    images.prepared = Some(Box::new(|token: UploadToken| match token.0 {
+        1 => Some(bytes::Bytes::from(png(400, 300))),
+        2 => Some(bytes::Bytes::from_static(b"hola")),
+        _ => None,
+    }));
+    let [picture, text, gone] = [1, 2, 3].map(|token| UploadToken(token).preview());
+    let wanted = [picture.clone(), text.clone(), gone.clone()];
+    assert!(images.load(&wanted).is_empty());
+    assert!(images.failures(&wanted).is_empty(), "decoding, not failed");
+    let mut ready = Vec::new();
+    while ready.is_empty() || images.failures(&wanted).len() < 2 {
+        tokio::time::timeout(Duration::from_secs(5), woken.recv())
+            .await
+            .unwrap();
+        ready = images.load(&wanted);
+    }
+    assert!(
+        matches!(&ready[..], [(source, data)] if *source == picture && (data.width, data.height) == (400, 300)),
+        "{ready:?}"
+    );
+    assert_eq!(images.failures(&wanted), HashSet::from([text, gone]));
+}
+
 /// A screen of density 2 gets its pictures decoded twice as large on a side
 /// and in half steps, so a cached one serves nearby scales.
 #[test]

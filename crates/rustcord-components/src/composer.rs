@@ -65,6 +65,9 @@ pub struct ComposerView<'a> {
     /// The inks of the draft as it is written.
     pub highlights: Vec<TextHighlight>,
     pub actions: ComposerActions,
+    /// The files chosen for the message, as cards in the box above the
+    /// editor; the box sets their width.
+    pub attachments: Option<crate::uploads::DraftUploads<'a>>,
 }
 
 /// What message actions add to the composer.
@@ -192,6 +195,18 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     .enabled(enabled);
     if view.attach_denied.is_none() {
         card = card.drop_target();
+    }
+    // As Discord's: 21 from the box's top and 11 from its sides (its border
+    // lies inside its padding); the row's own bar room and the box's 6
+    // between rows under them.
+    if let Some(files) = view.attachments {
+        let width = (view.width - 2.0 * (CARD_PADDING + 3.0)).max(0.0);
+        let files =
+            crate::uploads::draft_uploads(crate::uploads::DraftUploads { width, ..files }, look);
+        card = card.attachments(vec![Element::column(vec![
+            gap(0.0, 13.0),
+            Element::row(vec![gap(3.0, 0.0), files]),
+        ])]);
     }
     let card = card.render();
     let card = match &view.reply {
@@ -441,6 +456,7 @@ mod tests {
             completions: None,
             highlights: Vec::new(),
             actions: Default::default(),
+            attachments: None,
         }
     }
 

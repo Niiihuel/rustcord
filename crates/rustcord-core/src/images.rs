@@ -9,7 +9,7 @@ use std::{
 
 use base64::Engine as _;
 use image::{ImageFormat, ImageReader};
-use rustcord_model::{ImageKind, RemoteImage, Rgb};
+use rustcord_model::{ImageKind, RemoteImage, Rgb, UploadToken};
 use sha2::{Digest, Sha256};
 use tokio::{
     runtime::Handle,
@@ -207,6 +207,8 @@ pub(crate) struct Images {
     retry_at: Option<Instant>,
     /// The provider, for the pictures it keeps itself (`hosted_image`).
     pub(crate) hosted: Option<Arc<dyn rustcord_provider::Provider>>,
+    /// The bytes of a file prepared to be sent, for its [`UploadToken::preview`].
+    pub(crate) prepared: Option<Box<dyn Fn(UploadToken) -> Option<bytes::Bytes> + Send>>,
     /// The account's pictures kept from earlier runs, read before asking
     /// the network and written once a download proved to be a picture.
     pub(crate) disk: disk::DiskCache,
@@ -252,6 +254,7 @@ impl Images {
             cooldowns: HashMap::new(),
             retry_at: None,
             hosted: None,
+            prepared: None,
         }
     }
 
@@ -392,13 +395,19 @@ impl Images {
                 continue;
             }
             // Kept by the provider itself: read as a download would be, as
-            // large at most as a profile picture made on this device.
-            if let Some(bytes) = self
-                .hosted
-                .as_ref()
-                .and_then(|provider| provider.hosted_image(&source.url))
-                .filter(|bytes| bytes.len() <= rustcord_provider::ProfileImage::MAX_ANIMATED_BYTES)
-            {
+            // large at most as a profile picture made on this device. A
+            // file prepared here is already bounded by its budget.
+            let kept = match UploadToken::previewed(source) {
+                Some(token) => self.prepared.as_ref().and_then(|prepared| prepared(token)),
+                None => self
+                    .hosted
+                    .as_ref()
+                    .and_then(|provider| provider.hosted_image(&source.url))
+                    .filter(|bytes| {
+                        bytes.len() <= rustcord_provider::ProfileImage::MAX_ANIMATED_BYTES
+                    }),
+            };
+            if let Some(bytes) = kept {
                 let (source, sender, wake, epoch) = (
                     source.clone(),
                     self.sender.clone(),
@@ -575,6 +584,10 @@ impl Images {
             .filter(|source| {
                 if matches!(self.cache.get(*source), Some(Some(_))) {
                     return false;
+                }
+                // A prepared file's picture fails only once it did not decode.
+                if UploadToken::previewed(source).is_some() {
+                    return matches!(self.cache.get(*source), Some(None));
                 }
                 if self.client.is_none() || source.url.len() > 2048 {
                     return true;
