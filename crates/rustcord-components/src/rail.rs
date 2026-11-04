@@ -3,8 +3,8 @@
 //! folders the account groups them in.
 
 use limn::{
-    Badge, BadgePlacement, Color, Component, Element, FontFamily, Icon, Point, ScrollArea, Tooltip,
-    TooltipFace, TooltipItem, TooltipPlacement,
+    Badge, BadgePlacement, Collapse, Color, Component, CornerRadii, Element, FontFamily, Icon,
+    Point, ScrollArea, Tooltip, TooltipFace, TooltipItem, TooltipPlacement,
 };
 
 use rustcord_i18n::{t, tr};
@@ -155,7 +155,10 @@ pub struct RailFolder {
     pub id: String,
     /// Its name, or the names of its servers when it has none.
     pub name: String,
-    pub color: Color,
+    /// The color it was given, if any: it inks the glyph and tints the
+    /// closed face and the open column. Without one, as Discord's, the
+    /// glyph takes the accent and both are the rail's grey.
+    pub color: Option<Color>,
     pub open: bool,
     pub servers: Vec<RailItem>,
 }
@@ -234,23 +237,28 @@ fn rule(look: &Look) -> Element {
 /// `marks` one under another, [`GAP`] apart. While a mark is dragged, the
 /// gap over each takes a drop as its landing says: before the mark under it.
 fn spaced(marks: Vec<(Option<(String, Placement)>, Element)>, drag: &RailDrag) -> Element {
-    let dragging = drag.source.is_some();
     let mut column = Vec::with_capacity(marks.len() * 2);
     for (index, (landing, mark)) in marks.into_iter().enumerate() {
         if index > 0 {
-            column.push(match landing.filter(|_| dragging) {
-                Some((key, placement)) => Element::clickable(
-                    format!("{DROP}{}:{key}:gap", placement.key()),
-                    Element::spacer(),
-                )
-                .size(None, Some(GAP))
-                .drop_target(),
-                None => Element::spacer().size(None, Some(GAP)),
-            });
+            column.push(gap(landing, GAP, drag));
         }
         column.push(mark);
     }
     Element::column(column)
+}
+
+/// `height` of room over a mark; while a mark is dragged, a drop there lands
+/// as `landing` says.
+fn gap(landing: Option<(String, Placement)>, height: f32, drag: &RailDrag) -> Element {
+    match landing.filter(|_| drag.source.is_some()) {
+        Some((key, placement)) => Element::clickable(
+            format!("{DROP}{}:{key}:gap", placement.key()),
+            Element::spacer(),
+        )
+        .size(None, Some(height))
+        .drop_target(),
+        None => Element::spacer().size(None, Some(height)),
+    }
 }
 
 /// The mark and the placement a drop zone of the rail stands for; `None`
@@ -263,12 +271,14 @@ pub fn drop_zone(id: &str) -> Option<(&str, Placement)> {
     ))
 }
 
-/// `row`, the band of the mark `key`, while a mark is dragged: the zones to
-/// land on it, `placements` from top to bottom, and the ring or the line of
-/// where the dragged one would land now. Nothing while none is.
+/// `row`, the band of the mark `key` (`side` high and wide), while a mark is
+/// dragged: the zones to land on it, `placements` from top to bottom, and the
+/// ring or the line of where the dragged one would land now. Nothing while
+/// none is.
 fn landing(
     row: Element,
     key: &str,
+    side: f32,
     placements: &[Placement],
     drag: &RailDrag,
     look: &Look,
@@ -281,7 +291,9 @@ fn landing(
         .copied()
         .filter(|placement| drag.inside || *placement != Placement::Inside)
         .collect();
-    let height = MARK / placements.len().max(1) as f32;
+    let height = side / placements.len().max(1) as f32;
+    // A folder is wider than a mark about the same middle.
+    let inset = INSET - (side - MARK) / 2.0;
     let zones = Element::column(
         placements
             .iter()
@@ -297,18 +309,18 @@ fn landing(
     );
     let shown = match drag.over.as_ref().filter(|(over, _)| over == key) {
         Some((_, Placement::Inside)) => Element::row(vec![
-            Element::spacer().size(Some(INSET), None),
+            Element::spacer().size(Some(inset), None),
             Element::panel(Element::spacer())
-                .size(Some(MARK), Some(MARK))
+                .size(Some(side), Some(side))
                 .radius(MARK_RADIUS)
                 .border(look.online, 2.0),
             Element::spacer().flex(1.0),
         ]),
         Some((_, placement)) => {
             let bar = Element::row(vec![
-                Element::spacer().size(Some(INSET), None),
+                Element::spacer().size(Some(inset), None),
                 Element::panel(Element::spacer())
-                    .size(Some(MARK), Some(3.0))
+                    .size(Some(side), Some(3.0))
                     .radius(1.5)
                     .background(look.online),
                 Element::spacer().flex(1.0),
@@ -321,7 +333,7 @@ fn landing(
         }
         None => Element::spacer(),
     };
-    Element::stack(vec![row, shown, zones]).size(None, Some(MARK))
+    Element::stack(vec![row, shown, zones]).size(None, Some(side))
 }
 
 /// The pill against the rail's edge, rounded on the side that shows.
@@ -470,6 +482,7 @@ fn mark(item: RailItem, drag: Option<&RailDrag>, look: &Look) -> Element {
         Some(drag) => landing(
             row,
             &item.id,
+            MARK,
             &[Placement::Before, Placement::Inside, Placement::After],
             drag,
             look,
@@ -478,44 +491,133 @@ fn mark(item: RailItem, drag: Option<&RailDrag>, look: &Look) -> Element {
     }
 }
 
+/// Round a mark, a folder's square: Discord's 48 about a 40 mark.
+const FOLDER_PAD: f32 = 4.2;
+/// A folder's side, closed or the head of an open one.
+const FOLDER: f32 = MARK + 2.0 * FOLDER_PAD;
+/// The corners of a closed folder's face and of an open one's column.
+const FOLDER_RADIUS: f32 = 16.8;
+/// The folder glyph of an open folder.
+const FOLDER_GLYPH: f32 = 19.0;
+/// The ring round an open folder's column: Discord's `--border-muted`.
+const FOLDER_RING: Color = Color::rgba(149, 149, 162, 41);
+/// Between the head of an open folder and its first server, so the glyph's
+/// square and the server are a [`GAP`] apart.
+const FOLDER_LIST_TOP: f32 = GAP - FOLDER_PAD;
+/// Between the small faces of a closed folder.
+const TILE_GAP: f32 = 2.1;
 /// The side of one of the four small faces of a closed folder.
-const TILE: f32 = 16.0;
+const TILE: f32 = (FOLDER - 2.0 * FOLDER_PAD - TILE_GAP) / 2.0;
+/// A small face's corner toward the folder's corner, and its other three.
+const TILE_OUTER: f32 = 13.6;
+const TILE_INNER: f32 = 4.2;
 
-/// A closed folder's face: up to four of its servers, two by two.
-fn mosaic(servers: &[RailItem]) -> Element {
-    let white = Color::rgb(255, 255, 255);
-    let tile = |item: &RailItem| match &item.image {
-        Some(image) => Element::raster_image(image.clone().cover())
+/// A closed folder's face: up to four of its servers, two by two, each
+/// rounded most toward the folder's corner it sits in; one without a
+/// picture shows its initials on the rail's black, as Discord's.
+fn mosaic(servers: &[RailItem], look: &Look) -> Element {
+    let tile = |(index, item): (usize, &RailItem)| {
+        let rest = CornerRadii::same(TILE_INNER);
+        let radii = match index {
+            0 => CornerRadii {
+                top_left: TILE_OUTER,
+                ..rest
+            },
+            1 => CornerRadii {
+                top_right: TILE_OUTER,
+                ..rest
+            },
+            2 => CornerRadii {
+                bottom_left: TILE_OUTER,
+                ..rest
+            },
+            _ => CornerRadii {
+                bottom_right: TILE_OUTER,
+                ..rest
+            },
+        };
+        let face = match &item.image {
+            Some(image) => {
+                Element::raster_image(image.clone().cover()).size(Some(TILE), Some(TILE))
+            }
+            None => centered(
+                Element::text(item.initials.clone())
+                    .font_family(FontFamily::Sans)
+                    .font_size(if item.initials.chars().count() > 2 {
+                        10.5
+                    } else {
+                        12.5
+                    })
+                    .foreground(look.text),
+            ),
+        };
+        Element::panel(face)
             .size(Some(TILE), Some(TILE))
-            .radius(5.0),
-        None => Element::panel(centered(
-            Element::text(
-                item.initials
-                    .chars()
-                    .next()
-                    .map(String::from)
-                    .unwrap_or_default(),
-            )
-            .font_family(FontFamily::SansMedium)
-            .font_size(8.0)
-            .foreground(white),
-        ))
-        .size(Some(TILE), Some(TILE))
-        .radius(5.0)
-        .background(item.accent),
+            .corner_radii(radii)
+            .background(look.rail)
+            .clip_children()
     };
-    let rows: Vec<Element> = servers
+    let tiles: Vec<(usize, &RailItem)> = servers.iter().take(4).enumerate().collect();
+    let rows: Vec<Element> = tiles
         .chunks(2)
-        .take(2)
-        .map(|pair| Element::row(pair.iter().map(tile).collect()).gap(3.0))
+        .map(|pair| Element::row(pair.iter().copied().map(tile).collect()).gap(TILE_GAP))
         .collect();
-    Element::column(rows).gap(3.0)
+    Element::column(rows).gap(TILE_GAP)
 }
 
-/// A folder: closed, one mark in its color with its servers in small, that
-/// sums what they have waiting; open, its mark and its servers' under it on
-/// a band of its color. The pill says what its servers say. It and its
-/// servers are dragged and dropped on as `drag` says.
+/// A folder's head: a square that shows, closed, its servers in small on
+/// its tint and, open, the folder glyph in its color. The two are stacked
+/// in a strip that slides down one square as it opens and back up as it
+/// closes, as Discord's; an open one lights the glyph's square under the
+/// pointer.
+fn folder_face(folder: &RailFolder, look: &Look) -> Element {
+    let lit = Element::panel(Element::spacer())
+        .size(Some(MARK), Some(MARK))
+        .radius(MARK_RADIUS)
+        .background(look.hover)
+        .reveal_on_hover(format!("{}:lit", folder.id));
+    let glyph = Element::panel(Element::stack(vec![
+        lit,
+        centered(
+            Element::icon(Icon::Folder)
+                .large_icon(FOLDER_GLYPH)
+                .foreground(folder.color.unwrap_or(look.accent)),
+        ),
+    ]))
+    .size(Some(FOLDER), Some(FOLDER))
+    .padding(FOLDER_PAD);
+    let preview = Element::panel(mosaic(&folder.servers, look))
+        .size(Some(FOLDER), Some(FOLDER))
+        .padding(FOLDER_PAD)
+        .radius(FOLDER_RADIUS)
+        .background(
+            folder
+                .color
+                .map_or(look.raised, |color| Look::alpha(color, 102)),
+        );
+    // The slot over the strip opens to a square while the folder is open,
+    // carrying the glyph down into view and the servers out of it, on the
+    // spring limn moves a slot on.
+    let slide = Collapse::new(
+        format!("{}:slide", folder.id),
+        folder
+            .open
+            .then(|| Element::spacer().size(None, Some(FOLDER))),
+    )
+    .expand()
+    .render();
+    // In a column, so the strip keeps its own height past the square: limn
+    // skips what a parent's box cannot hold before it translates.
+    Element::column(vec![Element::column(vec![slide, glyph, preview])
+        .size(None, Some(3.0 * FOLDER))
+        .translate(Point::new(0.0, -FOLDER))])
+}
+
+/// A folder: closed, its face with its servers in small, that sums what
+/// they have waiting; open, the glyph and its servers under it on a column
+/// of its tint that grows and shrinks with them. The pill says what its
+/// servers say while it is closed. It and its servers are dragged and
+/// dropped on as `drag` says.
 fn folder_entry(folder: RailFolder, drag: &RailDrag, look: &Look) -> Element {
     let selected = folder.servers.iter().any(|item| item.selected);
     let unread = folder.servers.iter().any(|item| item.unread);
@@ -523,20 +625,10 @@ fn folder_entry(folder: RailFolder, drag: &RailDrag, look: &Look) -> Element {
         .servers
         .iter()
         .fold(0u32, |sum, item| sum.saturating_add(item.mentions));
-    let tint = |alpha: u8| Color::rgba(folder.color.r, folder.color.g, folder.color.b, alpha);
-    let face = if folder.open {
-        Element::icon(Icon::Folder)
-            .large_icon(22.0)
-            .foreground(folder.color)
-    } else {
-        mosaic(&folder.servers)
-    };
-    let button = Element::clickable(folder.id.clone(), centered(face))
-        .size(Some(MARK), Some(MARK))
-        .radius(MARK_RADIUS)
-        .background(if folder.open { look.raised } else { tint(70) })
-        .hover_background(tint(120))
-        .transition_ms(LIGHT_MS)
+    let button = Element::clickable(folder.id.clone(), folder_face(&folder, look))
+        .size(Some(FOLDER), Some(FOLDER))
+        .radius(FOLDER_RADIUS)
+        .clip_children()
         .accessible(
             limn::Access::new(limn::Role::Button)
                 .name(if folder.open {
@@ -551,55 +643,76 @@ fn folder_entry(folder: RailFolder, drag: &RailDrag, look: &Look) -> Element {
     } else {
         button
     };
-    let hinted = hint(button, folder.id.clone(), folder.name, look).render();
-    let edge = edge(
-        &folder.id,
-        selected && !folder.open,
-        unread && !folder.open,
-        look,
-    );
+    let hinted = hint(button, folder.id.clone(), folder.name.clone(), look).render();
+    // Open, its servers carry their own pills and its head none.
+    let edge = if folder.open {
+        Element::spacer()
+    } else {
+        edge(&folder.id, selected, unread, look)
+    };
     let marked = Element::row(vec![
-        edge.size(Some(INSET), Some(MARK)),
+        edge.size(Some(INSET - FOLDER_PAD), Some(FOLDER)),
         hinted,
         Element::spacer().size(Some(3.0), None),
     ])
-    .size(None, Some(MARK))
+    .size(None, Some(FOLDER))
     .hover_region();
     let marked = if mentions > 0 && !folder.open {
         self::mentions(marked, mentions, look)
     } else {
         marked
     };
-    let head = Element::row(vec![marked, Element::spacer().flex(1.0)]).size(None, Some(MARK));
+    let head = Element::row(vec![marked, Element::spacer().flex(1.0)]).size(None, Some(FOLDER));
     // Open, what lands after it goes after its last server instead.
     let placements: &[Placement] = if folder.open {
         &[Placement::Before, Placement::Inside]
     } else {
         &[Placement::Before, Placement::Inside, Placement::After]
     };
-    let head = landing(head, &folder.id, placements, drag, look);
-    if !folder.open {
-        return head;
-    }
+    let head = landing(head, &folder.id, FOLDER, placements, drag, look);
     // A folder lands beside folders, never among the servers of one.
     let among = drag.source.is_none() || drag.inside;
-    let mut column = vec![(None, head)];
-    column.extend(folder.servers.into_iter().map(|item| {
-        (
-            among.then(|| (item.id.clone(), Placement::Before)),
-            mark(item, among.then_some(drag), look),
-        )
-    }));
-    // The band behind the folder's marks, as wide as a mark and a little more.
+    let landing_on = |item: &RailItem| among.then(|| (item.id.clone(), Placement::Before));
+    let servers = folder.open.then(|| {
+        let first = folder.servers.first().and_then(landing_on);
+        let marks = folder
+            .servers
+            .into_iter()
+            .map(|item| (landing_on(&item), mark(item, among.then_some(drag), look)))
+            .collect();
+        Element::column(vec![
+            gap(first, FOLDER_LIST_TOP, drag),
+            spaced(marks, drag),
+            Element::spacer().size(None, Some(FOLDER_PAD)),
+        ])
+    });
+    // Its servers open and close under the head on limn's slot spring; the
+    // rail under it follows.
+    let column = Element::column(vec![
+        head,
+        Collapse::new(format!("{}:servers", folder.id), servers)
+            .expand()
+            .render(),
+    ]);
+    if !folder.open {
+        return column;
+    }
+    // The column behind the open folder, from its head to under its last
+    // server: there at once, and gone at once when it closes, as Discord's.
     let band = Element::row(vec![
-        Element::spacer().size(Some(INSET - 3.0), None),
+        Element::spacer().size(Some(INSET - FOLDER_PAD), None),
         Element::panel(Element::spacer())
-            .size(Some(MARK + 6.0), None)
-            .radius(MARK_RADIUS + 3.0)
-            .background(tint(40)),
+            .size(Some(FOLDER), None)
+            .radius(FOLDER_RADIUS)
+            .background(
+                folder
+                    .color
+                    .map_or(look.raised, |color| Look::alpha(color, 38)),
+            )
+            .border(FOLDER_RING, 1.0),
         Element::spacer().flex(1.0),
     ]);
-    Element::stack(vec![band, spaced(column, drag)])
+    Element::stack(vec![band, column])
 }
 
 /// A hint of the rail, as the official client's: at once, its title at 16
@@ -981,7 +1094,7 @@ mod tests {
         let folder = |open| RailFolder {
             id: "folder:7".into(),
             name: "Juegos".into(),
-            color: Color::rgb(88, 101, 242),
+            color: Some(Color::rgb(138, 108, 217)),
             open,
             servers: vec![item("server:1", false, 2), item("server:2", false, 3)],
         };
@@ -1022,6 +1135,91 @@ mod tests {
         assert!(
             !texts(&open).contains(&"5".to_owned()),
             "each server shows its own"
+        );
+    }
+
+    fn folder_rail(color: Option<Color>, open: bool) -> Element {
+        let folder = RailFolder {
+            id: "folder:7".into(),
+            name: "Juegos".into(),
+            color,
+            open,
+            servers: vec![item("server:1", false, 0)],
+        };
+        Element::row(vec![
+            server_rail(
+                item("home", false, 0),
+                vec![RailEntry::Folder(folder)],
+                &RailDrag::default(),
+                &Look::DARK,
+            ),
+            Element::spacer().flex(1.0),
+        ])
+    }
+
+    /// Where the folder glyph is drawn, and in what color.
+    fn glyph(frame: &Frame) -> Option<(limn::Rect, Color)> {
+        frame.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::Icon {
+                icon: Icon::Folder,
+                rect,
+                tint,
+                ..
+            } => Some((*rect, *tint)),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_folder_wears_its_color_or_the_rails_grey_and_an_open_one_its_column() {
+        let shown = |color, open| frame(folder_rail(color, open), Size::new(400.0, 500.0)).1;
+        let fill = |frame: &Frame, color: Color| {
+            frame.commands.iter().any(|command| {
+                matches!(command, limn::DrawCommand::FillRect { color: fill, .. } if *fill == color)
+            })
+        };
+        let purple = Color::rgb(138, 108, 217);
+        // Closed: its servers in small, initials on black, on its tint at 40 %.
+        let closed = shown(Some(purple), false);
+        assert!(fill(&closed, Look::alpha(purple, 102)));
+        assert!(texts(&closed).contains(&"TS".to_owned()));
+        assert!(!fill(&closed, Look::alpha(purple, 38)), "no column closed");
+        // Open: the glyph in its color on a column of it at 15 %.
+        let open = shown(Some(purple), true);
+        assert_eq!(glyph(&open).map(|(_, tint)| tint), Some(purple));
+        assert!(fill(&open, Look::alpha(purple, 38)));
+        // Without a color, as Discord's: the accent's glyph on grey.
+        let plain = shown(None, true);
+        assert_eq!(glyph(&plain).map(|(_, tint)| tint), Some(Look::DARK.accent));
+        assert!(fill(&plain, Look::DARK.raised));
+    }
+
+    #[test]
+    fn opening_a_folder_slides_its_glyph_down_into_the_head() {
+        let mut tree = limn::UiTree::new(folder_rail(None, false));
+        tree.set_text_measurer(|text, _, _| text.chars().count() as f32 * 7.0);
+        let size = Size::new(400.0, 500.0);
+        let start = std::time::Instant::now();
+        let closed = tree.layout_at(size, start);
+        let head = rect_of(&closed, "folder:7");
+        tree.set_root(folder_rail(None, true));
+        let at = |tree: &mut limn::UiTree, ms| {
+            glyph(&tree.layout_at(size, start + std::time::Duration::from_millis(ms)))
+                .unwrap()
+                .0
+        };
+        // The frame it opens on starts the slide from where it was.
+        tree.layout_at(size, start + std::time::Duration::from_millis(16));
+        let moving = at(&mut tree, 76);
+        let rest = at(&mut tree, 2_000);
+        let middle = |rect: limn::Rect| rect.y + rect.height / 2.0;
+        assert!(
+            (middle(rest) - middle(head)).abs() < 0.5,
+            "{rest:?} {head:?}"
+        );
+        assert!(
+            middle(moving) < middle(rest) - 1.0,
+            "on its way down: {moving:?}"
         );
     }
 
@@ -1085,7 +1283,7 @@ mod tests {
         let folder = RailFolder {
             id: "folder:7".into(),
             name: "Juegos".into(),
-            color: Color::rgb(88, 101, 242),
+            color: None,
             open: false,
             servers: vec![item("server:3", false, 0)],
         };
@@ -1198,7 +1396,7 @@ mod tests {
             let open = RailFolder {
                 id: "folder:7".into(),
                 name: "Juegos".into(),
-                color: Color::rgb(88, 101, 242),
+                color: None,
                 open: true,
                 servers: vec![item("server:3", false, 0), item("server:4", false, 0)],
             };
