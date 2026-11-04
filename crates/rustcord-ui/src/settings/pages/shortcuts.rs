@@ -6,6 +6,7 @@ use limn::Element;
 
 use rustcord_components::keybinds::{self as rows, Row};
 use rustcord_components::user_settings::{self as parts, Shortcut};
+use rustcord_components::{line, text};
 use rustcord_i18n::{es, t, tr};
 
 use super::{Ctx, Section};
@@ -64,19 +65,28 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         .filter(|action| action.group() == group)
         .map(|action| row(ctx, action))
         .collect();
-    let mut column = vec![parts::subtitle(group.title(), ctx.look)];
+    // Discord's group of shortcuts: a 20 px title, its note under it where
+    // it has one, and the list 16 px under them, 48 px from the one above.
+    let above = if group == Group::ALL[0] { 0.0 } else { 40.0 };
+    let mut column = vec![
+        Element::spacer().size(None, Some(above)),
+        line(group.title(), 20.0, ctx.look.text),
+    ];
     if group == Group::Messages {
-        column.push(note(
-            t("Si Enviar deja de ser Enter, Enter escribe una línea nueva."),
-            ctx,
-        ));
+        column.extend([
+            Element::spacer().size(None, Some(4.0)),
+            text(
+                t("Si Enviar deja de ser Enter, Enter escribe una línea nueva."),
+                14.0,
+                ctx.look.muted,
+            ),
+        ]);
     }
-    column.push(rows::list(&rows, ctx.look));
-    Some(Element::column(column).gap(4.0))
-}
-
-fn note(text: &str, ctx: &Ctx) -> Element {
-    rustcord_components::text(text, 14.0, ctx.look.muted)
+    column.extend([
+        Element::spacer().size(None, Some(16.0)),
+        rows::list(&rows, ctx.look),
+    ]);
+    Some(Element::column(column))
 }
 
 fn row(ctx: &Ctx, action: Action) -> Row {
@@ -142,10 +152,6 @@ fn fixed(ctx: &Ctx) -> Element {
                 .collect(),
         })
         .collect();
-    Element::column(vec![
-        parts::subtitle(t("Fijos"), ctx.look),
-        note(t("Estos no se cambian."), ctx),
-        parts::shortcuts(&rows, ctx.look),
-    ])
-    .gap(4.0)
+    // Under the section's title, as Discord's first list of them.
+    parts::shortcuts(&rows, ctx.look)
 }

@@ -415,12 +415,21 @@ fn choosing_english_shows_at_once_and_spanish_comes_back() {
     let mut host = Host::new();
     host.act_on("me:settings");
     host.act_on("us:page=language");
-    assert!(host.painted().iter().any(|text| text == "Idioma"));
+    assert!(host
+        .painted()
+        .iter()
+        .any(|text| text == "Selecciona un idioma"));
     host.act_on("us:lang=en");
     let painted = host.painted();
-    assert!(painted.iter().any(|text| text == "Language"), "{painted:?}");
-    assert!(!painted.iter().any(|text| text == "Idioma"));
+    assert!(
+        painted.iter().any(|text| text == "Select a Language"),
+        "{painted:?}"
+    );
+    assert!(!painted.iter().any(|text| text == "Selecciona un idioma"));
     host.act_on("us:lang=es");
-    assert!(host.painted().iter().any(|text| text == "Idioma"));
+    assert!(host
+        .painted()
+        .iter()
+        .any(|text| text == "Selecciona un idioma"));
     rustcord_i18n::set_thread(None);
 }

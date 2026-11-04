@@ -283,7 +283,7 @@ fn searching_keeps_what_matches_and_opening_a_result_jumps_to_it() {
         value: "formato de hora".into(),
     });
     assert_eq!(host.ui.settings, Some(SettingsPage::Language));
-    assert_eq!(host.ui.settings_state.section, Some("clock"));
+    assert_eq!(host.ui.settings_state.section, Some("language"));
     // Emptied, the sidebar has every page again.
     host.click("us:search:clear");
     assert!(host.ui.settings_state.query.is_empty());
@@ -1523,4 +1523,65 @@ fn data_and_privacy_ends_with_discord_s_card_to_the_activity_s_privacy() {
         .contains("Controla cómo se comparte tu actividad de juegos y aplicaciones"));
     host.us_press("us:page=activity");
     assert_eq!(host.ui.settings, Some(SettingsPage::Activity));
+}
+
+#[test]
+fn language_and_time_starts_with_its_rows_and_the_list_takes_the_column() {
+    let mut host = Host::new();
+    host.us_open();
+    host.click("us:page=language");
+    let buttons = host.us_buttons();
+    assert!(
+        !buttons.iter().any(|id| id.starts_with("us:jump=")),
+        "one section, no links: {buttons:?}"
+    );
+    assert!(buttons.contains(&"us:clock=24".to_owned()));
+    let size = Size::new(1361.0, 797.0);
+    let frame = host.us_layout(size);
+    let list = frame
+        .regions
+        .iter()
+        .find(|region| region.id == "us:select:language")
+        .unwrap()
+        .rect;
+    let column = rustcord_components::user_settings::Geometry::new(size).column;
+    assert!((list.width - column).abs() < 1.0, "{list:?} in {column}");
+    // No heading over the rows: the page's name is the sidebar's and the header's.
+    let names = host
+        .painted()
+        .into_iter()
+        .filter(|text| text == "Idioma y hora")
+        .count();
+    assert_eq!(names, 2);
+}
+
+#[test]
+fn appearance_offers_rustcord_s_own_themes_and_the_avatars_lead_to_accessibility() {
+    let mut host = Host::new();
+    host.us_open();
+    host.click("us:page=appearance");
+    assert!(painted_has(&mut host, "Personaliza Rustcord a tu gusto"));
+    assert!(host.us_buttons().contains(&"us:theme-create".to_owned()));
+    // The avatars follow the message display: their note links to it.
+    host.us_write(SEARCH, "avatares");
+    host.click("us:page=appearance");
+    let frame = host.frame();
+    let sidebar = frame
+        .regions
+        .iter()
+        .find(|region| region.id == "us:page=appearance")
+        .unwrap()
+        .rect;
+    let link = frame
+        .regions
+        .iter()
+        .find(|region| {
+            region.id == "us:page=accessibility" && region.rect.x > sidebar.x + sidebar.width
+        })
+        .expect("the note's link, in the page")
+        .rect;
+    let at = Point::new(link.x + 2.0, link.y + link.height / 2.0);
+    host.send(UiEvent::PointerDown(at));
+    host.send(UiEvent::PointerUp(at));
+    assert_eq!(host.ui.settings, Some(SettingsPage::Accessibility));
 }

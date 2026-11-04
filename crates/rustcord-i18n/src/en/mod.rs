@@ -72,6 +72,8 @@ mod voice_rows;
 mod active_now;
 // Activity privacy, connections and the developer's settings.
 mod settings_apps;
+// Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
+mod settings_look;
 
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
@@ -127,4 +129,6 @@ pub(crate) const ALL: &[(&str, Entries)] = &[
     ("active_now", active_now::ENTRIES),
     // Activity privacy, connections and the developer's settings.
     ("settings_apps", settings_apps::ENTRIES),
+    // Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
+    ("settings_look", settings_look::ENTRIES),
 ];

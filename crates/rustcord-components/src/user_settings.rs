@@ -1415,6 +1415,31 @@ pub fn connection(service: &str, name: &str, label: &str, look: &Look) -> Elemen
     .accessible(limn::Access::new(limn::Role::Group).name(format!("{name}, {label}")))
 }
 
+/// A [`setting`] whose note is laid out as given, such as text with a link
+/// and words in bold, as Discord's «Mostrar los avatares de los usuarios».
+pub fn setting_with_note(
+    label: &str,
+    note: Element,
+    control: Option<Element>,
+    enabled: bool,
+    look: &Look,
+) -> Element {
+    let ink = if enabled { look.text } else { look.muted };
+    let mut row = vec![Element::column(vec![
+        text(label, 16.0, ink).font_family(FontFamily::SansMedium),
+        note.max_width(560.0),
+    ])
+    .gap(4.0)
+    .flex(1.0)
+    .centered_y()];
+    row.extend(control);
+    Element::column(vec![
+        gap(0.0, 8.0),
+        Element::row(row).gap(24.0).min_size(0.0, 32.0),
+        gap(0.0, 8.0),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1918,5 +1943,35 @@ mod tests {
                 if rect.width == 32.0 && rect.height == 32.0)
         });
         assert!(logo, "the logo's 32 px square");
+    }
+
+    #[test]
+    fn a_note_of_its_own_keeps_its_link_and_the_control_at_the_end() {
+        let look = Look::DARK;
+        let note = Element::formatted_text(vec![
+            limn::TextSpan::new("Ve a ", look.muted, 14.0, FontFamily::Sans),
+            limn::TextSpan::new("Accesibilidad", look.accent, 14.0, FontFamily::Sans).action("go"),
+        ]);
+        let (_, laid) = frame(
+            setting_with_note(
+                "Avatares",
+                note,
+                Some(switch("sw", true, &look).render()),
+                true,
+                &look,
+            ),
+            Size::new(400.0, 100.0),
+        );
+        assert!(
+            laid.regions.iter().any(|region| region.id == "go"),
+            "the link can be clicked"
+        );
+        let switch = laid
+            .regions
+            .iter()
+            .find(|region| region.id == "sw")
+            .unwrap()
+            .rect;
+        assert_eq!(switch.x + switch.width, 400.0, "at the row's end");
     }
 }

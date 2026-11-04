@@ -340,10 +340,16 @@ const SECTIONS: &[Section] = &[
         page: Appearance,
         key: "messages",
         title: es("Mensajes"),
+        // Discord's rows Rustcord has, in their order; the media links' own
+        // switch under the pictures', where it belongs.
         rows: &[
             (
                 "image-previews",
                 es("vista previa de las imágenes subidas archivos adjuntos fotos"),
+            ),
+            (
+                "hide-media-links",
+                es("ocultar los enlaces de imagen y gif vista previa enlace solo url"),
             ),
             ("reactions", es("mostrar reacciones de emojis")),
             ("avatars", es("mostrar los avatares de los usuarios compacto")),
@@ -422,17 +428,15 @@ const SECTIONS: &[Section] = &[
     Section {
         page: Language,
         key: "language",
-        title: es("Idioma"),
-        rows: &[("language", es("selecciona un idioma español inglés lengua"))],
-    },
-    Section {
-        page: Language,
-        key: "clock",
-        title: es("Formato de tiempo"),
-        rows: &[(
-            "clock",
-            es("formato de hora 12 horas 24 horas reloj a. m. p. m. tiempo"),
-        )],
+        // Discord's page has no heading: the title is only searched.
+        title: es("Idioma y hora"),
+        rows: &[
+            ("language", es("selecciona un idioma español inglés lengua")),
+            (
+                "clock",
+                es("formato de hora 12 horas 24 horas reloj a. m. p. m. tiempo"),
+            ),
+        ],
     },
     // Discord's «Aplicaciones conectadas»: the accounts elsewhere first;
     // Rustcord's provider and proxy follow.
@@ -988,19 +992,19 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
             } else {
                 folded(ctx, keys)
             };
-            (!rows.is_empty()).then(|| {
-                // Discord's «Desarrollador» starts with its rows: the page's name is its heading.
-                if section.key == "developer" {
-                    return parts::rows(rows).anchor(anchor(section.key));
-                }
-                parts::section(
+            (!rows.is_empty()).then(|| match section.page {
+                // «Idioma y hora» and «Desarrollador» start with their rows, as
+                // Discord's: the page's name is their heading.
+                Language => parts::rows(rows).anchor(anchor(section.key)),
+                _ if section.key == "developer" => parts::rows(rows).anchor(anchor(section.key)),
+                _ => parts::section(
                     &anchor(section.key),
                     t(section.title),
                     note(section.key).map(t),
                     None,
                     rows,
                     ctx.look,
-                )
+                ),
             })
         })
         .collect();
@@ -1522,17 +1526,31 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "emoticons" => toggle(
             "us:emoticons",
             t("Convertir automáticamente los emoticonos en tus mensajes a emojis"),
-            Some(t("Por ejemplo, cuando escribes :), Rustcord lo convierte a 🙂. El código y los enlaces no cambian.")),
+            Some(t("Por ejemplo, cuando escribes :), Rustcord lo convierte a 🙂")),
             prefs.convert_emoticons,
         ),
-        "avatars" => parts::toggle(
-            "us:avatars",
-            t("Mostrar los avatares de los usuarios"),
-            None,
-            !prefs.compact,
-            Some(t("Para ocultar los avatares, elige Compacto en Accesibilidad › Mostrar el mensaje del chat.")),
-            look,
-        ),
+        // Always as the message display leaves it, with the way there.
+        "avatars" => {
+            let label = t("Mostrar los avatares de los usuarios");
+            let span = |said: &str, ink, family| TextSpan::new(said, ink, 14.0, family);
+            let plain = |said: &str| span(said, look.faint, limn::FontFamily::Sans);
+            let strong = |said: &str| span(said, look.muted, limn::FontFamily::SansSemibold);
+            let note = Element::formatted_text(vec![
+                plain(t("Para ocultar los avatares, ve a ")),
+                span(t("Accesibilidad"), look.palette().link(), limn::FontFamily::Sans)
+                    .action("us:page=accessibility"),
+                plain(t(" y selecciona ")),
+                strong(t("Compacto")),
+                plain(t(" en ")),
+                strong(t("Mostrar el mensaje del chat")),
+                plain("."),
+            ]);
+            let switch = parts::switch("us:avatars", !prefs.compact, look)
+                .enabled(false)
+                .accessibility_label(label)
+                .render();
+            parts::setting_with_note(label, note, Some(switch), false, look)
+        }
         "related-accessibility" => parts::related(
             "us:page=accessibility",
             icon_of(Accessibility),
@@ -1567,16 +1585,8 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
                 "us:display",
                 t("Mostrar el mensaje del chat"),
                 &[
-                    (
-                        "us:display=cozy".to_owned(),
-                        t("Predeterminado"),
-                        Some(t("El nombre y el avatar encabezan cada grupo de mensajes.")),
-                    ),
-                    (
-                        "us:display=compact".to_owned(),
-                        t("Compacto"),
-                        Some(t("Un mensaje por línea, con la hora y el nombre delante, sin avatares.")),
-                    ),
+                    ("us:display=cozy".to_owned(), t("Predeterminado"), None),
+                    ("us:display=compact".to_owned(), t("Compacto"), None),
                 ],
                 if prefs.compact {
                     "us:display=compact"
@@ -1631,7 +1641,7 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
             ];
             parts::setting(
                 t("Colores de rol"),
-                Some(t("Elige cómo te gustaría que se vean los colores de rol. Los nombres toman el color de su rol más alto.")),
+                Some(t("Elige cómo te gustaría que se vean los colores de rol.")),
                 Some(select(
                     ctx,
                     "role-colors",
@@ -1663,31 +1673,22 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
                 .iter()
                 .map(|(id, name, chosen)| (*id, *name, *chosen, true))
                 .collect();
-            parts::setting(
+            // The list under its label, as wide as the column, as Discord's.
+            stacked(
                 t("Selecciona un idioma"),
-                Some(t(
-                    "Elige el idioma en el que quieres que se muestre Rustcord. «Sistema» sigue el del equipo. Los mensajes no se traducen.",
-                )),
-                Some(select(
-                    ctx,
-                    "language",
-                    t("Selecciona un idioma"),
-                    &borrowed,
-                    (width * 0.4).clamp(180.0, 280.0),
-                )),
-                true,
-                look,
+                Some(t("Elige el idioma en el que quieres que se muestre Rustcord.")),
+                select(ctx, "language", t("Selecciona un idioma"), &borrowed, width),
             )
         }
         "clock" => stacked(
             t("Formato de tiempo"),
-            Some(t("Cómo se escriben las horas de los mensajes.")),
+            None,
             parts::choices(
                 "us:clock",
                 t("Formato de tiempo"),
                 &[
-                    ("us:clock=12".to_owned(), t("12 horas"), Some(t("2:05 p. m."))),
-                    ("us:clock=24".to_owned(), t("24 horas"), Some("14:05")),
+                    ("us:clock=12".to_owned(), t("12 horas"), None),
+                    ("us:clock=24".to_owned(), t("24 horas"), None),
                 ],
                 if prefs.twelve_hour {
                     "us:clock=12"
@@ -2726,8 +2727,13 @@ mod tests {
     }
 
     #[test]
-    fn language_and_time_shows_its_two_sections_in_order() {
-        assert_eq!(section_keys(SettingsPage::Language), ["language", "clock"]);
+    fn language_and_time_is_one_untitled_section_the_language_then_the_clock() {
+        assert_eq!(section_keys(SettingsPage::Language), ["language"]);
+        let rows: Vec<&str> = sections()
+            .filter(|section| section.page == SettingsPage::Language)
+            .flat_map(|section| section.rows.iter().map(|(key, _)| *key))
+            .collect();
+        assert_eq!(rows, ["language", "clock"]);
     }
 
     #[test]

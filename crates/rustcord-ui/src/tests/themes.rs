@@ -43,9 +43,15 @@ fn a_theme_is_made_with_its_preview_and_the_window_changes_on_saving() {
     host.click("us:theme=dark");
     host.click(themes::CREATE);
     let painted = host.painted();
-    for text in ["Crear tema", "Base", "Así se ve tu tema."] {
+    for text in ["Crear tema", "Base"] {
         assert!(painted.iter().any(|shown| shown == text), "{text}");
     }
+    // The preview, over the colors, under «Personaliza Rustcord a tu gusto».
+    host.tree.reveal("us:theme-token:canvas");
+    assert!(host
+        .painted()
+        .iter()
+        .any(|shown| shown == "Así se ve tu tema."));
     // The conversation's color, from its picker's field.
     host.theme_click("us:theme-token:canvas");
     assert_eq!(

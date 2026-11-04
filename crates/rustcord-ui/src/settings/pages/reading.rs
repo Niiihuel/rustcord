@@ -16,12 +16,9 @@ pub(super) const SECTIONS: &[Section] = &[Section {
     page: Appearance,
     key: "reading",
     title: es("Lectura"),
-    // «Reproducir automáticamente los GIF» is in Accesibilidad, as Discord's.
+    // «Reproducir automáticamente los GIF» is in Accesibilidad, as Discord's,
+    // and the media links' switch in «Mensajes», under the pictures'.
     rows: &[
-        (
-            "hide-media-links",
-            es("ocultar los enlaces de imagen y gif vista previa enlace solo url"),
-        ),
         (
             "scroll-speed",
             es("velocidad de desplazamiento rueda del mouse ratón trackpad panel táctil scroll"),

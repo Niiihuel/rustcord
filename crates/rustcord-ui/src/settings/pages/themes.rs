@@ -193,32 +193,45 @@ fn chooser(ctx: &Ctx) -> Element {
         column.push(parts::theme_swatches(&own, look));
     }
     let waiting = themes.waiting.is_some();
-    let mut buttons = vec![
-        parts::secondary_button(CREATE, t("Crear tema"), themes.editor.is_none(), look),
-        parts::secondary_button(IMPORT, t("Importar…"), !waiting, look),
-    ];
+    // What can be done with the own theme in use, under the squares.
     if let Some(theme) = ui.active_theme() {
-        if themes.deleting {
+        let buttons = if themes.deleting {
             column.push(Element::spacer().size(None, Some(12.0)));
             column.push(parts::notice(
                 &tr!("¿Borrar «{name}»? No se puede deshacer.", name = theme.name),
                 look,
             ));
-            buttons = vec![
+            vec![
                 parts::danger_button(DELETE_CONFIRM, t("Borrar"), look),
                 parts::secondary_button(DELETE_CANCEL, t("Cancelar"), true, look),
-            ];
+            ]
         } else {
-            buttons.extend([
+            vec![
                 parts::secondary_button(EDIT, t("Editar"), themes.editor.is_none(), look),
                 parts::secondary_button(EXPORT, t("Exportar…"), !waiting, look),
                 parts::secondary_button(DELETE, t("Borrar"), true, look),
-            ]);
-        }
+            ]
+        };
+        column.push(Element::spacer().size(None, Some(12.0)));
+        column.push(Element::row(buttons).gap(8.0).wrap());
     }
-    column.push(Element::spacer().size(None, Some(12.0)));
-    column.push(Element::row(buttons).gap(8.0).wrap());
-    column.push(Element::spacer().size(None, Some(12.0)));
+    // Discord's «Personaliza Discord a tu gusto», for the themes made here.
+    column.push(Element::spacer().size(None, Some(16.0)));
+    column.push(parts::setting(
+        t("Personaliza Rustcord a tu gusto"),
+        Some(t(
+            "Crea tu propio tema personalizado para que Rustcord refleje tu estilo.",
+        )),
+        Some(
+            Element::row(vec![
+                parts::secondary_button(IMPORT, t("Importar…"), !waiting, look),
+                parts::primary_button(CREATE, t("Crear tema"), themes.editor.is_none(), look),
+            ])
+            .gap(8.0),
+        ),
+        true,
+        look,
+    ));
     Element::column(column)
 }
 
