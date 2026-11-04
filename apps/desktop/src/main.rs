@@ -144,6 +144,10 @@ struct Arguments {
     title_bar: Option<rustcord_ui::title_bar::TitleBar>,
 }
 
+/// A build for people, not for development: it hides what only develops
+/// Rustcord, such as the simulation.
+const RELEASE: bool = !cfg!(debug_assertions);
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum ProviderChoice {
     #[default]
@@ -183,6 +187,16 @@ impl ProviderChoice {
                 "Esta compilación no incluye el inicio de sesión no oficial: hace falta Linux o Windows y la feature session-login.",
             )),
         }
+    }
+
+    /// Whether the login and the settings offer it while `current` is in use.
+    /// A `release` offers only what can start here, and never the simulation,
+    /// which is for development and captures (`--provider mock`), unless it
+    /// is the one in use.
+    fn offered(self, current: Self, discord_client_id: Option<&str>, release: bool) -> bool {
+        self == current
+            || !release
+            || (self != Self::Mock && self.unavailable(discord_client_id).is_none())
     }
 
     /// As the interface offers it, with where its data comes from.
@@ -613,9 +627,10 @@ fn main() -> eframe::Result {
         if interactive && !arguments.provider_given {
             arguments.provider = remembered_provider()
                 .filter(|choice| {
-                    choice
-                        .unavailable(arguments.discord_client_id.as_deref())
-                        .is_none()
+                    choice.offered(*choice, arguments.discord_client_id.as_deref(), RELEASE)
+                        && choice
+                            .unavailable(arguments.discord_client_id.as_deref())
+                            .is_none()
                 })
                 .unwrap_or_else(|| unremembered_provider(&arguments));
         }
@@ -1262,6 +1277,13 @@ impl App {
         ui.providers = rustcord_ui::Providers {
             options: ProviderChoice::ALL
                 .into_iter()
+                .filter(|choice| {
+                    choice.offered(
+                        arguments.provider,
+                        arguments.discord_client_id.as_deref(),
+                        RELEASE,
+                    )
+                })
                 .map(|choice| choice.option(arguments.discord_client_id.as_deref()))
                 .collect(),
             current: Some(arguments.provider.key()),
@@ -5579,6 +5601,15 @@ mod tests {
                 any(target_os = "linux", windows)
             ))
         );
+        // A release offers only what can start, never the simulation unless
+        // it is in use; development offers everything.
+        let session = ProviderChoice::DiscordSession;
+        assert!(!ProviderChoice::Mock.offered(session, None, true));
+        assert!(ProviderChoice::Mock.offered(ProviderChoice::Mock, None, true));
+        assert!(ProviderChoice::Mock.offered(session, None, false));
+        assert!(!ProviderChoice::Discord.offered(session, None, true));
+        assert!(ProviderChoice::Discord.offered(session, Some("123"), true));
+        assert_eq!(session.offered(ProviderChoice::Mock, None, true), login);
         // Each one says where its data comes from, never a credential.
         let kinds: Vec<_> = ProviderChoice::ALL
             .into_iter()

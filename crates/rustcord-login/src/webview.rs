@@ -25,7 +25,13 @@ struct State {
     generation: Cell<u64>,
     code: Cell<i32>,
     result: RefCell<Option<Zeroizing<String>>>,
+    /// Times the page's crashed process was restarted.
+    recoveries: Cell<u8>,
 }
+
+/// A crashed page process is restarted this many times before the window
+/// gives up: WebKit starts a new one when the page loads again.
+const RECOVERIES: u8 = 2;
 
 impl State {
     fn active(&self) -> bool {
@@ -37,6 +43,18 @@ impl State {
             self.code.set(code);
             main.quit();
         }
+    }
+
+    /// Whether a page process that ended for `reason` is to be restarted:
+    /// one that crashed, while the window is open, a few times.
+    fn recover(&self, reason: webkit6::WebProcessTerminationReason) -> bool {
+        let again = reason == webkit6::WebProcessTerminationReason::Crashed
+            && self.active()
+            && self.recoveries.get() < RECOVERIES;
+        if again {
+            self.recoveries.set(self.recoveries.get() + 1);
+        }
+        again
     }
 
     fn can_accept(&self, generation: u64, uri: &str) -> bool {
@@ -134,6 +152,7 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
         generation: Cell::new(0),
         code: Cell::new(6),
         result: RefCell::new(None),
+        recoveries: Cell::new(0),
     });
     let session = webkit6::NetworkSession::new_ephemeral();
     session.set_persistent_credential_storage_enabled(false);
@@ -235,8 +254,12 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
     {
         let state = state.clone();
         let main = main.clone();
-        view.connect_web_process_terminated(move |_, reason| {
-            state.finish(&main, process_exit_code(reason));
+        view.connect_web_process_terminated(move |view, reason| {
+            if state.recover(reason) {
+                view.reload();
+            } else {
+                state.finish(&main, process_exit_code(reason));
+            }
         });
     }
     {
@@ -374,6 +397,7 @@ mod tests {
             generation: Cell::new(1),
             code: Cell::new(6),
             result: RefCell::new(None),
+            recoveries: Cell::new(0),
         };
         let main = glib::MainLoop::new(None, false);
         state.finish(&main, 0);
@@ -383,6 +407,33 @@ mod tests {
         );
         assert_eq!(state.code.get(), 0);
         assert!(state.closed.get());
+    }
+
+    #[test]
+    fn a_crashed_page_is_restarted_twice_then_the_window_gives_up() {
+        use webkit6::WebProcessTerminationReason as Reason;
+        let state = State {
+            opened: Instant::now(),
+            lifetime: Duration::from_secs(10),
+            page: protocol::discord_origin,
+            closed: Cell::new(false),
+            pending: Cell::new(false),
+            evaluating: Cell::new(false),
+            generation: Cell::new(1),
+            code: Cell::new(6),
+            result: RefCell::new(None),
+            recoveries: Cell::new(0),
+        };
+        assert!(!state.recover(Reason::ExceededMemoryLimit));
+        assert!(state.recover(Reason::Crashed));
+        assert!(state.recover(Reason::Crashed));
+        assert!(!state.recover(Reason::Crashed), "a third crash ends it");
+        let closed = State {
+            recoveries: Cell::new(0),
+            closed: Cell::new(true),
+            ..state
+        };
+        assert!(!closed.recover(Reason::Crashed), "nothing after it closed");
     }
 
     #[test]
@@ -397,6 +448,7 @@ mod tests {
             generation: Cell::new(1),
             code: Cell::new(6),
             result: RefCell::new(None),
+            recoveries: Cell::new(0),
         };
         assert!(state.can_accept(1, "https://discord.com/login"));
         state.generation.set(2);
@@ -425,6 +477,28 @@ mod tests {
         assert!(result.is_some_and(|reply| {
             reply.as_str() == format!("{capability}:SYNTHETIC_NATIVE_SESSION")
                 && protocol::decode_reply(&capability, reply.as_bytes()).is_ok()
+        }));
+    }
+
+    #[test]
+    #[ignore = "requires an owned native Wayland/X11 display; synthetic HTML only"]
+    fn native_synthetic_session_is_taken_as_the_page_moves_to_the_app() {
+        let capability = protocol::capability().unwrap();
+        // The web client stores the session, then moves to the app in the
+        // same document: no request with it is ever made here.
+        let html = r#"<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'"><title>Rustcord · Prueba local sintética</title><p>Prueba local; sin conexión a Discord ni datos reales.</p><script>
+            setTimeout(() => {
+                const storage = window.localStorage;
+                delete window.localStorage;
+                history.pushState({}, '', '/login');
+                storage.setItem('token', JSON.stringify('SYNTHETIC_STORED_SESSION'));
+                history.pushState({}, '', '/channels/@me');
+            }, 300);
+        </script>"#;
+        let (code, result) = window(&capability, Duration::from_secs(10), Some(html));
+        assert_eq!(code, 0, "the stored session should be handed over");
+        assert!(result.is_some_and(|reply| {
+            reply.as_str() == format!("{capability}:SYNTHETIC_STORED_SESSION")
         }));
     }
 
