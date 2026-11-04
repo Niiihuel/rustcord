@@ -17,6 +17,10 @@ use crate::{avatar_with_image, gap, icon, line, strong_line, text, with_status, 
 
 /// The actions these pieces report. A person's own end with their ID and
 /// the action: `friend:{user}:accept`.
+/// The bar's «Nuevo grupo de MD»: its own id, as the + of the direct
+/// column opens the same and limn keeps hover state by id.
+pub const NEW_GROUP: &str = "friends:new-group";
+
 pub mod ids {
     /// The row over the direct conversations that opens this page.
     pub const HOME: &str = "home:friends";
@@ -220,7 +224,7 @@ pub fn header(tab: FriendsTab, pending: usize, new_group: bool, end: f32, look: 
         };
         parts.push(gap(10.0, 0.0));
         parts.push(
-            IconButton::new(crate::group::ids::NEW, Icon::Custom(CHAT_PLUS), palette)
+            IconButton::new(NEW_GROUP, Icon::Custom(CHAT_PLUS), palette)
                 .variant(ButtonVariant::Ghost)
                 .sizing(ButtonSizing {
                     height: 32.0,
@@ -875,7 +879,7 @@ mod tests {
         let group = laid
             .regions
             .iter()
-            .find(|region| region.id == crate::group::ids::NEW)
+            .find(|region| region.id == NEW_GROUP)
             .expect("the new group's button")
             .rect;
         assert!(group.x + group.width <= 900.0 - 138.0, "{group:?}");
@@ -884,7 +888,7 @@ mod tests {
             header(FriendsTab::Online, 0, false, 0.0, &Look::DARK),
             Size::new(900.0, 52.0),
         );
-        assert!(!controls(&plain).contains(&crate::group::ids::NEW.to_owned()));
+        assert!(!controls(&plain).contains(&NEW_GROUP.to_owned()));
     }
 
     #[test]

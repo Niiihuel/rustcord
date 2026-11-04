@@ -727,7 +727,7 @@ fn the_direct_column_searches_with_the_switcher_and_closes_a_conversation_from_i
     assert!(host.ui.switcher.is_some());
     host.ui.switcher = None;
     let direct = host.store.direct_with(BRUNO).unwrap();
-    let close = format!("group:{direct}:close");
+    let close = format!("group:{direct}:x-close");
     assert!(
         host.offers(&close),
         "the × is there, shown under the pointer"
