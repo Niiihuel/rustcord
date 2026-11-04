@@ -15,8 +15,12 @@ use crate::{centered, Look};
 pub const WIDTH: f32 = 86.5;
 /// A mark's side.
 pub const MARK: f32 = 42.0;
-/// A mark's corners: a rounded square whether chosen or not.
-const MARK_RADIUS: f32 = 10.0;
+/// A mark's corners: a rounded square whether chosen or not, as round as
+/// Discord's squircle (its continuous corners read as about 12 of 40).
+const MARK_RADIUS: f32 = 12.5;
+/// How long a mark's fill and ink take to light, as Discord's
+/// `background-color 0.15s ease-out`.
+const LIGHT_MS: u16 = 150;
 /// From the rail's left edge to a mark.
 const INSET: f32 = 21.5;
 /// Between marks.
@@ -346,7 +350,8 @@ pub(crate) fn edge_pill(width: f32, height: f32, ink: Color) -> Element {
     .clip_children()
 }
 
-/// One mark: a rounded square that lights in the accent when chosen or
+/// One mark: a rounded square that lights in the brand accent (not the
+/// server's own color, as Discord) when chosen or
 /// under the pointer, the pill at the rail's edge that says it is chosen
 /// (tall), under the pointer (half) or waiting (a dot), and the red count
 /// of its mentions over its corner. With `drag`, a server that is dragged
@@ -354,7 +359,7 @@ pub(crate) fn edge_pill(width: f32, height: f32, ink: Color) -> Element {
 fn mark(item: RailItem, drag: Option<&RailDrag>, look: &Look) -> Element {
     let white = Color::rgb(255, 255, 255);
     let (fill, ink) = if item.selected {
-        (item.accent, white)
+        (look.accent, white)
     } else {
         (look.raised, look.text)
     };
@@ -379,8 +384,9 @@ fn mark(item: RailItem, drag: Option<&RailDrag>, look: &Look) -> Element {
         .size(Some(MARK), Some(MARK))
         .radius(MARK_RADIUS)
         .background(fill)
-        .hover_background(item.accent)
+        .hover_background(look.accent)
         .hover_foreground(white)
+        .transition_ms(LIGHT_MS)
         .accessible(
             limn::Access::new(limn::Role::Button)
                 .name(match item.voice.count() {
@@ -516,6 +522,7 @@ fn folder_entry(folder: RailFolder, drag: &RailDrag, look: &Look) -> Element {
         .radius(MARK_RADIUS)
         .background(if folder.open { look.raised } else { tint(70) })
         .hover_background(tint(120))
+        .transition_ms(LIGHT_MS)
         .accessible(
             limn::Access::new(limn::Role::Button)
                 .name(if folder.open {
@@ -678,6 +685,7 @@ fn add_server(look: &Look) -> Element {
     .background(look.raised)
     .hover_background(look.accent)
     .hover_foreground(Color::rgb(255, 255, 255))
+    .transition_ms(LIGHT_MS)
     .accessibility_label(t("Añadir un servidor"));
     let hinted = hint(button, id, t("Añadir un servidor"), look).render();
     Element::row(vec![
