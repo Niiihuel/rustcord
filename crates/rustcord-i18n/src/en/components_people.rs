@@ -277,10 +277,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Cargando la nota…", "Loading note…"),
     ("Haz clic para agregar una nota", "Click to add a note"),
     ("Nota", "Note"),
-    (
-        "Solo la ves tú. Enter la guarda.",
-        "Only you can see it. Enter saves it.",
-    ),
+    ("Nota (solo visible para ti)", "Note (only visible to you)"),
+    ("Enter la guarda.", "Enter saves it."),
     // The card's banner buttons, notice, name and roles.
     ("Amigo", "Friend"),
     ("Solicitud de amistad entrante", "Incoming Friend Request"),
@@ -306,14 +304,11 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Cargando…", "Loading…"),
     ("Cargando perfil", "Loading profile"),
     ("Ninguno en común.", "None in common."),
-    ("Apodo: {nick}", "Nickname: {nick}"),
-    ("Sin roles.", "No roles."),
-    ("En {server}", "In {server}"),
     ("Conexiones", "Connections"),
-    (
-        "No hay más datos de este perfil.",
-        "There's no more data for this profile.",
-    ),
+    // The full profile's card and the column of tabs beside it.
+    ("Amigos desde el", "Friends since"),
+    ("Actividad", "Activity"),
+    ("Sin actividad por ahora.", "No activity right now."),
     ("Perfil", "Profile"),
     ("Para siempre", "Forever"),
     ("Ver perfil", "View profile"),

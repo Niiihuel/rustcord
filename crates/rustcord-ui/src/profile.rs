@@ -21,7 +21,7 @@ use rustcord_components::profile::{
     Since,
 };
 use rustcord_components::server_settings::{hex, parse_hex, UnsavedBar};
-use rustcord_components::time::date_label;
+use rustcord_components::time::short_date;
 use rustcord_components::voice::MenuEntry;
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
@@ -366,7 +366,7 @@ pub fn card_of(
         member_since.push(Since {
             scope: t("Cuenta").into(),
             face: None,
-            date: date_label(created),
+            date: short_date(created),
         });
     }
     if let Some((place, joined)) = server.and_then(|server| {
@@ -381,7 +381,7 @@ pub fn card_of(
         member_since.push(Since {
             scope: place.name.clone(),
             face: Some(server_face(ui, place, look)),
-            date: date_label(joined),
+            date: short_date(joined),
         });
     }
     Some(Profile {
@@ -2247,17 +2247,18 @@ fn saved_in(ui: &mut Ui, store: &Store, server: ServerId, saved: bool) -> Vec<In
 /// Someone's full profile, while open.
 fn full_view(ui: &Ui, store: &Store, look: &Look) -> Option<FullProfile> {
     let (user, server) = ui.profiles.full?;
-    let mut profile = card_of(ui, store, server, user, look)?;
-    profile.full_action = None;
-    let loaded = store.profile(user, server);
+    // Its «…» and the «+» of its roles are the card's, named by this action.
+    let profile = card_of(ui, store, server, user, look)?;
     let (mutual_servers, mutual_friends) = mutual_lists(ui, store, server, user, look);
     Some(FullProfile {
         loading: profile.loading,
         profile,
         server: server.and_then(|server| Some(store.server(server)?.shown_name().into())),
-        nick: server
-            .and_then(|server| store.member_of(server, user)?.nick.clone())
-            .or_else(|| loaded?.nick.clone()),
+        friends_since: store
+            .relationship(user)
+            .filter(|known| known.kind == RelationshipKind::Friend)
+            .and_then(|known| known.since)
+            .map(short_date),
         mutual_servers,
         mutual_friends,
         tab: ui.profiles.full_tab,
@@ -2274,7 +2275,7 @@ pub fn overlays(
     context: &ViewContext,
 ) -> Element {
     let root = match full_view(ui, store, look) {
-        Some(full) => parts::full_profile(root, &full, context.window.width, look),
+        Some(full) => parts::full_profile(root, &full, context.window, look),
         None => root,
     };
     let Some(draft) = &ui.profiles.custom else {

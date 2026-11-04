@@ -89,7 +89,7 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
                     add(store.user(*friend).and_then(|friend| friend.picture()));
                 }
             }
-            rustcord_components::profile::FullTab::About => {}
+            rustcord_components::profile::FullTab::Activity => {}
         }
     }
     if let Some(author) = ui.profiles.author.and_then(|(message, _)| {

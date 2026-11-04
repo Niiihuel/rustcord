@@ -28,6 +28,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Hoy", "Today"),
     ("Ayer", "Yesterday"),
     ("{day} de {month} de {year}", "{month} {day}, {year}"),
+    ("{day} {month} {year}", "{month} {day}, {year}"),
     ("{weekday}, {date}, {time}", "{weekday}, {date} at {time}"),
     ("Hoy a las {time}", "Today at {time}"),
     ("Ayer a las {time}", "Yesterday at {time}"),

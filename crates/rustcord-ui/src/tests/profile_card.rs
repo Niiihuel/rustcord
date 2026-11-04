@@ -847,7 +847,7 @@ fn a_full_profile_whose_read_is_in_flight_shows_lines_not_no_data() {
     assert!(
         !painted
             .iter()
-            .any(|text| text == "No hay más datos de este perfil."),
+            .any(|text| text == "Sin actividad por ahora."),
         "{painted:?}"
     );
     let widths: Vec<f32> = host

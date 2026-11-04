@@ -139,6 +139,19 @@ pub fn date_label(timestamp: Timestamp) -> String {
     )
 }
 
+/// The local calendar day of `timestamp` as Discord's profiles write it, its
+/// month cut to three letters: "12 oct 2026".
+pub fn short_date(timestamp: Timestamp) -> String {
+    let date = day(timestamp);
+    let month: String = t(MONTHS[date.month0() as usize]).chars().take(3).collect();
+    tr!(
+        "{day} {month} {year}",
+        day = date.day(),
+        month,
+        year = date.year()
+    )
+}
+
 /// "miércoles, 14 de octubre de 2026, 08:20".
 pub fn full_date(at: Timestamp) -> String {
     let weekday = Local
