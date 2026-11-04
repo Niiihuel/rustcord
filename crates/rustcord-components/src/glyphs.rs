@@ -22,6 +22,12 @@ pub const NOISE: &str = glyph!("noise");
 /// Sharing the screen: a screen with an arrow leaving it, Discord's static
 /// frame of its animated icon.
 pub const SCREEN_SHARE: &str = glyph!("screen-share");
+/// The friends page and its row at home: a person waving.
+pub const FRIENDS: &str = glyph!("friends");
+/// A new group conversation: a bubble with a plus.
+pub const CHAT_PLUS: &str = glyph!("chat-plus");
+/// Three dots in a column: a row's further actions.
+pub const MORE_VERTICAL: &str = glyph!("more-vertical");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

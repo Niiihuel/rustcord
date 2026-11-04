@@ -154,11 +154,10 @@ pub fn column(cards: &[ActiveCard], page: f32, room: f32, look: &Look) -> Elemen
     let picture = width - 67.0;
     let mut content = vec![
         gap(0.0, 8.0),
-        strong_line(t("Activo ahora"), 20.0, look.text),
+        strong_line(t("Activo ahora"), 20.0, look.text).font_family(FontFamily::SansSemibold),
         gap(0.0, 9.0),
     ];
     if cards.is_empty() {
-        content.push(gap(0.0, CARD_GAP));
         content.push(empty(look));
     }
     for card in cards {
@@ -188,11 +187,12 @@ pub fn column(cards: &[ActiveCard], page: f32, room: f32, look: &Look) -> Elemen
     .background(look.canvas)
 }
 
-/// What the column says while nobody is around: a raised panel, centred.
+/// What the column says while nobody is around, centred: Discord's card is
+/// the column's own black, so only its words show.
 pub fn empty(look: &Look) -> Element {
     Element::panel(Element::column(vec![
         Element::text(t("No hay nadie, por ahora..."))
-            .font_family(FontFamily::SansMedium)
+            .font_family(FontFamily::SansSemibold)
             .font_size(16.0)
             .foreground(look.text)
             .center_content(),
@@ -204,8 +204,6 @@ pub fn empty(look: &Look) -> Element {
         )
         .center_content(),
     ]))
-    .radius(8.0)
-    .background(look.raised)
     .padding(16.0)
 }
 

@@ -1,4 +1,4 @@
-//! The friends page of home: its tab and search, the form that sends a
+//! The friends page of home: its tab, its note and search, the form that sends a
 //! request by handle, the menu of a person and the question before removing
 //! or blocking them. Its actions start with `friends:` or `friend:{user}:`.
 //! Each is checked again against `Store::social` before it becomes a
@@ -12,7 +12,7 @@ use rustcord_components::friends::{
     self as parts, ids, AddFriend, FriendAction, FriendRow, FriendsTab,
 };
 use rustcord_components::look::status_label;
-use rustcord_components::{gap, Look};
+use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
 use rustcord_model::{Relationship, RelationshipKind, UserId};
 use rustcord_provider::{Command, Failure, ProviderKind};
@@ -106,6 +106,21 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         return Some(Vec::new());
     }
     match id {
+        ids::NOTICE_SETTINGS => {
+            return Some(crate::settings::clicked(
+                ui,
+                store,
+                "us:page=ignore-block",
+                now,
+            ))
+        }
+        ids::NOTICE_CLOSE => {
+            ui.prefs.blocked_notice = false;
+            return Some(vec![Intent::SaveSetting {
+                key: "blocked_notice".into(),
+                value: Some(false.to_string()),
+            }]);
+        }
         ids::SEND => return Some(send_request(ui, store)),
         ids::NICKNAME_SAVE => return Some(save_nickname(ui, store, false)),
         ids::NICKNAME_CLEAR => return Some(save_nickname(ui, store, true)),
@@ -161,7 +176,8 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         permit.allowed()
     };
     Some(match action {
-        "message" => crate::conversations::open_direct(ui, store, user, now),
+        // The round button, or the row itself.
+        "message" | "open" => crate::conversations::open_direct(ui, store, user, now),
         "add" if store.relationship(user).is_none() => store
             .user(user)
             .map(|found| {
@@ -299,12 +315,13 @@ pub(crate) fn on_applied(ui: &mut Ui, store: &Store, applied: &Applied) {
 
 /// One row of the page's list.
 enum ListRow {
-    Section(String, usize),
+    Section(String),
     Person(Box<FriendRow>),
 }
 
-/// The page, in the main area at home, `width` wide, with the «Activo ahora»
-/// column beside it where the window has room for it.
+/// The page, in the main area at home, `width` wide: its bar across the
+/// top and, under it, the list or the form with the «Activo ahora» column
+/// beside them where the window has room for it.
 pub(crate) fn view(
     ui: &Ui,
     store: &Store,
@@ -332,21 +349,26 @@ pub(crate) fn view(
             ),
             Element::spacer().flex(1.0),
         ])
-        .padding(20.0)
     } else {
         list(ui, store, tab, look)
     };
-    let page = Element::column(vec![
-        parts::header(tab, pending, look),
+    let body = match crate::active_now::column(ui, store, look, context, width) {
+        Some(column) => Element::row(vec![body.flex(1.0), column]),
+        None => body,
+    };
+    Element::column(vec![
+        parts::header(
+            tab,
+            pending,
+            store.create_group().allowed(),
+            crate::title_bar::room(ui),
+            look,
+        ),
         Element::panel(Element::spacer())
             .size(None, Some(1.0))
             .background(look.border),
         body.flex(1.0),
-    ]);
-    match crate::active_now::column(ui, store, look, context, width) {
-        Some(column) => Element::row(vec![page.flex(1.0), column]),
-        None => page,
-    }
+    ])
 }
 
 fn list(ui: &Ui, store: &Store, tab: FriendsTab, look: &Look) -> Element {
@@ -396,36 +418,37 @@ fn list(ui: &Ui, store: &Store, tab: FriendsTab, look: &Look) -> Element {
         .filter(|known| known.spam && known.kind == RelationshipKind::IncomingRequest)
         .filter(matches)
         .collect();
-    let sections: Vec<(&str, Vec<&Relationship>)> = match tab {
-        FriendsTab::Online => vec![(t("En línea"), of_kind(&[RelationshipKind::Friend], true))],
-        FriendsTab::All => vec![(
-            t("Todos los amigos"),
+    // Each heading as Discord words it: «2 en línea», «Todos los amigos: 5»,
+    // «Recibidas — 2».
+    type Heading = fn(usize) -> String;
+    let sections: Vec<(Heading, Vec<&Relationship>)> = match tab {
+        FriendsTab::Online => vec![(
+            |count| tr!("{count} en línea", count),
+            of_kind(&[RelationshipKind::Friend], true),
+        )],
+        FriendsTab::All | FriendsTab::Add => vec![(
+            |count| tr!("Todos los amigos: {count}", count),
             of_kind(&[RelationshipKind::Friend], false),
         )],
         FriendsTab::Pending => vec![
             (
-                t("Recibidas"),
+                |count| tr!("Recibidas — {count}", count),
                 of_kind(&[RelationshipKind::IncomingRequest], false),
             ),
             (
-                t("Enviadas"),
+                |count| tr!("Enviadas — {count}", count),
                 of_kind(&[RelationshipKind::OutgoingRequest], false),
             ),
             // The service's spam folder: apart, and not counted as waiting.
-            (t("Posible spam"), spam),
+            (|count| tr!("Posible spam — {count}", count), spam),
         ],
-        FriendsTab::Blocked | FriendsTab::Add => {
-            vec![(
-                t("Bloqueados"),
-                of_kind(&[RelationshipKind::Blocked], false),
-            )]
-        }
     };
-    let search = Element::row(vec![
-        gap(20.0, 0.0),
-        parts::search(&ui.friends.query, look).flex(1.0),
-        gap(20.0, 0.0),
-    ]);
+    // Discord's note about the blocked people, until it is closed.
+    let mut top = Vec::new();
+    if ui.prefs.blocked_notice {
+        top.push(parts::notice(look));
+    }
+    top.push(parts::search(&ui.friends.query, look));
     if sections.iter().all(|(_, people)| people.is_empty()) {
         let (title, detail) = if !query.is_empty() {
             (t("Nadie coincide"), t("Prueba con otro nombre."))
@@ -439,21 +462,14 @@ fn list(ui: &Ui, store: &Store, tab: FriendsTab, look: &Look) -> Element {
                     t("No hay solicitudes pendientes"),
                     t("Las solicitudes que recibas o envíes aparecen aquí."),
                 ),
-                FriendsTab::Blocked => (
-                    t("No bloqueaste a nadie"),
-                    t("Las personas que bloquees aparecen aquí."),
-                ),
                 _ => (
                     t("Todavía no tienes amigos"),
                     t("Añade a alguien con su nombre de usuario."),
                 ),
             }
         };
-        return Element::column(vec![
-            gap(0.0, 16.0),
-            search,
-            parts::empty(title, detail, look).flex(1.0),
-        ]);
+        top.push(parts::empty(title, detail, look).flex(1.0));
+        return Element::column(top);
     }
     let mut rows = Vec::new();
     for (title, people) in sections {
@@ -462,7 +478,7 @@ fn list(ui: &Ui, store: &Store, tab: FriendsTab, look: &Look) -> Element {
         }
         rows.push((
             u64::MAX - rows.len() as u64,
-            ListRow::Section(title.into(), people.len()),
+            ListRow::Section(title(people.len())),
         ));
         for known in people {
             rows.push((
@@ -478,18 +494,16 @@ fn list(ui: &Ui, store: &Store, tab: FriendsTab, look: &Look) -> Element {
         rows.len(),
         parts::ROW,
         move |index| keys[index].0,
-        move |index| {
-            let row = match &rows[index].1 {
-                ListRow::Section(title, count) => parts::section(title, *count, &look),
-                ListRow::Person(row) => parts::row(row, &look),
-            };
-            Element::row(vec![gap(20.0, 0.0), row.flex(1.0), gap(20.0, 0.0)])
+        move |index| match &rows[index].1 {
+            ListRow::Section(title) => parts::section(title, &look),
+            ListRow::Person(row) => parts::row(row, &look),
         },
     )
     .appearance(look.scrollbar(true))
     .render()
     .flex(1.0);
-    Element::column(vec![gap(0.0, 16.0), search, list])
+    top.push(list);
+    Element::column(top)
 }
 
 fn row_of(ui: &Ui, store: &Store, known: &Relationship, presence: bool, look: &Look) -> FriendRow {
@@ -506,6 +520,7 @@ fn row_of(ui: &Ui, store: &Store, known: &Relationship, presence: bool, look: &L
             danger,
         };
     let block = action("block", t("Bloquear"), Icon::Lock, &social.block, true);
+    let handle = account.map_or_else(|| user.to_string(), |account| account.name.clone());
     // Their custom status's server emoji, before its words.
     let (shown, detail_emoji) = if presence && known.kind == RelationshipKind::Friend {
         crate::identity::status_line(ui, &status, store.is_ignored(user))
@@ -551,50 +566,55 @@ fn row_of(ui: &Ui, store: &Store, known: &Relationship, presence: bool, look: &L
                 block,
             ],
         ),
+        // A request says who by their handle, as Discord's: its section says
+        // which way it goes.
         RelationshipKind::IncomingRequest => (
-            if known.spam {
-                t("Solicitud marcada como posible spam").to_owned()
-            } else {
-                t("Solicitud recibida").to_owned()
-            },
+            handle.clone(),
             vec![
                 action("accept", t("Aceptar"), Icon::Check, &social.accept, false),
-                action("dismiss", t("Ignorar"), Icon::Close, &social.remove, false),
+                action("dismiss", t("Ignorar"), Icon::Close, &social.remove, true),
             ],
             vec![block],
         ),
         RelationshipKind::OutgoingRequest => (
-            t("Solicitud enviada").to_owned(),
+            handle.clone(),
             vec![action(
                 "cancel",
                 t("Cancelar"),
                 Icon::Close,
                 &social.remove,
-                false,
+                true,
             )],
             vec![block],
         ),
-        RelationshipKind::Blocked => (
-            t("Bloqueado").to_owned(),
-            vec![action(
-                "unblock",
-                t("Desbloquear"),
-                Icon::Close,
-                &social.unblock,
-                false,
-            )],
-            Vec::new(),
-        ),
-        // Never listed: kept only for an ignore, which the rows do not show.
-        RelationshipKind::None => (String::new(), Vec::new(), Vec::new()),
+        // Never listed: the blocked ones are in the settings, and an ignore
+        // alone is not a row.
+        RelationshipKind::Blocked | RelationshipKind::None => {
+            (String::new(), Vec::new(), Vec::new())
+        }
+    };
+    let name = known
+        .nickname
+        .clone()
+        .or_else(|| account.map(|account| account.shown_name().to_owned()))
+        .unwrap_or_else(|| t("Usuario desconocido").into());
+    let friend = known.kind == RelationshipKind::Friend;
+    // A friend's row opens your conversation; a request's, their profile.
+    let open = if friend {
+        (
+            ids::person(user, "open"),
+            tr!("Abrir conversación con {name}", name),
+        )
+    } else {
+        (
+            format!("{}{user}", rustcord_components::profile::ids::FULL),
+            tr!("Ver el perfil de {name}", name),
+        )
     };
     FriendRow {
-        name: known
-            .nickname
-            .clone()
-            .or_else(|| account.map(|account| account.shown_name().to_owned()))
-            .unwrap_or_else(|| t("Usuario desconocido").into()),
-        handle: account.map_or_else(|| user.to_string(), |account| account.name.clone()),
+        name,
+        handle: friend.then_some(handle),
+        open,
         image: account.and_then(|account| ui.picture(account.picture())),
         accent: account.map_or(look.faint, |account| look.ink(account.accent)),
         status: (presence && known.kind == RelationshipKind::Friend)

@@ -1,16 +1,19 @@
-//! The friends page of home, from plain props: its header with tabs, the
-//! search, a person with their actions and the menu of the rest, the form
-//! that sends a request by handle, and the question before ending something.
+//! The friends page of home, from plain props, as the official client draws
+//! it (`docs/discord-reference.md`, «Friends and Active Now»): its bar with
+//! the tabs, the note that points to the blocked people, the search, a person
+//! with their round actions and the menu of the rest, the form that sends a
+//! request by handle, and the question before ending something.
 
 use limn::{
-    AlertDialog, Button, ButtonVariant, Color, Component, ControlSize, DropdownMenu,
-    DropdownMenuEntry, DropdownMenuItem, Element, Empty, FontFamily, Icon, IconButton,
-    PopoverPlacement, SearchField, Tab, Tabs, TabsVariant, TextField,
+    AlertDialog, Button, ButtonSizing, ButtonVariant, Color, Component, ComponentPalette,
+    ControlSize, DropdownMenu, DropdownMenuEntry, DropdownMenuItem, Element, Empty, FontFamily,
+    Icon, IconButton, PopoverPlacement, SearchField, TextField, TextSpan,
 };
 
 use rustcord_i18n::{t, tr};
 
-use crate::{avatar_with_image, gap, line, strong_line, text, with_status, Look};
+use crate::glyphs::{CHAT_PLUS, FRIENDS, MORE_VERTICAL};
+use crate::{avatar_with_image, gap, icon, line, strong_line, text, with_status, Look};
 
 /// The actions these pieces report. A person's own end with their ID and
 /// the action: `friend:{user}:accept`.
@@ -22,6 +25,10 @@ pub mod ids {
     pub const QUERY: &str = "friends:query";
     pub const USERNAME: &str = "friends:add:username";
     pub const SEND: &str = "friends:add:send";
+    /// The note's link to the blocked and ignored people, in the settings.
+    pub const NOTICE_SETTINGS: &str = "friends:notice:settings";
+    /// The note's ×: it does not come back.
+    pub const NOTICE_CLOSE: &str = "friends:notice:close";
     pub const MENU_DISMISS: &str = "friends:menu:dismiss";
     pub const CONFIRM: &str = "friends:confirm";
     pub const CONFIRM_CANCEL: &str = "friends:confirm:cancel";
@@ -39,39 +46,46 @@ pub mod ids {
     }
 }
 
-/// A person's row is this high.
+/// A person's row is this high: 61 and the hairline over it.
 pub const ROW: f32 = 62.0;
 /// A section's heading is this high.
-pub const SECTION: f32 = 40.0;
+pub const SECTION: f32 = 50.0;
 /// The question before removing or blocking.
 pub const CONFIRM_WIDTH: f32 = 440.0;
 
-/// Which people the page shows.
+/// The edge of the search and of the form: `#96969f` at 24 %; also the dot
+/// between the page's name and its tabs.
+const EDGE: Color = Color::rgba(150, 150, 159, 61);
+/// The fill of the search and of the form: black at 12 %.
+const FIELD_FILL: Color = Color::rgba(0, 0, 0, 31);
+/// From the list's left edge to a row, a hairline and a heading's words.
+const ROW_LEFT: f32 = 14.0;
+const LINE_LEFT: f32 = 30.0;
+const HEADING_LEFT: f32 = 24.0;
+/// From the list's right edge to a row, and to a hairline or a heading:
+/// Discord's margins and its 16 px scrollbar gutter.
+const ROW_RIGHT: f32 = 26.0;
+const LINE_RIGHT: f32 = 36.0;
+
+/// Which people the page shows, or the form that adds one. The blocked ones
+/// are in the settings, as Discord has them: the note says where.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum FriendsTab {
     #[default]
     Online,
     All,
     Pending,
-    Blocked,
     Add,
 }
 
 impl FriendsTab {
-    pub const ALL: [Self; 5] = [
-        Self::Online,
-        Self::All,
-        Self::Pending,
-        Self::Blocked,
-        Self::Add,
-    ];
+    pub const ALL: [Self; 4] = [Self::Online, Self::All, Self::Pending, Self::Add];
 
     pub fn key(self) -> &'static str {
         match self {
             Self::Online => "online",
             Self::All => "all",
             Self::Pending => "pending",
-            Self::Blocked => "blocked",
             Self::Add => "add",
         }
     }
@@ -84,9 +98,8 @@ impl FriendsTab {
         match self {
             Self::Online => t("En línea"),
             Self::All => t("Todos"),
-            Self::Pending => t("Pendientes"),
-            Self::Blocked => t("Bloqueados"),
-            Self::Add => t("Añadir amigo"),
+            Self::Pending => t("Pendiente"),
+            Self::Add => t("Añadir amigos"),
         }
     }
 }
@@ -98,7 +111,8 @@ pub struct FriendAction {
     pub label: String,
     pub icon: Icon,
     pub denied: Option<String>,
-    /// It ends something: drawn in the danger color.
+    /// It ends something: drawn in the danger color (a round button, under
+    /// the pointer).
     pub danger: bool,
 }
 
@@ -106,15 +120,20 @@ pub struct FriendAction {
 #[derive(Clone, Debug, PartialEq)]
 pub struct FriendRow {
     pub name: String,
-    pub handle: String,
+    /// Shown beside the name while the pointer is on the row; `None` when
+    /// the line under the name already is the handle.
+    pub handle: Option<String>,
     pub image: Option<limn::RasterImage>,
     pub accent: Color,
     /// Their status dot, when the provider reports presence.
     pub status: Option<Color>,
-    /// Their status, or what kind of request it is.
+    /// Their status, or their handle for a request.
     pub detail: String,
     /// A server's emoji before `detail`, when that is their custom status.
     pub detail_emoji: Option<crate::identity::TextPicture>,
+    /// What a click on the row reports, and what that does: their
+    /// conversation, or their profile.
+    pub open: (String, String),
     /// The round buttons, in order.
     pub actions: Vec<FriendAction>,
     /// What the "more" button offers; empty, there is no such button.
@@ -127,34 +146,29 @@ pub struct FriendRow {
 /// The row over the direct conversations that opens this page, with the
 /// count of requests waiting for the account.
 pub fn home_entry(selected: bool, pending: usize, look: &Look) -> Element {
+    let ink = if selected { look.text } else { look.dim };
     let mut parts = vec![
-        gap(14.0, 0.0),
-        Element::icon(Icon::Users)
-            .foreground(if selected { look.text } else { look.dim })
-            .size(Some(20.0), Some(20.0))
+        gap(10.0, 0.0),
+        icon(Icon::Custom(FRIENDS), ink)
+            .large_icon(20.0)
             .centered_y(),
-        gap(18.0, 0.0),
-        strong_line(
-            t("Amigos"),
-            16.0,
-            if selected { look.text } else { look.dim },
-        )
-        .flex(1.0)
-        .centered_y(),
+        gap(12.0, 0.0),
+        strong_line(t("Amigos"), 16.0, ink).flex(1.0).centered_y(),
     ];
     if pending > 0 {
         parts.push(crate::sidebar::count(pending as u32, look).centered_y());
     }
-    parts.push(gap(8.0, 0.0));
+    parts.push(gap(16.0, 0.0));
     let body = Element::clickable(ids::HOME, Element::row(parts))
-        .size(None, Some(43.0))
-        .radius(6.0)
+        .size(None, Some(38.0))
+        .radius(8.0)
         .background(if selected {
             look.selected
         } else {
-            Color::rgba(0, 0, 0, 0)
+            Color::TRANSPARENT
         })
         .hover_background(if selected { look.selected } else { look.hover })
+        .hover_foreground(look.text)
         .accessible(
             limn::Access::new(limn::Role::ListItem)
                 .name(t("Amigos"))
@@ -167,103 +181,260 @@ pub fn home_entry(selected: bool, pending: usize, look: &Look) -> Element {
     ])
 }
 
-/// The header of the page: what it is, and its tabs. `pending` counts the
-/// requests waiting for the account.
-pub fn header(tab: FriendsTab, pending: usize, look: &Look) -> Element {
-    let tabs = FriendsTab::ALL
-        .into_iter()
-        .map(|candidate| {
-            let label = match candidate {
-                FriendsTab::Pending if pending > 0 => format!("{} · {pending}", candidate.label()),
-                _ => candidate.label().to_owned(),
-            };
-            let width = label.chars().count() as f32 * 7.5 + 24.0;
-            Tab::new(format!("{}{}", ids::TAB, candidate.key()), label, width)
-                .active(candidate == tab)
-        })
-        .collect();
-    let tabs = Tabs::new(tabs, look.palette())
-        .variant(TabsVariant::Underlined)
-        .accent(look.accent)
-        .id("friends:tabs")
-        .height(28.0)
-        .render();
-    Element::column(vec![
-        Element::row(vec![
-            gap(16.0, 0.0),
-            Element::icon(Icon::Users)
-                .foreground(look.muted)
-                .size(Some(20.0), Some(20.0))
-                .centered_y(),
-            strong_line(t("Amigos"), 16.0, look.text)
-                .flex(1.0)
-                .centered_y(),
-        ])
-        .gap(12.0)
-        .size(None, Some(44.0)),
+/// The bar over the page: what it is, a dot, its tabs as pills («Añadir
+/// amigos» in the accent) and, while the account may make one, a new group
+/// at its end, `end` short of it (the window's own buttons are there).
+/// `pending` counts the requests waiting for the account.
+pub fn header(tab: FriendsTab, pending: usize, new_group: bool, end: f32, look: &Look) -> Element {
+    let mut strip = vec![
+        gap(6.0, 0.0),
+        icon(Icon::Custom(FRIENDS), look.dim)
+            .large_icon(20.0)
+            .centered_y(),
+        gap(6.0, 0.0),
+        strong_line(t("Amigos"), 16.0, look.text)
+            .shrink_to_fit()
+            .centered_y(),
+        gap(12.0, 0.0),
+        Element::panel(Element::spacer())
+            .size(Some(4.0), Some(4.0))
+            .radius(2.0)
+            .background(EDGE)
+            .centered_y(),
+        gap(4.0, 0.0),
+    ];
+    for candidate in FriendsTab::ALL {
+        strip.push(gap(8.0, 0.0));
+        strip.push(tab_pill(candidate, candidate == tab, pending, look).centered_y());
+        strip.push(gap(8.0, 0.0));
+    }
+    let mut parts = vec![
+        gap(20.0, 0.0),
         // A narrow window scrolls the tabs sideways instead of cutting them.
-        Element::row(vec![
-            gap(12.0, 0.0),
-            Element::horizontal_scroll("friends:tabs-scroll", tabs).flex(1.0),
-            gap(12.0, 0.0),
-        ])
-        .size(None, Some(36.0)),
+        Element::horizontal_scroll("friends:tabs-scroll", Element::row(strip)).flex(1.0),
+    ];
+    if new_group {
+        let palette = ComponentPalette {
+            hover: Color::TRANSPARENT,
+            ..look.palette()
+        };
+        parts.push(gap(10.0, 0.0));
+        parts.push(
+            IconButton::new(crate::group::ids::NEW, Icon::Custom(CHAT_PLUS), palette)
+                .variant(ButtonVariant::Ghost)
+                .sizing(ButtonSizing {
+                    height: 32.0,
+                    font_size: 14.0,
+                    icon_size: 20.0,
+                    horizontal_padding: 6.0,
+                    inner_spacing: 0.0,
+                })
+                .tooltip(t("Nuevo grupo de MD"))
+                .tooltip_placement(limn::TooltipPlacement::Below)
+                .ink(look.dim)
+                .hover_ink(look.text)
+                .render()
+                .centered_y(),
+        );
+    }
+    parts.push(gap(8.0 + end, 0.0));
+    Element::panel(Element::row(parts))
+        .size(None, Some(crate::sidebar::HEADER))
+        .background(look.canvas)
+        .accessible(limn::Access::new(limn::Role::Group).name(t("Amigos")))
+}
+
+/// One tab: a pill 32 high, its words 16 medium; the chosen one filled, the
+/// others filled only under the pointer. «Añadir amigos» is the accent's,
+/// faint while it is the one shown.
+fn tab_pill(tab: FriendsTab, active: bool, pending: usize, look: &Look) -> Element {
+    let label = tab.label();
+    let (fill, hover, ink) = match (tab, active) {
+        (FriendsTab::Add, false) => (look.accent, shade(look.accent), look.on_accent),
+        (FriendsTab::Add, true) => {
+            let faint = Look::alpha(look.accent, 41);
+            (faint, faint, look.accent)
+        }
+        (_, true) => (look.selected, look.selected, look.text),
+        (_, false) => (Color::TRANSPARENT, look.hover, look.muted),
+    };
+    let mut parts = vec![
+        gap(12.0, 0.0),
+        strong_line(label, 16.0, ink).shrink_to_fit().centered_y(),
+    ];
+    if tab == FriendsTab::Pending && pending > 0 {
+        parts.push(gap(8.0, 0.0));
+        parts.push(crate::sidebar::count(pending as u32, look).centered_y());
+    }
+    parts.push(gap(12.0, 0.0));
+    let pill = Element::clickable(format!("{}{}", ids::TAB, tab.key()), Element::row(parts))
+        .size(None, Some(32.0))
+        .radius(8.0)
+        .background(fill)
+        .hover_background(hover);
+    // The accent's words stay white under the pointer; the others brighten.
+    let pill = if tab == FriendsTab::Add {
+        pill
+    } else {
+        pill.hover_foreground(look.text)
+    };
+    let name = match pending {
+        _ if tab != FriendsTab::Pending => label.to_owned(),
+        0 => label.to_owned(),
+        1 => tr!("{label}, {count} nuevo", label, count = pending),
+        _ => tr!("{label}, {count} nuevos", label, count = pending),
+    };
+    pill.accessible(
+        limn::Access::new(limn::Role::Tab)
+            .name(name)
+            .selected(active),
+    )
+}
+
+/// The accent under the pointer: Discord's `#5865f2` turns `#4452bb`.
+fn shade(color: Color) -> Color {
+    let dark = |channel: u8| (f32::from(channel) * 0.78).round() as u8;
+    Color::rgba(dark(color.r), dark(color.g), dark(color.b), color.a)
+}
+
+/// The note over the list: the blocked and ignored people are in the
+/// settings. Its link opens them there; its × closes it for good.
+pub fn notice(look: &Look) -> Element {
+    // One paragraph, so a narrow page wraps it with its link.
+    let said = Element::formatted_text(vec![
+        TextSpan::new(
+            format!(
+                "{} ",
+                t("¿Estás buscando las cuentas que bloqueaste o ignoraste?")
+            ),
+            look.text,
+            14.0,
+            FontFamily::SansMedium,
+        ),
+        TextSpan::new(
+            t("Dirígete a ajustes"),
+            look.palette().link(),
+            14.0,
+            FontFamily::SansMedium,
+        )
+        .action(ids::NOTICE_SETTINGS),
+    ]);
+    let close = IconButton::new(
+        ids::NOTICE_CLOSE,
+        Icon::Close,
+        ComponentPalette {
+            hover: Color::TRANSPARENT,
+            ..look.palette()
+        },
+    )
+    .variant(ButtonVariant::Ghost)
+    .sizing(ButtonSizing {
+        height: 27.0,
+        font_size: 14.0,
+        icon_size: 24.0,
+        horizontal_padding: 0.0,
+        inner_spacing: 0.0,
+    })
+    .accessibility_label(t("Cerrar"))
+    .ink(look.muted)
+    .hover_ink(look.text)
+    .render();
+    let body = Element::row(vec![
+        icon(Icon::InfoCircle, look.muted)
+            .large_icon(24.0)
+            .centered_y(),
+        gap(8.0, 0.0),
+        said.flex(1.0).centered_y(),
+        gap(8.0, 0.0),
+        close.centered_y(),
+    ])
+    .min_size(0.0, 27.0);
+    let note = Element::panel(body)
+        .padding(16.0)
+        .radius(4.0)
+        .background(look.canvas);
+    Element::column(vec![
+        gap(0.0, 16.0),
+        Element::row(vec![gap(30.0, 0.0), note.flex(1.0), gap(20.0, 0.0)]),
+        gap(0.0, 8.0),
     ])
 }
 
-/// The search over the people of a tab.
+/// The search over the people of a tab: 40 high, rounded 8, its edge in the
+/// accent while it has the focus; 24 and 16 from the page's sides.
 pub fn search(query: &str, look: &Look) -> Element {
-    SearchField::new(ids::QUERY, query, t("Buscar"), look.menu_palette())
+    let palette = ComponentPalette {
+        raised: FIELD_FILL,
+        border: EDGE,
+        ..look.menu_palette()
+    };
+    let field = SearchField::new(ids::QUERY, query, t("Buscar"), palette)
         .accessibility_label(t("Buscar amigos"))
+        .height(40.0)
         .render()
+        .radius(8.0)
+        .font_size(16.0)
+        .leading_icon_tint(look.text)
+        .hover_background(FIELD_FILL)
+        .focus_border(look.accent, 1.5);
+    Element::column(vec![
+        gap(0.0, 12.0),
+        Element::row(vec![gap(24.0, 0.0), field.flex(1.0), gap(16.0, 0.0)]),
+        gap(0.0, 8.0),
+    ])
 }
 
-/// A heading over a group of people: "EN LÍNEA — 3".
-pub fn section(title: &str, count: usize, look: &Look) -> Element {
-    Element::column(vec![
-        Element::spacer().flex(1.0),
-        line(
-            format!("{} — {count}", title.to_uppercase()),
-            12.0,
-            look.muted,
-        )
-        .font_family(FontFamily::SansMedium),
-        gap(0.0, 8.0),
+/// A heading over a group of people, as given: «2 en línea», «Recibidas — 1».
+pub fn section(title: &str, look: &Look) -> Element {
+    Element::row(vec![
+        gap(HEADING_LEFT, 0.0),
+        strong_line(title, 14.0, look.text).flex(1.0).centered_y(),
+        gap(LINE_RIGHT, 0.0),
     ])
     .size(None, Some(SECTION))
 }
 
-/// A person of the page, with their actions on the right.
+/// A person of the page under a hairline, with their round actions on the
+/// right. The whole row opens [`FriendRow::open`]; under the pointer it is
+/// filled, its hairline goes and the handle shows beside the name.
 pub fn row(row: &FriendRow, look: &Look) -> Element {
     let face = avatar_with_image(&row.name, row.accent, 32.0, row.image.clone());
     let face = match row.status {
         Some(status) => with_status(face, 32.0, status, look.canvas),
         None => face,
     };
+    let mut name = vec![strong_line(&row.name, 16.0, look.text)
+        .font_family(FontFamily::SansSemibold)
+        .shrink_to_fit()];
+    if let Some(handle) = &row.handle {
+        name.push(gap(5.0, 0.0));
+        name.push(
+            line(handle, 14.0, look.text)
+                .shrink_to_fit()
+                .reveal_on_hover(format!("{}:handle", row.more_id)),
+        );
+    }
     let mut parts = vec![
         face.centered_y(),
         gap(12.0, 0.0),
         Element::column(vec![
-            Element::row(vec![
-                strong_line(&row.name, 15.0, look.text).shrink_to_fit(),
-                line(&row.handle, 13.0, look.muted).shrink_to_fit(),
-            ])
-            .gap(6.0),
+            Element::row(name),
             crate::identity::status_line(
                 Some(&row.detail),
                 row.detail_emoji.as_ref(),
-                13.0,
-                look.muted,
+                14.0,
+                look.dim,
                 look,
             )
-            .unwrap_or_else(|| line("", 13.0, look.muted)),
+            .unwrap_or_else(|| line("", 14.0, look.dim)),
         ])
-        .gap(2.0)
         .flex(1.0)
         .centered_y(),
     ];
-    for action in &row.actions {
-        parts.push(gap(10.0, 0.0));
+    for (at, action) in row.actions.iter().enumerate() {
+        if at > 0 {
+            parts.push(gap(10.0, 0.0));
+        }
         parts.push(round(action, look).centered_y());
     }
     if !row.more.is_empty() {
@@ -271,14 +442,16 @@ pub fn row(row: &FriendRow, look: &Look) -> Element {
             &FriendAction {
                 id: row.more_id.clone(),
                 label: t("Más").into(),
-                icon: Icon::More,
+                icon: Icon::Custom(MORE_VERTICAL),
                 denied: None,
                 danger: false,
             },
             look,
         );
         let entries = row.more.iter().map(|action| entry(action, look)).collect();
-        parts.push(gap(10.0, 0.0));
+        if !row.actions.is_empty() {
+            parts.push(gap(10.0, 0.0));
+        }
         parts.push(
             DropdownMenu::new(
                 anchor,
@@ -293,33 +466,76 @@ pub fn row(row: &FriendRow, look: &Look) -> Element {
             .centered_y(),
         );
     }
-    Element::column(vec![
+    let (open, said) = &row.open;
+    let body = Element::clickable(
+        open.clone(),
+        Element::row(vec![
+            gap(10.0, 0.0),
+            Element::row(parts).flex(1.0),
+            gap(10.0, 0.0),
+        ]),
+    )
+    .size(None, Some(ROW - 1.0))
+    .radius(8.0)
+    .hover_background(look.hover)
+    .accessibility_label(said.clone());
+    let hairline = Element::row(vec![
+        gap(LINE_LEFT, 0.0),
         Element::panel(Element::spacer())
             .size(None, Some(1.0))
-            .background(look.border),
-        Element::row(parts).flex(1.0),
+            .background(look.border)
+            .flex(1.0),
+        gap(LINE_RIGHT, 0.0),
+    ])
+    .size(None, Some(1.0))
+    .conceal_on_hover(format!("{}:line", row.more_id));
+    Element::column(vec![
+        hairline,
+        Element::row(vec![
+            gap(ROW_LEFT, 0.0),
+            body.flex(1.0),
+            gap(ROW_RIGHT, 0.0),
+        ]),
     ])
     .size(None, Some(ROW))
+    .hover_region()
     .accessible(limn::Access::new(limn::Role::ListItem).name(row.name.clone()))
 }
 
+/// A round action of a row: 36 across with a 20 px glyph, on the page's own
+/// ground (it shows only on a row under the pointer), its glyph brightening
+/// under the pointer, or turning the danger color for one that ends
+/// something.
 fn round(action: &FriendAction, look: &Look) -> Element {
     let hint = match &action.denied {
         Some(reason) => format!("{}: {reason}", action.label),
         None => action.label.clone(),
     };
-    IconButton::new(action.id.clone(), action.icon, look.menu_palette())
-        .variant(ButtonVariant::Raised)
+    let palette = ComponentPalette {
+        hover: Color::TRANSPARENT,
+        ..look.menu_palette()
+    };
+    let button = IconButton::new(action.id.clone(), action.icon, palette)
+        .variant(ButtonVariant::Ghost)
+        .sizing(ButtonSizing {
+            height: 36.0,
+            font_size: 14.0,
+            icon_size: 20.0,
+            horizontal_padding: 8.0,
+            inner_spacing: 0.0,
+        })
         .round()
         .tooltip(hint.clone())
         .accessibility_label(hint)
-        .ink(if action.danger {
+        .ink(look.muted)
+        .hover_ink(if action.danger {
             look.danger
         } else {
-            look.muted
+            look.text
         })
         .enabled(action.denied.is_none())
-        .render()
+        .render();
+    Element::panel(button).radius(18.0).background(look.canvas)
 }
 
 fn entry(action: &FriendAction, look: &Look) -> DropdownMenuEntry {
@@ -336,7 +552,7 @@ fn entry(action: &FriendAction, look: &Look) -> DropdownMenuEntry {
 pub fn empty(title: &str, detail: &str, look: &Look) -> Element {
     crate::centered(
         Empty::new(title, detail, look.palette())
-            .icon(Icon::Users)
+            .icon(Icon::Custom(FRIENDS))
             .render(),
     )
 }
@@ -355,55 +571,100 @@ pub struct AddFriend {
     pub simulated: bool,
 }
 
+/// The «Añadir amigos» page: its title and what it is for, then the handle
+/// in a box rounded 16 with the button inside its end, edged in the
+/// positive or the danger color by the last answer, and that answer under it.
 pub fn add_friend(form: &AddFriend, look: &Look) -> Element {
-    let palette = look.menu_palette();
+    let edge = match (&form.denied, &form.note) {
+        (None, Some((_, false))) => look.online,
+        (None, Some((_, true))) => look.danger,
+        _ => EDGE,
+    };
     let field = TextField::new(
         ids::USERNAME,
         form.username.clone(),
-        t("Nombre de usuario"),
-        palette,
+        t("Ingresa un nombre de usuario"),
+        ComponentPalette {
+            raised: FIELD_FILL,
+            ..look.menu_palette()
+        },
     )
     .accessibility_label(t("Nombre de usuario"))
-    .size(ControlSize::Spacious);
+    .height(56.0)
+    .radius(16.0)
+    .outline(edge, look.palette().link());
     let field = if form.denied.is_some() {
         field.disabled()
     } else {
         field
     }
+    .render()
+    .font_size(16.0)
+    .hover_background(FIELD_FILL);
+    let send = Button::new(
+        ids::SEND,
+        t("Enviar solicitud de amistad"),
+        look.accent_palette(),
+    )
+    .size(ControlSize::Regular)
+    .loading(form.sending)
+    .enabled(form.denied.is_none() && !form.username.trim().is_empty() && !form.sending)
     .render();
-    let send = Button::new(ids::SEND, t("Enviar solicitud"), look.accent_palette())
-        .size(ControlSize::Spacious)
-        .loading(form.sending)
-        .enabled(form.denied.is_none() && !form.username.trim().is_empty() && !form.sending)
-        .render();
-    let mut parts = vec![
-        strong_line(t("Añadir amigo"), 16.0, look.text),
-        text(
-            t("Puedes añadir amigos con su nombre de usuario."),
-            14.0,
-            look.muted,
-        ),
-        gap(0.0, 4.0),
+    // shortcut: the button lies over the field's end, which a handle longer
+    // than about 400 px would run under; limn keeps the room a field leaves
+    // for such a control (`input_trailing_space`) to itself.
+    let boxed = Element::stack(vec![
         field,
-        Element::row(vec![Element::spacer().flex(1.0), send]),
+        Element::row(vec![
+            Element::spacer().flex(1.0),
+            send.centered_y(),
+            gap(12.0, 0.0),
+        ]),
+    ])
+    .size(None, Some(56.0));
+    let mut parts = vec![
+        strong_line(t("Añadir amigos"), 20.0, look.text).font_family(FontFamily::SansSemibold),
+        gap(0.0, 8.0),
+        strong_line(
+            t("Puedes añadir amigos con su nombre de usuario."),
+            16.0,
+            look.text,
+        ),
+        gap(0.0, 16.0),
+        boxed,
     ];
-    match (&form.denied, &form.note) {
-        (Some(reason), _) => parts.push(text(reason.clone(), 13.0, look.danger)),
-        (None, Some((note, failed))) => parts.push(text(
+    let said = match (&form.denied, &form.note) {
+        (Some(reason), _) => Some((reason.clone(), look.danger)),
+        (None, Some((note, failed))) => Some((
             note.clone(),
-            13.0,
             if *failed { look.danger } else { look.online },
         )),
-        (None, None) => {}
+        (None, None) => None,
+    };
+    if let Some((said, ink)) = said {
+        parts.push(gap(0.0, 8.0));
+        parts.push(text(said, 14.0, ink));
     }
     if form.simulated {
+        parts.push(gap(0.0, 8.0));
         parts.push(text(
             t("Simulación local: las solicitudes se confirman en este equipo, sin enviar nada."),
-            12.0,
-            look.faint,
+            14.0,
+            look.muted,
         ));
     }
-    Element::column(parts).gap(8.0)
+    Element::column(vec![
+        gap(0.0, 20.0),
+        Element::row(vec![
+            gap(30.0, 0.0),
+            Element::column(parts).flex(1.0),
+            gap(30.0, 0.0),
+        ]),
+        gap(0.0, 20.0),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+    ])
 }
 
 /// The dialog that gives `name`, a friend, a private name, over `root`.
@@ -545,12 +806,13 @@ mod tests {
     fn person(actions: Vec<FriendAction>, more: Vec<FriendAction>, open: bool) -> FriendRow {
         FriendRow {
             name: "Ada".into(),
-            handle: "ada".into(),
+            handle: Some("ada".into()),
             image: None,
             accent: Color::rgb(90, 120, 200),
             status: Some(Look::DARK.online),
             detail: "En línea".into(),
             detail_emoji: None,
+            open: (ids::person(10, "open"), "Abrir conversación con Ada".into()),
             actions,
             more,
             more_id: ids::person(10, "more"),
@@ -596,19 +858,59 @@ mod tests {
     }
 
     #[test]
-    fn the_header_offers_every_tab_and_counts_what_waits() {
-        let (_, frame) = frame(
-            header(FriendsTab::Pending, 2, &Look::DARK),
-            Size::new(900.0, 48.0),
+    fn the_header_offers_every_tab_counts_what_waits_and_keeps_clear_of_the_window_buttons() {
+        let (_, laid) = frame(
+            header(FriendsTab::Pending, 2, true, 138.0, &Look::DARK),
+            Size::new(900.0, 52.0),
         );
-        let found = controls(&frame);
+        let found = controls(&laid);
         for tab in FriendsTab::ALL {
             assert!(
                 found.contains(&format!("friends:tab:{}", tab.key())),
                 "{found:?}"
             );
         }
-        assert!(texts(&frame).contains(&"Pendientes · 2".to_owned()));
+        let painted = texts(&laid);
+        assert!(painted.contains(&"Pendiente".to_owned()) && painted.contains(&"2".to_owned()));
+        let group = laid
+            .regions
+            .iter()
+            .find(|region| region.id == crate::group::ids::NEW)
+            .expect("the new group's button")
+            .rect;
+        assert!(group.x + group.width <= 900.0 - 138.0, "{group:?}");
+        // Whoever may not make a group is not offered one.
+        let (_, plain) = frame(
+            header(FriendsTab::Online, 0, false, 0.0, &Look::DARK),
+            Size::new(900.0, 52.0),
+        );
+        assert!(!controls(&plain).contains(&crate::group::ids::NEW.to_owned()));
+    }
+
+    #[test]
+    fn under_the_pointer_a_row_shows_the_handle_and_drops_its_hairline() {
+        use limn::{Point, UiEvent};
+        let size = Size::new(700.0, 62.0);
+        let shown = |laid: &limn::Frame, wanted: &str| {
+            laid.commands.iter().any(|command| {
+                matches!(command, limn::DrawCommand::Text { text, color, .. } if text == wanted && color.a > 0)
+            })
+        };
+        let hairline = |laid: &limn::Frame| {
+            laid.commands.iter().any(|command| {
+                matches!(command, limn::DrawCommand::FillRect { rect, color, .. } if rect.height == 1.0 && color.a > 0)
+            })
+        };
+        let (mut tree, laid) = frame(
+            row(&person(Vec::new(), Vec::new(), false), &Look::DARK),
+            size,
+        );
+        assert!(!shown(&laid, "ada") && hairline(&laid));
+        assert!(controls(&laid).contains(&ids::person(10, "open")));
+        tree.handle_event(UiEvent::PointerMove(Point::new(200.0, 30.0)));
+        let hovered = tree.layout(size);
+        assert!(shown(&hovered, "ada"), "the handle shows under the pointer");
+        assert!(!hairline(&hovered), "the hairline goes");
     }
 
     #[test]

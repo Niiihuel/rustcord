@@ -321,6 +321,7 @@ pub(super) const ENTRIES: super::Entries = &[
         "If you make it private, only the roles and members you choose will be able to see it. Channels synced with it take the same permissions.",
     ),
     ("Canal privado", "Private channel"),
+    ("Buscar o iniciar una conversación", "Find or start a conversation"),
     (
         "Si lo haces privado, solo los roles y miembros que elijas van a poder verlo.",
         "If you make it private, only the roles and members you choose will be able to see it.",

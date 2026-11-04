@@ -1,7 +1,10 @@
 //! The column of channels: a server's categories and channels, the people
 //! in its voice channels, or the list of direct conversations.
 
-use limn::{ButtonVariant, Color, Component, ControlSize, Element, FontFamily, Icon, IconButton};
+use limn::{
+    ButtonSizing, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element,
+    FontFamily, Icon, IconButton,
+};
 use rustcord_i18n::{t, tr};
 
 use crate::{centered, gap, icon, line, strong_line, with_status, Look};
@@ -96,21 +99,48 @@ pub struct DirectRow {
     pub group: bool,
     pub selected: bool,
     pub unread: bool,
+    /// The × under the pointer that closes it (a group's leaves it), while
+    /// the account may: its ID and what it does.
+    pub close: Option<(String, String)>,
 }
 
-/// The bar at the top of the column with a title, such as the direct
-/// conversations'.
-pub fn header(title: &str, look: &Look) -> Element {
+/// The bar at the top of the direct conversations: Discord's «Buscar o
+/// iniciar una conversación», a 32 high button 10 from the column's sides,
+/// which opens the quick switcher.
+pub fn direct_header(look: &Look) -> Element {
+    let said = t("Buscar o iniciar una conversación");
+    let button = Element::clickable(
+        "switcher:open",
+        crate::centered(strong_line(said, 14.0, look.text).shrink_to_fit()),
+    )
+    .size(None, Some(32.0))
+    .radius(8.0)
+    .background(Color::rgba(151, 151, 159, 31))
+    .border(Color::rgba(151, 151, 159, 41), 1.0)
+    .hover_background(Color::rgba(151, 151, 159, 51))
+    .accessibility_label(said);
     Element::panel(Element::row(vec![
-        gap(INSET + 12.0, 0.0),
-        strong_line(title, 16.0, look.text).flex(1.0).centered_y(),
-        icon(Icon::ChevronDown, look.text)
-            .size(Some(12.0), Some(12.0))
-            .centered_y(),
-        gap(INSET + 12.0, 0.0),
+        gap(10.0, 0.0),
+        button.flex(1.0).centered_y(),
+        gap(10.0, 0.0),
     ]))
     .size(None, Some(HEADER))
     .background(look.sidebar)
+}
+
+/// The hairline under the rows over the direct conversations (Amigos), 12
+/// below them with the rows' gap.
+pub fn section_divider(look: &Look) -> Element {
+    Element::column(vec![
+        gap(0.0, 12.0 - ROW_GAP),
+        Element::row(vec![
+            gap(INSET, 0.0),
+            Element::panel(Element::spacer())
+                .size(None, Some(1.0))
+                .background(look.border)
+                .flex(1.0),
+        ]),
+    ])
 }
 
 /// The bar at the top of the column with `content` at its left, such as
@@ -535,34 +565,58 @@ pub fn direct(row: DirectRow, look: &Look) -> Element {
         look.faint,
         look,
     ));
-    // As a person of the member list.
-    let body = Element::clickable(
-        row.id.clone(),
-        Element::row(vec![
-            gap(8.0, 0.0),
-            face.centered_y(),
-            gap(12.0, 0.0),
-            Element::column(copy).gap(1.0).flex(1.0).centered_y(),
-            gap(8.0, 0.0),
-        ]),
-    )
-    .size(None, Some(43.0))
-    .radius(6.0)
-    .background(if row.selected {
-        look.selected
-    } else {
-        Color::rgba(0, 0, 0, 0)
-    })
-    .hover_background(if row.selected {
-        look.selected
-    } else {
-        look.hover
-    })
-    .accessible(
-        limn::Access::new(limn::Role::ListItem)
-            .name(row.title.clone())
-            .selected(row.selected),
-    );
+    let mut parts = vec![
+        gap(10.0, 0.0),
+        face.centered_y(),
+        gap(12.0, 0.0),
+        Element::column(copy).gap(1.0).flex(1.0).centered_y(),
+    ];
+    // Discord's ×: 16 px at 70 %, whole under its own pointer.
+    if let Some((id, said)) = &row.close {
+        let palette = ComponentPalette {
+            hover: Color::TRANSPARENT,
+            ..look.sidebar_palette()
+        };
+        parts.push(gap(4.0, 0.0));
+        parts.push(
+            IconButton::new(id.clone(), Icon::Close, palette)
+                .variant(ButtonVariant::Ghost)
+                .sizing(ButtonSizing {
+                    height: 18.0,
+                    font_size: 12.0,
+                    icon_size: 16.0,
+                    horizontal_padding: 1.0,
+                    inner_spacing: 0.0,
+                })
+                .accessibility_label(said.clone())
+                .ink(Look::alpha(look.text, 179))
+                .hover_ink(look.text)
+                .render()
+                .reveal_on_hover(format!("{}:close", row.id))
+                .centered_y(),
+        );
+    }
+    parts.push(gap(8.0, 0.0));
+    let body = Element::clickable(row.id.clone(), Element::row(parts))
+        .size(None, Some(48.0))
+        .radius(8.0)
+        .background(if row.selected {
+            look.selected
+        } else {
+            Color::rgba(0, 0, 0, 0)
+        })
+        .hover_background(if row.selected {
+            look.selected
+        } else {
+            look.hover
+        })
+        .hover_foreground(look.text)
+        .hover_region()
+        .accessible(
+            limn::Access::new(limn::Role::ListItem)
+                .name(row.title.clone())
+                .selected(row.selected),
+        );
     unread_edge(body, row.unread && !row.selected, look)
 }
 
@@ -659,6 +713,7 @@ mod tests {
             group: false,
             selected: false,
             unread: false,
+            close: None,
         };
         let (_, frame) = frame(
             direct(shown, &Look::DARK).size(Some(WIDTH), None),
@@ -669,6 +724,37 @@ mod tests {
             command,
             limn::DrawCommand::RasterImage { rect, .. } if rect.width == 14.0
         )));
+    }
+
+    #[test]
+    fn the_direct_column_opens_the_switcher_and_a_rows_close_waits_for_the_pointer() {
+        use limn::{Point, UiEvent};
+        let (_, laid) = frame(direct_header(&Look::ONYX), Size::new(WIDTH, HEADER));
+        assert!(controls(&laid).contains(&"switcher:open".to_owned()));
+        let row = DirectRow {
+            id: "channel:5".into(),
+            image: None,
+            title: "Ada".into(),
+            subtitle: None,
+            subtitle_emoji: None,
+            accent: Color::rgb(1, 2, 3),
+            status: None,
+            group: false,
+            selected: false,
+            unread: false,
+            close: Some(("group:5:close".into(), "Cerrar conversación".into())),
+        };
+        let size = Size::new(WIDTH, 60.0);
+        let close_painted = |laid: &limn::Frame| {
+            laid.commands.iter().any(|command| {
+                matches!(command, limn::DrawCommand::Icon { icon, tint, .. } if *icon == Icon::Close && tint.a > 0)
+            })
+        };
+        let (mut tree, laid) = frame(direct(row, &Look::ONYX).size(Some(WIDTH), None), size);
+        assert!(controls(&laid).contains(&"group:5:close".to_owned()));
+        assert!(!close_painted(&laid));
+        tree.handle_event(UiEvent::PointerMove(Point::new(60.0, 24.0)));
+        assert!(close_painted(&tree.layout(size)));
     }
 
     #[test]

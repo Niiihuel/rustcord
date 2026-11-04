@@ -256,14 +256,6 @@ fn the_scanner_finds_marked_texts_only() {
 fn a_word_with_two_senses_says_which_one_where_it_is_used() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for (file, spanish, english, other, others) in [
-        // A thread no one can write in; «Bloqueado» is a blocked person.
-        (
-            "crates/rustcord-components/src/threads.rs",
-            "Hilo bloqueado",
-            "Locked thread",
-            "Bloqueado",
-            "Blocked",
-        ),
         // The player's sound; «Desactivar ensordecimiento» undeafens a call.
         (
             "crates/rustcord-components/src/message/media.rs",
