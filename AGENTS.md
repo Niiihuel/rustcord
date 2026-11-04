@@ -51,6 +51,12 @@ en [limn](https://github.com/Niiihuel/limn).
   el logo de Discord en blanco como marca de la interfaz
   (`assets/rustcord-mark.svg`: botón de inicio, carga, acceso) y los iconos
   de la interfaz de Discord (`assets/glyphs`) (2026-11-01).
+  La paleta de Discord (su blurple como acento por defecto y los colores del
+  tema «Midnight») y las medidas y movimientos de su interfaz, tomados del
+  cliente oficial en una sesión aislada y anotados en
+  `docs/discord-reference.md`, para copiar su aspecto lo más fiel posible
+  (2026-11-04); las animaciones se reimplementan, sus archivos Lottie no se
+  copian.
   No abarca código, otros recursos, perfiles,
   cachés, credenciales, datos de sesión ni contenidos de servidores o
   cuentas ajenas.

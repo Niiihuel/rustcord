@@ -1,6 +1,6 @@
-//! Rustcord's look: its own colors, in a black (the default), a dark and a light variant, and the
-//! palettes limn's components take. The accent is an ember amber; nothing is
-//! borrowed from another product's brand.
+//! Rustcord's look: its colors, in a black (the default), a dark and a light variant, and the
+//! palettes limn's components take. The accent is Discord's brand blurple, as
+//! the owner authorized on 2026-11-04 (see `docs/discord-reference.md`).
 
 use limn::{Color, ComponentPalette, ContextMenuMetrics, ScrollbarAppearance};
 use rustcord_i18n::{es, t, tr};
@@ -89,8 +89,8 @@ impl Look {
         muted: Color::rgb(154, 161, 178),
         dim: Color::rgb(154, 161, 178),
         faint: Color::rgb(102, 109, 125),
-        accent: Color::rgb(224, 164, 60),
-        on_accent: Color::rgb(26, 19, 0),
+        accent: Color::rgb(88, 101, 242),
+        on_accent: Color::rgb(255, 255, 255),
         mention: Color::rgba(224, 164, 60, 24),
         danger: Color::rgb(224, 85, 97),
         danger_fill: Color::rgb(224, 85, 97),
@@ -117,8 +117,8 @@ impl Look {
         muted: Color::rgb(90, 97, 112),
         dim: Color::rgb(90, 97, 112),
         faint: Color::rgb(140, 146, 160),
-        accent: Color::rgb(176, 112, 10),
-        on_accent: Color::rgb(255, 250, 240),
+        accent: Color::rgb(88, 101, 242),
+        on_accent: Color::rgb(255, 255, 255),
         mention: Color::rgba(224, 164, 60, 40),
         danger: Color::rgb(196, 54, 70),
         danger_fill: Color::rgb(196, 54, 70),
@@ -150,14 +150,14 @@ impl Look {
         muted: Color::rgb(150, 151, 158),
         dim: Color::rgb(122, 123, 131),
         faint: Color::rgb(115, 116, 125),
-        accent: Color::rgb(224, 164, 60),
-        on_accent: Color::rgb(26, 19, 0),
+        accent: Color::rgb(88, 101, 242),
+        on_accent: Color::rgb(255, 255, 255),
         mention: Color::rgba(224, 164, 60, 22),
         // Measured fills are #d22d39, but as text on black or a menu that
         // falls below 4.5:1; this one reads at about 6:1.
         danger: Color::rgb(235, 95, 94),
         danger_fill: Color::rgb(210, 45, 57),
-        online: Color::rgb(63, 185, 122),
+        online: Color::rgb(61, 158, 96),
         idle: Color::rgb(217, 182, 76),
         busy: Color::rgb(235, 95, 94),
         offline: Color::rgb(107, 114, 128),
