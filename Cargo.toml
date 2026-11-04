@@ -109,3 +109,10 @@ debug = false
 
 [profile.release]
 lto = "thin"
+
+# shortcut: limn's hover motion and growing reveals (feat/hover-motion) from a
+# local worktree until they are merged into an integration branch; switch back
+# to the git branch above before merging.
+[patch."https://github.com/Niiihuel/limn"]
+limn = { path = "../limn-hover-motion/crates/limn" }
+limn-egui = { path = "../limn-hover-motion/crates/limn-egui" }

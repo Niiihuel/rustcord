@@ -120,3 +120,69 @@ Measured motion (20 px icons):
   and full screen on the right.
 - A call in a DM puts that DM on the rail under home, with its speaker or
   camera badge.
+
+## Tooltips
+
+- Fill `#0a0a0c`, radius 8, a 1 px inset ring `#9595a2`-ish at 20 %, shadow
+  `0 12 24` black at 24 %; padding 8×12. Text 14/18 medium `#dcdcdf`
+  (a server's: 16/20 semibold, with its rows 12/16 under it). One line is
+  34 high.
+- Caret: a rounded triangle 16 wide, 10 deep (10×16 sideways), in the fill.
+- Entry: after ~70 ms of hover it scales 0.95 → 1 with a slight spring
+  (overshoot 1.006) while fading 0 → 1 in ~70 ms.
+
+## Context menus
+
+- Fill `#121214`, radius 8, border 1 px at 20 %, shadow `0 12 24` black
+  24 %. Padding 8 (top, bottom, left; the scrollbar gutter on the right).
+- Rows 34 high (36 with a submenu caret or check), padding 8, text 14/18
+  medium `#dcdcdf`; a row with a hint below is 52 (12/16 hint
+  `#96979e`). Under the pointer: fill `#94949c` at 12 %, radius 4. Right
+  icons 20 px `#96979e`; check boxes 20, radius 4, border at 64 %.
+- Separator: 1 px with 8 above and below (17 in all).
+
+## Selects (dropdowns)
+
+- Closed: 40 high, radius 8, fill black at 12 %, border 1 px at 24 %
+  (`border-color 0.1s`), padding 8 8 8 12, text 16/20 medium, chevron 18.
+- Open: the list 8 below, same width, fill `#121214`, radius 8, border
+  1 px at 20 %; options 44 high (padding 12, text 16/20 medium,
+  `#96979e`; the chosen one `#dcdcdf` on `#96969f` at 24 % with a blurple
+  check on the right). Options are square; the list's radius clips them.
+
+## Profile popout
+
+- 300 wide, fill `#0a0a0c`, radius 8, a 1 px ring white at 8 % and shadow
+  `0 12 24` black 24 %; 4 of padding at the bottom.
+- Banner 105 high (its color or picture), radius `8 8 0 0`. Avatar 80
+  at (16, 61), its status at its corner, a ring of the popout's fill.
+- Own: a «¿Qué has estado escuchando?» bubble right of the avatar (radius
+  16, fill `#17181b`, border 1 px at 16 %, text 14/18 `#81828a`). Others:
+  round 32 buttons over the banner's top right (black at 56 %, border
+  white 8 %), 8 apart.
+- Display name 20/24 semibold `#d4d5d8`; username 14/18 `#dcdcdf`, a 4 px
+  dot, pronouns; badges in a 22 high box (radius 8, padding 1×3).
+- Bio 14/18; «Ver biografía completa» 12/16.
+- Cards: fill `#17181b`, radius 8, padding 8. Own actions are cards of
+  32 high rows (radius 8, 16 px icons, text 14/16 medium `#96979e`), with
+  1 px separators between rows (Editar perfil · estado › · Insignias ·
+  Orbs ›; Cambiar cuentas › · Copiar ID del usuario).
+- Others: mutual friends/servers row (16 px faces, text 12/16 `#96979e`);
+  role tags 24 high, radius 8, border 1 px at 20 %, a 12 px color dot,
+  text 12/16; a 46 high message field at the bottom (radius 8, fill black
+  at 12 %, border at 20 %, placeholder 14 `#81828a`).
+- Buttons: 32 high, radius 8, fill `#94949c` at 12 %, border at 16 %,
+  text 14/18 medium; primary «Enviar mensaje» `#5865f2` with a white 8 %
+  border.
+
+## Full profile
+
+- A modal on a black 72 % scrim, close button 32 (radius 8) top right.
+- Two columns: the left card 400 wide, fill `#0a0a0c`, radius `16 16 0 0`,
+  banner 140, avatar 120 at (32, 80), name 24/32 semibold, then the
+  buttons (primary «Enviar mensaje» and 32 square icons), then sections
+  with 12/16 medium `#96979e` titles: «Miembro desde», «Amigos desde el»,
+  «Roles», «Conexiones» (24 icons on white, radius 8), «Nota».
+- The right column: tabs («Actividad», «N amigos en común», «N servidores
+  en común») 16/20 semibold with a 2 px underline on the chosen one, and
+  activity cards (`#17181b`, radius 8).

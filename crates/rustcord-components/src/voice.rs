@@ -3666,6 +3666,12 @@ fn bar(view: &Stage, look: &Look) -> Element {
         true,
         look,
     );
+    // Muted, it rocks under the pointer as the account panel's does.
+    let microphone = if view.muted {
+        microphone.hover_motion("vz:mute:motion", crate::motion::muted_microphone())
+    } else {
+        microphone
+    };
     let microphone = options(
         microphone,
         ids::INPUT_OPTIONS,
