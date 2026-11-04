@@ -52,6 +52,14 @@ re-measure when Discord changes.
   appears from nothing (no unread), it also slides in from −4 to 0 in x
   while fading 0 → 1, over the same 0.2 s.
 
+## Channel rows' tools
+
+From the owner's capture of the desktop client (2026-11-04): under the
+pointer, or while it is the one open, a voice channel's row shows at its
+end «Abrir chat» (a bubble), «Crear invitación» (a person with a plus) and
+«Editar canal» (a gear), each only for who may; the call's clock gives
+them its place. A text channel's row has the last two.
+
 ## Rail folders
 
 Measured on the account's two folders (neither has a color of its own); a
@@ -124,8 +132,20 @@ Measured motion (20 px icons):
 - One person: one tile 522×294 in a 1064 wide stage, the invitation card
   (illustration, «Invitar al chat de voz», «Elegir actividad») under it.
   Two tiles: two 520×293 side by side.
-- Tile without video: background the avatar's dominant color, the avatar
-  80×80 round in the middle.
+- Tile without video: the avatar 80×80 round in the middle (40 on a tile
+  under 124 wide), on the first color of a five-color median cut palette
+  (MMCQ, 5 bits a channel) of that avatar (the server's, else the
+  account's) as the CDN serves it at 80 px: clear (alpha < 125) and
+  near-white (all channels > 250) pixels left out; split by pixels until
+  four boxes, then by pixels × volume until five; the first is the box with
+  the most pixels × volume, as its average. No brightness change.
+  `#111214` while it loads. The account's own tile is no different. Read
+  from the web bundle the desktop client cached; checked against a capture
+  of a call (jarns `#b47a49` vs Rustcord's `#b5764e`, juansi `#362d2e` vs
+  `#342c2f`, Nihuel `#e2dcca` vs `#e4dace`).
+- The tag's voice mark: one only, the first of deafened by the server,
+  muted by the server, deafened, muted for you, muted; 16 px in the tag's
+  white (no red). Idle, the name goes and the mark stays in its tag.
 - Tile with a 4:3 camera: letterboxed in the 16:9 tile on `#1e1f22`; the
   own camera mirrored.
 - Name tag: bottom-left, inset 12; 32 high, padding 6×8, radius 8, fill
@@ -140,6 +160,10 @@ Measured motion (20 px icons):
   195×112 under it, 8 apart, with a round 60×32 toggle (radius 48, fill
   `#2c2d32`, chevron and people glyph) over its top edge. The focused
   stream stays in the strip as a screen glyph on `#1e1f22`.
+- Full screen (from the owner's capture, 2026-11-04): the whole call view
+  fills the screen, not the stream alone: the header, the focused stream,
+  the strip's toggle and the bar, which hide at rest as ever. The bar's
+  right end is the sound and «Salir de pantalla completa» (no pop out).
 - Header (channel glyph and name; while focused «· avatar Pantalla de X»;
   «720p 30 FPS | EN VIVO» pill on the right) and controls hide when idle:
   `opacity 0`, controls `translateY(8px)`, `0.2s ease-in-out`.
@@ -163,6 +187,35 @@ Measured motion (20 px icons):
   16 %, ink `#da3e44`); camera or share on green glow (`--opacity-green-12`,
   hover 24 %, ink `#73c48b`). Transitions 50 ms ease-in, 150 ms ease-out on
   hover.
+
+## Threads popout (text channel)
+
+Read from the web bundle the desktop client cached (2026-11-04).
+
+- Network: the open threads come from the Gateway (op 37 with
+  `threads: true` when a guild is shown; `GUILD_CREATE.threads`,
+  `THREAD_LIST_SYNC`); the older ones from `GET
+  /channels/{id}/threads/search?archived=true&sort_by=last_message_time&sort_order=desc&limit=25&offset=N`.
+  `/guilds/{id}/threads/active` is not used: it is the bots' list, and
+  Rustcord's account got «no permission» from it.
+- The header button shows for text and announcement channels; «Crear»
+  only for who may start a public or private thread; loading older ones
+  needs READ_MESSAGE_HISTORY.
+- Popout under the button, its end on the button's: 35vw from 480 to 600
+  wide, at least 400 high, at most 80vh, radius 8. Header 48 high over a
+  1 px line: threads glyph, 8, «Hilos» 16 semibold, a 1×24 divider, the
+  search «Buscar por nombre del hilo» (Rustcord has none yet), «Crear»
+  small at the end.
+- List 16 in from the sides: «Hilos a los que te has unido: {n}», «{n}
+  hilos activos más», «hilos antiguos», headings 24 high in small
+  capitals. Rows 72 high, 8 apart: `--background-surface-higher`, 1 px
+  subtle border, radius 8, padding 15; under the pointer
+  `--background-surface-highest`. The name 16 semibold over a 16 px avatar
+  and, for an open one, «author: last message • hace 3 h»; for an older
+  one «Iniciado por {autor} • Última actividad: {tiempo}» (Rustcord shows
+  this second line for all). Times «hace N min», «hace N h», «hace N d».
+- Nothing: «No hay hilos.», «Mantén el foco en una conversación con un
+  hilo, un canal de texto temporal.», «Crear hilo».
 
 ## Private call (DM and group)
 
@@ -243,6 +296,25 @@ Measured motion (20 px icons):
 - The right column: tabs («Actividad», «N amigos en común», «N servidores
   en común») 16/20 semibold with a 2 px underline on the chosen one, and
   activity cards (`#17181b`, radius 8).
+
+## Recent activity (full profile)
+
+Read from the web bundle the desktop client cached (2026-11-04).
+
+- `GET /content-inventory/users/{id}/outbox`, only when the full profile
+  opens, at most once a minute per person; only `entries` is read.
+- An entry: `id` (its time), `content_type` (1 played game, 3 top game,
+  5 listened session, 2 watched media, 8 launched activity; others not
+  shown), `traits` (3 `is_live`: live ones are left out), `extra`,
+  `expires_at`. Music: `extra.entries[0].media` (`title`, `artists[0].name`,
+  `image_url`, `external_id`, the track).
+- «Actividad reciente» (12, subtle) after the current activity; cards 8
+  apart on the raised ground, padding 12, radius 8: a 60 px picture (radius
+  4), the title 14 semibold, the subtitle 12, then the kind's 12 px glyph
+  and «hace 2 semanas» (seconds, minutes, hours under 12, days under 9,
+  weeks under 4, then «Hace N meses»; English «2w ago»).
+- Rustcord has no game icons there yet (they need
+  `/applications/public`), nor the card's «⋯» and links.
 
 ## DM profile panel
 
@@ -556,7 +628,14 @@ and its pictures' colors; nothing copied.
 - Tray icon by state, in this precedence: deafened (self or server),
   muted (self, server or suppressed), speaking (a solid `#43b581` dot),
   connected (that green at 40 % in a `#2e7b58` ring); outside a call,
-  unread (the mark with a red dot), else the mark.
+  unread (the mark with a red dot), else the mark. In a call the state
+  replaces the whole icon, no mark under it: the dots fill the icon's box,
+  and muted and deafened are the microphone and the headphones in white
+  crossed by a red (`#f04747`) slash. Rustcord's tray does the same, on
+  Windows and Linux.
 - The taskbar button's own overlay is the mention badge (1–9, «9+», or a
-  dot for unread), not the voice state. Rustcord puts the tray's voice
-  states on the overlay instead, in a call only.
+  dot for unread), not the voice state: the window's icon never changes
+  in a call. Rustcord's has no overlay.
+- The application icon (`discord.png`, 256 px) fills its whole box, as
+  Windows' and the desktops' icons do; Rustcord's tile is cut to its edges
+  at 32 px and up (16 and 24 keep their pixel-fitted drawings).

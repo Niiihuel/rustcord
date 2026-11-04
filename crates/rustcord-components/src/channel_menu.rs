@@ -13,7 +13,7 @@ use limn::{
 
 use rustcord_i18n::{t, tr};
 
-use crate::{avatar, gap, icon, line, strong_line, text, Look};
+use crate::{avatar_with_image, gap, icon, line, strong_line, text, Look};
 
 /// The actions these pieces report. Those that name a channel or a message
 /// are built by whoever answers them.
@@ -319,6 +319,8 @@ pub struct PinCard {
     pub ink: Color,
     /// Behind the author's initial.
     pub accent: Color,
+    /// The author's picture, once it arrived.
+    pub image: Option<limn::RasterImage>,
     /// When it was written, as a person reads it.
     pub when: String,
     /// Markdown source.
@@ -452,7 +454,7 @@ fn pin_card(card: &PinCard, can_unpin: bool, look: &Look) -> Element {
         .element;
     crate::text::with_pictures(&mut said, &card.pictures);
     let body = Element::row(vec![
-        avatar(&card.author, card.accent, 40.0),
+        avatar_with_image(&card.author, card.accent, 40.0, card.image.clone()),
         Element::column(vec![
             Element::row(vec![
                 strong_line(&card.author, 15.0, card.ink).shrink_to_fit(),
@@ -828,6 +830,7 @@ mod tests {
             author: "Ada".into(),
             ink: Color::rgb(200, 200, 200),
             accent: Color::rgb(1, 2, 3),
+            image: None,
             when: "Hoy a las 10:00".into(),
             content: "**hola** <:wave:1>".into(),
             // Its server emoji, as a picture.

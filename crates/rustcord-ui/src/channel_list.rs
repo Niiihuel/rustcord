@@ -349,6 +349,15 @@ pub(crate) fn rows(
                     read_only: !voice && !forum && !channel.permissions.contains(Permissions::SEND),
                     muted,
                     settings: edit.then(|| format!("cs:open:{}", channel.id)),
+                    chat: (channel.kind == ChannelKind::Voice
+                        && store
+                            .abilities(channel.id)
+                            .is_some_and(|abilities| abilities.read_history.allowed()))
+                    .then(|| format!("{}{}", crate::voice::OPEN_CHAT, channel.id)),
+                    invite: channel
+                        .permissions
+                        .contains(Permissions::CREATE_INVITE)
+                        .then(|| format!("cl:invite:{}", channel.id)),
                     movable: reorder && !favorite,
                     private: Store::private(channel),
                     voice_since: crate::voice::voice_since(store, channel, now),
@@ -919,6 +928,10 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         "favorite" => {
             ui.channel_list.menu = None;
             crate::desktop::toggle_favorite(ui, target)
+        }
+        "invite" => {
+            let server = store.channel(target)?.server?;
+            crate::server_menu::invite(ui, store, server, target, now)
         }
         "read" => mark_read(store, target),
         "mute" => {
@@ -1786,6 +1799,7 @@ fn pin_card(
             .and_then(|role| role.color)
             .map_or(look.text, |color| look.ink(color)),
         accent: author.map_or(look.faint, |author| look.ink(author.accent)),
+        image: ui.picture(store.avatar_in(server, message.author)),
         when: rustcord_components::time::stamp(message.timestamp, now),
         content: message.content.clone(),
         pictures: crate::identity::reference_pictures(ui, &message.text_references),

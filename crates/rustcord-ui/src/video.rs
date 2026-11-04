@@ -873,8 +873,10 @@ fn stream(ui: &Ui, store: &Store, watching: &rustcord_state::Watching, now: Inst
     }
 }
 
-/// The stream watched shown alone, if it still is: it fills the window,
-/// with the way out of full screen in place of the way to stop it.
+/// The stream watched in full screen, if it still is: as Discord's, the
+/// call's own view fills the window, the stream in its middle, with the
+/// header, the strip of the others and the bar, whose right end leaves full
+/// screen. Alone where the call's stage cannot be drawn.
 pub(crate) fn focused_view(
     ui: &Ui,
     store: &Store,
@@ -885,15 +887,27 @@ pub(crate) fn focused_view(
         .watching()
         .iter()
         .find(|watching| Some(watching.owner) == ui.video.focus)?;
-    let shown = Preview {
-        focused: false,
-        ..stream(ui, store, watching, now)
-    };
-    Some(rustcord_components::voice::preview(
-        &shown,
+    let look = ui.look();
+    let private = crate::private_calls::callable(store, watching.channel)
+        .then(|| crate::private_calls::private_stage(ui, store, watching.channel, &look))
+        .flatten();
+    let stage = crate::voice::stage_of(
+        ui,
+        store,
+        watching.channel,
         size,
-        &ui.look(),
-    ))
+        Ok(false),
+        private,
+        &look,
+        now,
+    );
+    Some(stage.unwrap_or_else(|| {
+        let shown = Preview {
+            focused: false,
+            ..stream(ui, store, watching, now)
+        };
+        rustcord_components::voice::preview(&shown, size, &look)
+    }))
 }
 
 /// How long the pointer rests on the call's stage before its header, the
@@ -1126,9 +1140,12 @@ pub fn fullscreen(ui: &Ui, store: &Store) -> bool {
     })
 }
 
-/// «Pantalla completa»: `owner`'s stream alone, the window full screen.
+/// «Pantalla completa»: the window full screen, `owner`'s stream focused on
+/// the call's view, which it keeps on the way out, as Discord's.
 pub(crate) fn focus(ui: &mut Ui, owner: UserId) -> Vec<Intent> {
     ui.video.focus = Some(owner);
+    ui.video.spotlight = Some(owner);
+    ui.video.own_focus = false;
     Vec::new()
 }
 

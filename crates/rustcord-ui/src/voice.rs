@@ -203,6 +203,9 @@ pub(crate) fn join(
 }
 
 /// A voice channel's row opens its preview. The current call opens its stage.
+/// The column's chat bubble of a voice channel, followed by its ID.
+pub(crate) const OPEN_CHAT: &str = "vz:open-chat:";
+
 fn channel_clicked(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<Intent> {
     let intents = if ui.voice.chat.is_some() && shown_stage(ui) != Some(channel) {
         keeping_stage(ui, |ui| hide_chat(ui, store))
@@ -428,6 +431,14 @@ pub(crate) fn update(
     }
     if let Some(channel) = number(id, "voice:") {
         return Some(channel_clicked(ui, store, ChannelId(channel)));
+    }
+    // A voice channel's chat bubble in the column: its stage, and its chat.
+    if let Some(channel) = number(id, OPEN_CHAT) {
+        let mut intents = channel_clicked(ui, store, ChannelId(channel));
+        if ui.voice.chat.is_none() {
+            intents.extend(toggle_chat(ui, store));
+        }
+        return Some(intents);
     }
     if let Some(user) = number(id, parts::ids::MENTION) {
         return Some(mention(ui, store, UserId(user)));

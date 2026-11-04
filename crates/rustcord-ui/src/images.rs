@@ -135,7 +135,12 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
                     add(store.user(*friend).and_then(|friend| friend.picture()));
                 }
             }
-            rustcord_components::profile::FullTab::Activity => {}
+            // The pictures of what they did lately.
+            rustcord_components::profile::FullTab::Activity => {
+                for entry in store.recent_activity(id).unwrap_or_default() {
+                    add(entry.image.as_ref());
+                }
+            }
         }
     }
     if let Some(author) = ui.profiles.author.and_then(|(message, _)| {
@@ -208,6 +213,15 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
     for emoji in pinned_emoji(ui, store) {
         add(Some(emoji));
     }
+    // The faces of the pinned messages' authors, while the popout is open.
+    if let Some(channel) = ui.channel_list.pins {
+        let server = store.channel(channel).and_then(|found| found.server);
+        for message in store.pins(channel).unwrap_or_default() {
+            add(store.avatar_in(server, message.author));
+        }
+    }
+    // The faces and pictures of the friends page's «Activo ahora».
+    crate::active_now::wanted(ui, store, &mut add);
     // The provider's GIFs and their categories, while the tab shows them.
     for picture in crate::gifs::pictures(ui, store) {
         add(Some(picture));
@@ -389,6 +403,18 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             "server" => add(store
                 .server(ServerId(id))
                 .and_then(|server| server.icon.as_ref())),
+            // A closed folder's face shows its first four servers' pictures.
+            "folder" => {
+                for entry in store.rail() {
+                    if let rustcord_state::RailEntry::Folder { folder, servers } = entry {
+                        if folder.id.unwrap_or_default() == id {
+                            for server in servers.iter().take(4) {
+                                add(server.icon.as_ref());
+                            }
+                        }
+                    }
+                }
+            }
             "channel" => {
                 if let Some(channel) = store
                     .channel(ChannelId(id))

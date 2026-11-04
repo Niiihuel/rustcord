@@ -114,6 +114,26 @@ fn notifications_are_asked_of_the_account_and_shown_once_it_answers() {
 }
 
 #[test]
+fn a_closed_folder_asks_for_its_servers_pictures() {
+    let mut host = Host::new();
+    let mut snapshot = host.provider.snapshot();
+    let picture = |id: ServerId| rustcord_model::RemoteImage {
+        url: format!("https://cdn.example.test/icons/{}.png", id.0),
+        kind: Default::default(),
+    };
+    for server in &mut snapshot.servers {
+        server.icon = Some(picture(server.id));
+    }
+    host.event(Event::Ready(Box::new(snapshot)));
+    host.ac_load();
+    let cafe = host.ac_server("Café Nocturno");
+    let controls = host.ac_controls();
+    assert!(!controls.contains(&format!("server:{cafe}")), "closed");
+    let wanted = crate::images::wanted_images(&host.ui, &host.store, &host.tree);
+    assert!(wanted.contains(&picture(cafe)), "its face shows it");
+}
+
+#[test]
 fn folders_show_on_the_rail_open_and_are_changed_from_their_menus() {
     let mut host = Host::new();
     host.ac_load();

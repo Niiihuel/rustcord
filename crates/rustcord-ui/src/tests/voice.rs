@@ -377,10 +377,13 @@ fn the_stage_lists_who_is_in_the_call_and_who_speaks_or_is_muted() {
         suppressed: false,
         speak_request: None,
     }));
-    for place in [ids::tile(other.0), ids::row(other.0)] {
-        assert!(host.vz_shows(&format!("{place}:muted")));
-        assert!(host.vz_shows(&format!("{place}:deafened")));
-    }
+    let row = ids::row(other.0);
+    assert!(host.vz_shows(&format!("{row}:muted")));
+    assert!(host.vz_shows(&format!("{row}:deafened")));
+    // A tile shows one mark, as Discord's: deafened outranks muted.
+    let tile = ids::tile(other.0);
+    assert!(host.vz_shows(&format!("{tile}:deafened")));
+    assert!(!host.vz_shows(&format!("{tile}:muted")));
     assert!(host
         .vz_hint(&format!("{}:muted", ids::row(other.0)))
         .contains(&"Silenciado".to_owned()));
@@ -642,6 +645,40 @@ fn the_call_bar_invites_to_its_channel_when_the_stage_is_wide_enough() {
 }
 
 #[test]
+fn a_voice_channel_row_opens_its_chat_and_invites_as_discord_s() {
+    let mut host = Host::new();
+    let room = host.channel_named("Sala común");
+    host.frame();
+    // Its tools wait for the pointer.
+    host.ui.voice.chat = None;
+    let sent = host.sent.len();
+    let intents = update(
+        &mut host.ui,
+        &mut host.store,
+        &UiAction::Clicked {
+            id: format!("{}{room}", crate::voice::OPEN_CHAT),
+        },
+        host.now,
+    );
+    host.run(intents);
+    assert_eq!(host.ui.voice.preview, Some(room), "its stage");
+    assert!(host.ui.voice.chat.is_some(), "and its chat beside it");
+    assert_eq!(host.ui.channel(), Some(room));
+    let intents = update(
+        &mut host.ui,
+        &mut host.store,
+        &UiAction::Clicked {
+            id: format!("cl:invite:{room}"),
+        },
+        host.now,
+    );
+    host.run(intents);
+    assert!(host.sent[sent..].iter().any(
+        |command| matches!(command, Command::CreateInvite { channel, .. } if *channel == room)
+    ));
+}
+
+#[test]
 fn a_narrow_window_keeps_the_stage_alone_and_says_why() {
     let mut host = Host::new();
     let room = host.vz_join("Sala común");
@@ -690,6 +727,20 @@ fn a_person_s_volume_and_silence_stay_on_this_device() {
     assert!(host.ui.voice.menu.is_some(), "sliding keeps the menu open");
     host.click(&ids::local_mute(other.0));
     assert_eq!(host.ui.prefs.voice_volume(other.0), (1.41, true));
+    // Nothing of their own outranks the silence on their tile.
+    host.event(Event::VoiceChanged(VoiceState {
+        user: other,
+        channel: room,
+        muted: false,
+        deafened: false,
+        speaking: false,
+        streaming: false,
+        server_muted: false,
+        server_deafened: false,
+        camera: false,
+        suppressed: false,
+        speak_request: None,
+    }));
     assert!(host.vz_shows(&format!("{}:silenced", ids::tile(other.0))));
     assert!(host.vz_shows(&format!("{}:silenced", ids::row(other.0))));
     assert!(host.sent[from..].is_empty(), "nothing goes to the provider");

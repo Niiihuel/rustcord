@@ -667,7 +667,7 @@ fn name_pill(view: &Preview, size: Size) -> Element {
         ),
         None => (view.title.as_str(), Vec::new()),
     };
-    name_tag(said, marks, size).unwrap_or_else(Element::spacer)
+    name_tag(Some(said), marks, size).unwrap_or_else(Element::spacer)
 }
 
 /// A small note over a picture, such as that it is simulated: it says, it
@@ -932,9 +932,8 @@ fn top_left(view: &Preview, big: bool, look: &Look) -> Element {
 
 /// A stream's controls at its tile's bottom right, as the official
 /// client's: «⋯» and, in the grid, its sound under the pointer (kept while
-/// silenced). On the stage the sound, its own window and full screen are on
-/// the bar instead; a stream shown alone in full screen has no bar, so they
-/// stay here.
+/// silenced). Focused or in full screen its sound, its own window and full
+/// screen are on the bar instead.
 fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
     let reveal = |shown: Element, kept: bool, what: &str| {
         if kept || big {
@@ -944,7 +943,7 @@ fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
         }
     };
     let mut buttons = Vec::new();
-    if !big || stream.fullscreen {
+    if !big {
         let (glyph, hint) = if stream.silenced {
             (Icon::VolumeMuted, t("Activar el sonido"))
         } else {
@@ -954,24 +953,6 @@ fn stream_buttons(stream: &StreamTile, big: bool, look: &Look) -> Element {
             over_button(ids::local_mute(stream.sound), glyph, hint, OVER, look),
             stream.silenced,
             "sound",
-        ));
-    }
-    if stream.fullscreen {
-        if !stream.windowed {
-            buttons.push(over_button(
-                ids::window(stream.owner),
-                Icon::Custom(POP_OUT),
-                t("Abrir en otra ventana"),
-                OVER,
-                look,
-            ));
-        }
-        buttons.push(over_button(
-            ids::FULLSCREEN_EXIT,
-            Icon::Collapse,
-            t("Salir de pantalla completa"),
-            OVER,
-            look,
         ));
     }
     // The focused stream's zoom: «Alejar» and the level once zoomed, then
@@ -2118,16 +2099,7 @@ fn row_ring(face: Element, speaking: bool, look: &Look) -> Element {
 fn marks(person: &Participant, prefix: &str, ink: Color, look: &Look) -> Vec<Element> {
     let mut marks = Vec::new();
     let mut mark = |glyph: Icon, suffix: &str, hint: &str, ink: Color| {
-        let id = format!("{prefix}:{suffix}");
-        marks.push(
-            Tooltip::new(
-                icon(glyph, ink).size(Some(16.0), Some(16.0)),
-                id,
-                hint,
-                look.menu_palette(),
-            )
-            .render(),
-        );
+        marks.push(mark(glyph, &format!("{prefix}:{suffix}"), hint, ink, look));
     };
     // The camera first, as the official client's row: then the mute and the sound.
     if person.camera_on {
@@ -2163,6 +2135,45 @@ fn marks(person: &Participant, prefix: &str, ink: Color, look: &Look) -> Vec<Ele
         mark(Icon::VolumeMuted, "silenced", t("Silenciado para ti"), ink);
     }
     marks
+}
+
+/// One mark: `glyph`, 16 px, with its hint.
+fn mark(glyph: Icon, id: &str, hint: &str, ink: Color, look: &Look) -> Element {
+    Tooltip::new(
+        icon(glyph, ink).size(Some(16.0), Some(16.0)),
+        id.to_owned(),
+        hint,
+        look.menu_palette(),
+    )
+    .render()
+}
+
+/// The one mark a tile shows, as Discord's, the first of: deafened by the
+/// server, muted by it, deafened, silenced for the account, muted; white
+/// as the name.
+fn tile_marks(person: &Participant, look: &Look) -> Vec<Element> {
+    let deafened = Icon::Custom(crate::HEADPHONES_OFF);
+    let (glyph, suffix, hint) = match person {
+        Participant {
+            server_deafened: true,
+            ..
+        } => (deafened, "deafened", t("Ensordecido por el servidor")),
+        Participant {
+            server_muted: true, ..
+        } => (
+            Icon::MicrophoneMuted,
+            "muted",
+            t("Silenciado por el servidor"),
+        ),
+        Participant { deafened: true, .. } => (deafened, "deafened", t("Ensordecido")),
+        Participant { silenced: true, .. } => {
+            (Icon::VolumeMuted, "silenced", t("Silenciado para ti"))
+        }
+        Participant { muted: true, .. } => (Icon::MicrophoneMuted, "muted", t("Silenciado")),
+        _ => return Vec::new(),
+    };
+    let id = format!("{}:{suffix}", ids::tile(person.user));
+    vec![mark(glyph, &id, hint, OVER_INK, look)]
 }
 
 /// Someone under the voice channel they are in: their mark (ringed while
@@ -2361,32 +2372,32 @@ fn pill(content: Element) -> Element {
         .shrink_to_fit()
 }
 
-/// A name in a pill at the bottom left of a tile, `marks` before it: 16 px,
-/// or 14 on a tile 220 wide or less. `None` on a tile 124 wide or less, where
-/// it is hidden.
-fn name_tag(name: &str, marks: Vec<Element>, size: Size) -> Option<Element> {
-    if size.width <= 124.0 {
+/// A name in a pill at the bottom left of a tile, `marks` before it, 4
+/// apart: 16 px, or 14 on a tile 220 wide or less. Without a name, the
+/// marks alone. `None` on a tile 124 wide or less, where it is hidden, and
+/// with nothing to show.
+fn name_tag(name: Option<&str>, marks: Vec<Element>, size: Size) -> Option<Element> {
+    if size.width <= 124.0 || (name.is_none() && marks.is_empty()) {
         return None;
     }
     let font = if size.width > 220.0 { 16.0 } else { 14.0 };
+    let mut items: Vec<Element> = marks.into_iter().map(Element::centered_y).collect();
+    items.extend(name.map(|name| line(name, font, OVER_INK).centered_y().shrink_to_fit()));
     // Padding 6 all round; the 2 at each end make the pill 8 across.
     let mut parts = vec![gap(2.0, 0.0)];
-    for mark in marks {
-        parts.push(mark.centered_y());
-        parts.push(gap(4.0, 0.0));
+    for (index, item) in items.into_iter().enumerate() {
+        if index > 0 {
+            parts.push(gap(4.0, 0.0));
+        }
+        parts.push(item);
     }
-    parts.push(line(name, font, OVER_INK).centered_y().shrink_to_fit());
     parts.push(gap(2.0, 0.0));
     Some(pill(Element::row(parts).padding(6.0)))
 }
 
-/// A person's name on their tile, their marks before it (see [`name_tag`]).
+/// A person's name on their tile, their mark before it (see [`name_tag`]).
 pub(crate) fn tile_name(person: &Participant, size: Size, look: &Look) -> Option<Element> {
-    name_tag(
-        &person.name,
-        marks(person, &ids::tile(person.user), OVER_INK, look),
-        size,
-    )
+    name_tag(Some(&person.name), tile_marks(person, look), size)
 }
 
 /// A note over a tile's picture at its top left, such as «Cámara simulada»:
@@ -2529,7 +2540,7 @@ fn watch_tile(
     ])
     .padding(8.0);
     let middle = centered(watch_button(person, size, watch, another, look)).flex(1.0);
-    let mut bottom: Vec<Element> = name_tag(&person.name, Vec::new(), size)
+    let mut bottom: Vec<Element> = name_tag(Some(&person.name), Vec::new(), size)
         .into_iter()
         .map(Element::shrink_to_fit)
         .collect();
@@ -2601,7 +2612,12 @@ fn tile(
             )),
             None,
         ),
-        None => (None, card),
+        // Idle, Discord keeps the mark without the name.
+        None => (
+            idle.then(|| name_tag(None, tile_marks(person, look), size))
+                .flatten(),
+            card,
+        ),
     };
     let mut bottom: Vec<Element> = name.into_iter().map(Element::shrink_to_fit).collect();
     bottom.push(Element::spacer().flex(1.0));
@@ -3866,7 +3882,8 @@ fn bar(view: &Stage, look: &Look) -> Element {
                 (Icon::Volume, t("Silenciar"))
             };
             let mut buttons = vec![tray(ids::local_mute(stream.sound), glyph, hint)];
-            if !stream.windowed {
+            // In full screen Discord's right end is the sound and the way out.
+            if !stream.windowed && !stream.fullscreen {
                 buttons.push(tray(
                     ids::window(stream.owner),
                     Icon::Custom(POP_OUT),
@@ -7348,12 +7365,12 @@ mod tests {
         let mut said = texts(&laid);
         said.sort();
         assert_eq!(said, ["En vivo · simulada", "Persona 2"]);
-        // Full screen: the way back in place of full screen, an icon too.
+        // Full screen, as Discord's: the call's bar holds the way out, so the
+        // stream itself has neither.
         let (_, laid) = frame(preview(&stream(false, true), size, &look), size);
         let shown = controls(&laid);
-        assert!(shown.contains(&ids::FULLSCREEN_EXIT.to_owned()));
-        assert!(!shown.contains(&ids::fullscreen(2)));
-        assert!(!texts(&laid).contains(&"Salir de pantalla completa".to_owned()));
+        assert!(!shown.contains(&ids::FULLSCREEN_EXIT.to_owned()));
+        assert!(!shown.contains(&ids::fullscreen(2)) && !shown.contains(&ids::window(2)));
         // At rest: the picture alone, and no pointer over it.
         let (mut tree, laid) = frame(preview(&stream(true, false), size, &look), size);
         assert_eq!(controls(&laid), [ids::stream_tile(2)]);
@@ -7864,18 +7881,22 @@ mod tests {
         let shown = controls(&grid);
         assert!(!shown.contains(&ids::fullscreen(2)) && !shown.contains(&ids::window(2)));
         assert_eq!(mute(&focused), mute(&grid));
-        // Shown alone in full screen there is no bar: the way out stays over it.
-        let alone = Preview {
+        // In full screen the call's view stays, as Discord's: the bar's right
+        // end is the sound and the way out, no other window.
+        let full = Preview {
             stream: Some(StreamTile {
                 fullscreen: true,
-                ..stream(false).stream.unwrap()
+                ..stream(true).stream.unwrap()
             }),
-            ..stream(false)
+            ..stream(true)
         };
-        let (_, laid) = frame(preview(&alone, size, &look), size);
+        let (_, laid) = frame(stage(stage_with(vec![full]), &look), size);
         let shown = controls(&laid);
-        assert!(shown.contains(&ids::FULLSCREEN_EXIT.to_owned()));
-        assert!(shown.contains(&ids::window(2)));
+        let count = |id: String| shown.iter().filter(|shown| **shown == id).count();
+        assert_eq!(count(ids::FULLSCREEN_EXIT.to_owned()), 1);
+        assert_eq!(count(ids::local_mute(1_002)), 1);
+        assert_eq!(count(ids::window(2)), 0);
+        assert_eq!(count(ids::fullscreen(2)), 0);
     }
 
     #[test]

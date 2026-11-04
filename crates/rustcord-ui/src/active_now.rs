@@ -15,7 +15,8 @@ use rustcord_components::voice::{self as voice_parts, MenuEntry};
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
 use rustcord_model::{
-    Activity, ActivityKind, ChannelId, ChannelKind, RelationshipKind, ServerId, Timestamp, UserId,
+    Activity, ActivityKind, ChannelId, ChannelKind, RelationshipKind, RemoteImage, ServerId,
+    Timestamp, UserId,
 };
 use rustcord_state::{Permit, Store};
 
@@ -136,6 +137,45 @@ pub(crate) fn cards(ui: &Ui, store: &Store, wall: Timestamp) -> Vec<ActiveCard> 
         .collect();
     built.sort_by(|a, b| a.0.cmp(&b.0));
     built.into_iter().map(|(_, card)| card).collect()
+}
+
+/// The pictures the column shows while the friends page is open: everyone in
+/// a card, those in its voice channels too, their activities' art and the
+/// voice channels' servers. Nothing else asks for the faces of people who are
+/// not friends.
+pub(crate) fn wanted(ui: &Ui, store: &Store, add: &mut dyn FnMut(Option<&RemoteImage>)) {
+    if !crate::relationships::visible(ui) {
+        return;
+    }
+    let me = store.me();
+    let mut person = |user: UserId| {
+        add(store.user(user).and_then(|account| account.picture()));
+        if let Some(activity) = store.presence(user).activities.first() {
+            add(activity.image.as_ref());
+            add(activity.small_image.as_ref());
+        }
+    };
+    for user in candidates(store) {
+        let channel = shown_voice(store, user);
+        if channel.is_none() && store.presence(user).activities.is_empty() {
+            continue;
+        }
+        person(user);
+        let Some(channel) = channel else {
+            continue;
+        };
+        for state in store.voice_in(channel) {
+            if Some(state.user) != me {
+                person(state.user);
+            }
+        }
+    }
+    for user in candidates(store) {
+        let server = shown_voice(store, user)
+            .and_then(|channel| store.channel(channel)?.server)
+            .and_then(|server| store.server(server));
+        add(server.and_then(|server| server.icon.as_ref()));
+    }
 }
 
 /// The card of one group, or `None` when it has nothing to show, or a person

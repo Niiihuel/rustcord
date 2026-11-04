@@ -44,6 +44,11 @@ pub struct ChannelRow {
     pub muted: bool,
     /// The action of the gear that edits it, while the account may.
     pub settings: Option<String>,
+    /// A voice channel's chat bubble, which opens its messages, while the
+    /// account may read them.
+    pub chat: Option<String>,
+    /// The person with a plus that invites to it, while the account may.
+    pub invite: Option<String>,
     /// It can be dragged to another place, and others dropped on it.
     pub movable: bool,
     /// How a drag in course draws it.
@@ -326,15 +331,31 @@ pub fn channel(row: ChannelRow, look: &Look) -> Element {
         parts.push(gap(4.0, 0.0));
         parts.push(icon(Icon::Pin, look.faint).centered_y());
     }
-    let mut gear = row.settings.as_ref().map(|settings| {
-        IconButton::new(settings.clone(), Icon::Settings, look.sidebar_palette())
+    // Discord's tools: the chat (a voice channel's), inviting, editing.
+    let tool = |id: &String, glyph: Icon, hint: &str| {
+        IconButton::new(id.clone(), glyph, look.sidebar_palette())
             .variant(ButtonVariant::Ghost)
             .size(ControlSize::Dense)
-            .tooltip(t("Editar canal"))
+            .tooltip(hint)
             .ink(look.dim)
             .hover_ink(look.text)
             .render()
-    });
+    };
+    let tools: Vec<Element> = [
+        row.chat
+            .as_ref()
+            .map(|id| tool(id, Icon::Chat, t("Abrir chat"))),
+        row.invite
+            .as_ref()
+            .map(|id| tool(id, Icon::Invite, t("Crear invitación"))),
+        row.settings
+            .as_ref()
+            .map(|id| tool(id, Icon::Settings, t("Editar canal"))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let mut gear = (!tools.is_empty()).then(|| Element::row(tools).gap(4.0));
     if let Some(since) = &row.voice_since {
         parts.push(gap(4.0, 0.0));
         // A clock in green: monospace, as the digits must not jitter while they tick.

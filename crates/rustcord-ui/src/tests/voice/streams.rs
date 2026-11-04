@@ -708,6 +708,11 @@ fn full_screen_and_a_window_of_its_own_rest_as_the_stage_does() {
     let owner = host.tr_focused();
     host.click(&ids::fullscreen(owner.0));
     assert!(crate::video_fullscreen(&host.ui, &host.store));
+    // As Discord's: the call's own view, its header and its whole bar, the
+    // stream focused in the middle; the right end leaves full screen.
+    assert!(host.vz_usable(ids::MUTE) && host.vz_usable(ids::CHAT));
+    assert!(host.vz_shows(&ids::stream_tile(owner.0)));
+    assert!(!host.vz_shows(&ids::window(owner.0)));
     // A click on the picture only wakes it: it stays full screen.
     host.click(&ids::stream_tile(owner.0));
     assert!(crate::video_fullscreen(&host.ui, &host.store));
