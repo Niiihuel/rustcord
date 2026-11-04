@@ -40,11 +40,14 @@ publish = false
 # variant (settings' choices drawn as Discord's), egui and eframe 0.37 with
 # pasted pictures and the other mouse buttons, context menus at the host's
 # density and Discord's person menus, the settings' control measures, submenus 3
-# px clear of their menu, and the media viewer's lightbox layout.
+# px clear of their menu, the media viewer's lightbox layout, icons that move
+# under the pointer and fills that grow into place (Discord's animated icons and
+# rail pill), floating surfaces to the host's measures (hints, menus and select
+# lists as Discord's) and buttons that draw their icon at their sizing's size.
 # The exact revision stays in Cargo.lock; a git dependency keeps workspace fmt
 # from rewriting third-party sources.
-limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-10-31", default-features = false }
-limn-egui = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-10-31", default-features = false }
+limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-04", default-features = false }
+limn-egui = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-04", default-features = false }
 # `clipboard`: egui reads the system clipboard on Ctrl+V (text, and a copied
 # picture as a pasted image); without it a paste only saw Rustcord's own copies.
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit", "clipboard"] }
@@ -109,10 +112,3 @@ debug = false
 
 [profile.release]
 lto = "thin"
-
-# shortcut: limn's hover motion and growing reveals (feat/hover-motion) from a
-# local worktree until they are merged into an integration branch; switch back
-# to the git branch above before merging.
-[patch."https://github.com/Niiihuel/limn"]
-limn = { path = "../limn-hover-motion/crates/limn" }
-limn-egui = { path = "../limn-hover-motion/crates/limn-egui" }
