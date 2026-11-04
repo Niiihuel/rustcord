@@ -517,9 +517,9 @@ pub(crate) fn update(
     Some(match id {
         ids::MUTE | ids::MENU_MUTE => crate::clicked(ui, store, "me:mute", now),
         ids::MENU_DEAFEN => crate::clicked(ui, store, "me:deafen", now),
-        ids::LEAVE => leave(ui, store),
-        ids::SCREEN => video::toggle(ui, store, true, picker, now),
-        ids::CAMERA => video::toggle(ui, store, false, false, now),
+        ids::LEAVE | ids::PANEL_LEAVE => leave(ui, store),
+        ids::SCREEN | ids::PANEL_SCREEN => video::toggle(ui, store, true, picker, now),
+        ids::CAMERA | ids::PANEL_CAMERA => video::toggle(ui, store, false, false, now),
         ids::SHARE => video::share(ui, store, now),
         ids::SHARE_DISMISS => Vec::new(),
         ids::SHARE_APPS => video::show_devices(ui, false),

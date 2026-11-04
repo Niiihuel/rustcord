@@ -8,6 +8,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Nivel de entrada", "Input Level"),
     ("Servidor silenciado", "Server Muted"),
     ("Servidor ensordecido", "Server Deafened"),
+    // The account's line while in a call.
+    ("En el canal de voz", "In a voice channel"),
     // The account's card: its noise popout and its stream.
     ("Filtra el ruido de fondo de tu micrófono.", "Filters background noise from your microphone."),
     ("{height}p {fps} FPS", "{height}p {fps} FPS"),

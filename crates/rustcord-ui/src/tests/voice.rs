@@ -1522,10 +1522,11 @@ fn someone_streaming_is_watched_on_the_stage_ends_with_why_and_is_let_go() {
         "nothing to tell about an ended stream"
     );
 
-    // Hanging up lets go of a stream watched.
+    // Hanging up lets go of a stream watched: the panel's, as the bar's
+    // stops watching the focused stream.
     host.click(&watch);
     let from = host.sent.len();
-    host.click(ids::LEAVE);
+    host.click(ids::PANEL_LEAVE);
     host.vz_answer(from, 47);
     assert!(host.store.watching().is_empty());
     assert!(host.ui.video.streams.is_empty());
@@ -2065,8 +2066,36 @@ fn the_account_bar_says_it_shares_its_screen_while_it_does() {
     assert!(
         painted
             .iter()
-            .any(|text| text.starts_with("Compartiendo su panta")),
+            .any(|text| text.starts_with("Compartiendo su pant")),
         "{painted:?}"
     );
     assert!(host.vz_shows(ids::STREAM_STOP));
+}
+
+#[test]
+fn in_a_call_the_account_says_so_and_is_ringed_while_it_speaks() {
+    let mut host = Host::new();
+    let line = "En el canal de voz".to_owned();
+    assert!(!host.vz_texts().contains(&line));
+    let room = host.vz_join("Sala común");
+    assert!(host.vz_texts().contains(&line), "Discord's line in a call");
+    let me = host.store.me().unwrap();
+    let look = host.ui.look();
+    let ringed = |host: &mut Host| {
+        let account = host.vz_rect("me:status");
+        host.frame().commands.iter().any(|command| {
+            matches!(command, limn::DrawCommand::StrokeRect { rect, color, .. }
+                if *color == look.online && rect.width == 32.0 && account.contains(limn::Point::new(rect.x, rect.y)))
+        })
+    };
+    assert!(!ringed(&mut host));
+    host.event(Event::Speaking {
+        channel: room,
+        user: me,
+        speaking: true,
+    });
+    assert!(
+        ringed(&mut host),
+        "the account's picture is ringed while it speaks"
+    );
 }
