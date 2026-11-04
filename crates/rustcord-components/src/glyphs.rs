@@ -19,6 +19,9 @@ pub const THREAD: &str = glyph!("thread");
 pub const STAGE: &str = glyph!("stage");
 /// The voice card's noise suppression.
 pub const NOISE: &str = glyph!("noise");
+/// Sharing the screen: a screen with an arrow leaving it, Discord's static
+/// frame of its animated icon.
+pub const SCREEN_SHARE: &str = glyph!("screen-share");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.
