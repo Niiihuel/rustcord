@@ -52,8 +52,50 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             add(server.icon.as_ref());
         }
     }
-    // What the profile shown carries: activities, badges, marks.
+    // What the profile shown carries: activities, badges, marks, games.
     crate::identity::wanted(ui, store, &mut add);
+    if let Some((user, server)) = crate::identity::shown(ui, store) {
+        crate::profile::wanted(store, user, server, &mut add);
+    }
+    // The profile beside a direct conversation: the same, and the faces of
+    // the first mutual friends.
+    if let Some(user) = crate::profile::side_user(ui, store) {
+        let loaded = store.profile(user, None);
+        if let Some(account) = store.user(user) {
+            add(store.avatar_in(None, user));
+            add(crate::profile::banner(account, loaded));
+        }
+        for activity in &store.presence(user).activities {
+            add(activity.image.as_ref());
+            add(activity.small_image.as_ref());
+        }
+        for badge in loaded
+            .and_then(|loaded| loaded.badges.as_ref())
+            .into_iter()
+            .flatten()
+        {
+            add(badge.icon.as_ref());
+        }
+        // The emoji of its custom status and of its bio.
+        add(store
+            .presence(user)
+            .custom_emoji
+            .as_ref()
+            .map(|emoji| &emoji.image));
+        for picture in loaded.map_or(&[][..], |loaded| &loaded.pictures) {
+            add(Some(&picture.image));
+        }
+        for friend in loaded
+            .and_then(|loaded| loaded.mutual_friends.as_ref())
+            .into_iter()
+            .flatten()
+            .take(3)
+        {
+            add(store.user(*friend).and_then(|friend| friend.picture()));
+        }
+        crate::identity::face_marks(ui, store, None, user, false, &mut add);
+        crate::profile::wanted(store, user, None, &mut add);
+    }
     // The faces and pictures of the message search's results.
     crate::search::wanted(ui, store, tree, &mut add);
     // The cover of the one shown.

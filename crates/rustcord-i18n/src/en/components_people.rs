@@ -300,6 +300,13 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Roles", "Roles"),
     ("Enviar mensaje", "Send message"),
     ("Ver perfil completo", "View full profile"),
+    // The profile beside a direct conversation, and its header button.
+    ("Colección de juegos", "Game collection"),
+    ("Lista de deseados", "Wishlist"),
+    ("Ver todo", "View all"),
+    ("Mostrar perfil de usuario", "Show user profile"),
+    ("Ocultar perfil de usuario", "Hide user profile"),
+    ("Perfil de usuario", "User profile"),
     ("No disponible en esta conexión.", "Not available on this connection."),
     ("Cargando…", "Loading…"),
     ("Cargando perfil", "Loading profile"),

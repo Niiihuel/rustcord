@@ -1115,6 +1115,8 @@ pub(crate) fn open_at(
     } else {
         intents.extend(reads::reveal(ui, store));
     }
+    // The profile beside a direct conversation.
+    intents.extend(profile::request_side(ui, store));
     intents.push(Intent::Focus(editor_id(channel)));
     intents
 }

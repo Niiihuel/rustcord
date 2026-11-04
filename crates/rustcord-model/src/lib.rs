@@ -49,8 +49,8 @@ pub use message_search::{
 };
 pub use permissions::{Overwrite, OverwriteTarget, Permissions};
 pub use profiles::{
-    ListGroup, ListRow, MemberList, MemberRestrictions, Restriction, UserProfile, LIST_GROUPS_MAX,
-    LIST_ROWS_MAX, MAX_MUTUALS,
+    ListGroup, ListRow, MemberList, MemberRestrictions, ProfileGame, Restriction, UserProfile,
+    WishlistItem, LIST_GROUPS_MAX, LIST_ROWS_MAX, MAX_MUTUALS, MAX_PROFILE_GAMES, MAX_WISHLIST,
 };
 pub use read_mark::ReadMark;
 pub use relationships::{Relationship, RelationshipKind};

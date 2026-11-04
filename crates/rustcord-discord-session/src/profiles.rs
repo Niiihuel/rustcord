@@ -1,9 +1,14 @@
-//! Someone's full profile, read from the undocumented profile route.
-//! Unofficial and not verified
-//! against Discord: only the shapes of local fixtures are known to parse.
+//! Someone's full profile, read from the undocumented profile route, with
+//! the names and icons of the games its `widgets` show (`GET /games`) and
+//! the wishlist its `wishlist_settings` name (`GET /wishlists/{id}`), as the
+//! official web client asks for them (seen 2026-11-04). Unofficial and not
+//! verified against Discord: only the shapes of local fixtures are known to parse.
 
 use rustcord_i18n::es;
-use rustcord_model::{ProfileBanner, Rgb, ServerId, UserId, UserProfile, MAX_MUTUALS};
+use rustcord_model::{
+    ImageKind, ProfileBanner, ProfileGame, RemoteImage, Rgb, ServerId, UserId, UserProfile,
+    WishlistItem, MAX_MUTUALS, MAX_PROFILE_GAMES, MAX_WISHLIST,
+};
 use rustcord_provider::{Command, Event, RequestId, Snapshot};
 use serde_json::Value;
 
@@ -94,6 +99,118 @@ fn mutual(value: &Value) -> Option<&[Value]> {
         .map(Vec::as_slice)
 }
 
+/// The game collection `widgets` show: the favorite games, then the ones
+/// played, each once; `None` when the profile has no widgets.
+/// shortcut: only those two kinds are known; others (if any) are left out
+/// until one is seen.
+fn games(widgets: &Value) -> Option<Vec<ProfileGame>> {
+    let mut ids: Vec<u64> = Vec::new();
+    for kind in ["favorite_games", "played_games"] {
+        let listed = widgets
+            .as_array()?
+            .iter()
+            .filter(|widget| widget["data"]["type"] == kind)
+            .filter_map(|widget| widget["data"]["games"].as_array())
+            .flatten()
+            .filter_map(|game| wire::id(&game["game_id"]).ok());
+        for id in listed {
+            if !ids.contains(&id) && ids.len() < MAX_PROFILE_GAMES {
+                ids.push(id);
+            }
+        }
+    }
+    Some(
+        ids.into_iter()
+            .map(|id| ProfileGame {
+                id,
+                ..Default::default()
+            })
+            .collect(),
+    )
+}
+
+/// The answer to [`games_path`] is read up to this size: a game is about 6 KiB.
+pub(crate) const MAX_GAMES_RESPONSE: usize = 1024 * 1024;
+
+/// The route that names `games`, as the official client asks for them.
+pub(crate) fn games_path(games: &[ProfileGame]) -> String {
+    let ids: Vec<String> = games
+        .iter()
+        .map(|game| format!("game_ids={}", game.id))
+        .collect();
+    format!("/games?{}", ids.join("&"))
+}
+
+/// The names and icons `answer` gives `games`; one it leaves out stays unnamed.
+pub(crate) fn name_games(games: &mut [ProfileGame], answer: &Value) {
+    for found in answer.as_array().into_iter().flatten() {
+        let Some(game) = wire::id(&found["id"])
+            .ok()
+            .and_then(|id| games.iter_mut().find(|game| game.id == id))
+        else {
+            continue;
+        };
+        game.name = text(&found["name"], 128).unwrap_or_default();
+        game.icon = found["icon_hash"]
+            .as_str()
+            .filter(|hash| hash.len() == 32 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .map(|hash| RemoteImage {
+                url: format!(
+                    "https://cdn.discordapp.com/app-icons/{}/{hash}.png?size=48&keep_aspect_ratio=false",
+                    game.id
+                ),
+                kind: ImageKind::Artwork,
+            });
+    }
+}
+
+/// The wishlist `wishlist_settings` names, when the profile shares one.
+pub(crate) fn wishlist_id(value: &Value) -> Option<u64> {
+    value["wishlist_settings"]
+        .as_object()?
+        .keys()
+        .find_map(|key| wire::id(&Value::from(key.as_str())).ok())
+}
+
+/// The route of wishlist `id`, as a profile asks for it.
+pub(crate) fn wishlist_path(id: u64) -> String {
+    format!("/wishlists/{id}?source=user_profile")
+}
+
+/// The items of `user`'s wishlist in `answer`, each with its shop picture:
+/// the preview it gives on Discord's CDN, else its product's still.
+pub(crate) fn wishlist(answer: &Value, user: UserId) -> Option<Vec<WishlistItem>> {
+    if wire::id(&answer["user_id"]).ok()? != user.0 {
+        return None;
+    }
+    let items = answer["wishlist_items"].as_array()?;
+    Some(
+        items
+            .iter()
+            .filter_map(|item| {
+                let id = wire::id(&item["sku_id"]).ok()?;
+                let preview = item["collectibles_item"]["thumbnailPreviewSrc"]
+                    .as_str()
+                    .filter(|url| {
+                        url.starts_with("https://cdn.discordapp.com/")
+                            && url.len() <= 512
+                            && !url.chars().any(|c| c.is_control() || c.is_whitespace())
+                    })
+                    .map(|url| RemoteImage {
+                        url: url.to_owned(),
+                        kind: ImageKind::AttachmentPreview,
+                    });
+                Some(WishlistItem {
+                    id,
+                    name: text(&item["sku_name"], 128).unwrap_or_default(),
+                    picture: preview.or_else(|| Some(crate::identity::collectible(id, "static"))),
+                })
+            })
+            .take(MAX_WISHLIST)
+            .collect(),
+    )
+}
+
 /// The people the profile names, then the profile itself. The answer must
 /// be about `user` and, inside `server`, about their membership there.
 pub(crate) fn profile(
@@ -121,6 +238,7 @@ pub(crate) fn profile(
         accent: accent(&global["accent_color"]).or_else(|| accent(&account["accent_color"])),
         badges: crate::identity::badges(&value["badges"], &value["guild_badges"]),
         connections: crate::identity::connections(&value["connected_accounts"]),
+        games: games(&value["widgets"]),
         ..Default::default()
     };
     let member = &value["guild_member"];
@@ -269,6 +387,76 @@ mod tests {
         assert_eq!(loaded.mutual_friends, None, "a malformed friend is unknown");
         let own = profile(&value, 1, UserId(43), None, false).unwrap();
         assert_eq!(self::loaded(&own).mutual_servers, None, "not asked");
+    }
+
+    #[test]
+    fn the_game_collection_lists_favorites_then_played_once_and_names_them() {
+        let value = json!({
+            "user": {"id":"43","username":"peer"},
+            "widgets": [
+                {"id":"1","data":{"type":"played_games","games":[
+                    {"game_id":"30","comment":null,"tags":[]},
+                    {"game_id":"10","comment":null,"tags":[]},
+                    {"game_id":"bad"}]}},
+                {"id":"2","data":{"type":"favorite_games","games":[
+                    {"game_id":"10","comment":"Main","tags":["obsessed"]}]}},
+                {"id":"3","data":{"type":"something_else","games":[{"game_id":"99"}]}}
+            ],
+            "wishlist_settings": {"77": {"visibility": 1}}
+        });
+        let events = profile(&value, 1, UserId(43), None, true).unwrap();
+        let mut games = loaded(&events).games.clone().unwrap();
+        let ids: Vec<u64> = games.iter().map(|game| game.id).collect();
+        assert_eq!(
+            ids,
+            [10, 30],
+            "favorites first, each once, known kinds only"
+        );
+        assert_eq!(games_path(&games), "/games?game_ids=10&game_ids=30");
+        name_games(
+            &mut games,
+            &json!([{"id":"30","name":"Celeste","icon_hash":HASH},
+                {"id":"10","name":"Factorio","icon_hash":"../x"}]),
+        );
+        assert_eq!(games[1].name, "Celeste");
+        assert_eq!(
+            games[1].icon.as_ref().unwrap().url,
+            format!("https://cdn.discordapp.com/app-icons/30/{HASH}.png?size=48&keep_aspect_ratio=false")
+        );
+        assert!(games[0].icon.is_none(), "a malformed hash is no icon");
+        assert_eq!(wishlist_id(&value), Some(77));
+        assert_eq!(wishlist_path(77), "/wishlists/77?source=user_profile");
+        let none = json!({"user": {"id":"43","username":"peer"}});
+        let events = profile(&none, 1, UserId(43), None, true).unwrap();
+        assert_eq!(loaded(&events).games, None, "no widgets is unknown");
+        assert_eq!(wishlist_id(&none), None);
+    }
+
+    #[test]
+    fn a_wishlist_keeps_its_owners_items_with_their_pictures() {
+        let answer = json!({
+            "id": "77", "user_id": "43",
+            "wishlist_items": [
+                {"sku_id":"5","sku_name":"Ondas","collectibles_item":{"type":1,
+                    "thumbnailPreviewSrc":"https://cdn.discordapp.com/media/v1/collectibles-shop/abc"}},
+                {"sku_id":"6","sku_name":"Nevermore","collectibles_item":{"type":2,
+                    "thumbnailPreviewSrc":"https://elsewhere.test/x.png"}},
+                {"sku_id":"nope"}
+            ]
+        });
+        let items = wishlist(&answer, UserId(43)).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "Ondas");
+        assert_eq!(
+            items[0].picture.as_ref().unwrap().url,
+            "https://cdn.discordapp.com/media/v1/collectibles-shop/abc"
+        );
+        assert_eq!(
+            items[1].picture.as_ref().unwrap().url,
+            "https://cdn.discordapp.com/media/v1/collectibles-shop/6/static",
+            "only Discord's CDN, else the product's still"
+        );
+        assert_eq!(wishlist(&answer, UserId(44)), None, "someone else's");
     }
 
     #[test]

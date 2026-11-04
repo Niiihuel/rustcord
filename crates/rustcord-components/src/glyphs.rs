@@ -28,6 +28,9 @@ pub const FRIENDS: &str = glyph!("friends");
 pub const CHAT_PLUS: &str = glyph!("chat-plus");
 /// Three dots in a column: a row's further actions.
 pub const MORE_VERTICAL: &str = glyph!("more-vertical");
+/// A person in a circle with a status dot: shows or hides the profile beside
+/// a direct conversation.
+pub const USER_PROFILE: &str = glyph!("user-profile");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

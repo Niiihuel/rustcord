@@ -854,6 +854,47 @@ impl Http {
                 profile.effect = effect;
             }
         }
+        // The names and icons of the games they show, and their wishlist;
+        // without them the profile still shows.
+        if let Some(Event::ProfileLoaded { profile, .. }) = events.last_mut() {
+            if let Some(games) = profile.games.as_mut().filter(|games| !games.is_empty()) {
+                let path = crate::profiles::games_path(games);
+                match self
+                    .request(
+                        secret,
+                        Method::GET,
+                        &path,
+                        None,
+                        crate::profiles::MAX_GAMES_RESPONSE,
+                    )
+                    .await
+                {
+                    Err(error) if error.ends_session => return Err(error),
+                    Err(_) => {}
+                    Ok(answer) => crate::profiles::name_games(games, &answer),
+                }
+            }
+            if let Some(wishlist) = crate::profiles::wishlist_id(&value) {
+                // shortcut: the official client adds `country_code` for the
+                // shop's prices, which Rustcord does not show; add it when
+                // prices are.
+                let path = crate::profiles::wishlist_path(wishlist);
+                match self
+                    .request(
+                        secret,
+                        Method::GET,
+                        &path,
+                        None,
+                        crate::profiles::MAX_RESPONSE,
+                    )
+                    .await
+                {
+                    Err(error) if error.ends_session => return Err(error),
+                    Err(_) => {}
+                    Ok(answer) => profile.wishlist = crate::profiles::wishlist(&answer, user),
+                }
+            }
+        }
         Ok(events)
     }
 

@@ -296,6 +296,8 @@ mod tests {
             role_menu: None,
             edit_profile: false,
             example_button: false,
+            games: Vec::new(),
+            wishlist: Vec::new(),
         };
         let list = Element::column(vec![
             heading(

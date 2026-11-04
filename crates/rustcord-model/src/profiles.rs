@@ -6,11 +6,33 @@ use serde::{Deserialize, Serialize};
 
 use crate::identity::{MAX_BADGES, MAX_CONNECTIONS};
 use crate::{
-    Badge, ChannelId, Connection, ProfileBanner, Rgb, RoleId, ServerId, Timestamp, UserId,
+    Badge, ChannelId, Connection, ProfileBanner, RemoteImage, Rgb, RoleId, ServerId, Timestamp,
+    UserId,
 };
 
 /// Mutual servers and friends kept per loaded profile, at most.
 pub const MAX_MUTUALS: usize = 100;
+/// Games of a profile's collection and items of its wishlist kept, at most.
+pub const MAX_PROFILE_GAMES: usize = 100;
+pub const MAX_WISHLIST: usize = 100;
+
+/// A game someone shows in their profile's collection: its name and icon,
+/// once its provider told them (unknown, both are empty).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProfileGame {
+    pub id: u64,
+    pub name: String,
+    pub icon: Option<RemoteImage>,
+}
+
+/// Something someone wishes for and shares on their profile: an item of
+/// their service's shop, its name and picture.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct WishlistItem {
+    pub id: u64,
+    pub name: String,
+    pub picture: Option<RemoteImage>,
+}
 
 /// What the provider reports keeps a member from taking part in a server.
 /// The default restricts nothing; rows kept before it existed read so.
@@ -94,6 +116,10 @@ pub struct UserProfile {
     pub effect: Option<crate::ProfileEffect>,
     /// The pictures their texts name («Sobre mí», the server's too).
     pub pictures: Vec<crate::TextPicture>,
+    /// The games they show, the favorite ones first.
+    pub games: Option<Vec<ProfileGame>>,
+    /// What they wish for, when they share it.
+    pub wishlist: Option<Vec<WishlistItem>>,
 }
 
 impl UserProfile {
@@ -112,6 +138,8 @@ impl UserProfile {
                 crate::identity::MAX_EFFECT_LAYERS,
             )
             && self.pictures.len() <= crate::MAX_TEXT_PICTURES
+            && within(self.games.as_ref().map(Vec::len), MAX_PROFILE_GAMES)
+            && within(self.wishlist.as_ref().map(Vec::len), MAX_WISHLIST)
     }
 }
 
@@ -263,6 +291,11 @@ mod tests {
             !badges.answers(UserId(7), Some(ServerId(1))),
             "too many badges"
         );
+        let games = UserProfile {
+            games: Some(vec![ProfileGame::default(); MAX_PROFILE_GAMES + 1]),
+            ..UserProfile::default()
+        };
+        assert!(!games.answers(UserId(0), None), "too many games");
     }
 
     #[test]
