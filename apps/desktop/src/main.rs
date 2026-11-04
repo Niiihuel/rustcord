@@ -739,6 +739,7 @@ fn main() -> eframe::Result {
                 format!("{} ({:?})", adapter.name, adapter.backend)
             });
             app.attach_window(window::Parent::of(creation), graphics, title_bar);
+            app.desktop.attach(creation);
             app.frame = frame::WindowFrame::new(chrome, compact);
             rustcord_ui::themes::window_known(&mut app.ui, transparency, transparency > 0);
             Ok(Box::new(app))

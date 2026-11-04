@@ -1,4 +1,4 @@
-//! What the Windows services share: wide strings, the
+//! What the Windows services share: wide strings, icons from pixels, the
 //! user's known folders and the shell's «open».
 
 use std::ffi::OsStr;
@@ -6,6 +6,10 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::PathBuf;
 
 use windows::core::PCWSTR;
+use windows::Win32::Graphics::Gdi::{
+    CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    DIB_RGB_COLORS,
+};
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
 };
@@ -13,11 +17,59 @@ use windows::Win32::UI::Shell::{
     FOLDERID_Downloads, FOLDERID_LocalAppData, FOLDERID_Profile, FOLDERID_RoamingAppData,
     SHGetKnownFolderPath, ShellExecuteW, KF_FLAG_DEFAULT,
 };
-use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateIconIndirect, GetSystemMetrics, HICON, ICONINFO, SM_CXSMICON, SW_SHOWNORMAL,
+};
 
 /// `text` as the system reads it: UTF-16, ending in NUL.
 pub(crate) fn wide(text: impl AsRef<OsStr>) -> Vec<u16> {
     text.as_ref().encode_wide().chain([0]).collect()
+}
+
+/// The system's small icon size, in pixels: the tray's and the taskbar's.
+pub(crate) fn small_icon_size() -> i32 {
+    // SAFETY: a plain query.
+    unsafe { GetSystemMetrics(SM_CXSMICON) }.clamp(16, 256)
+}
+
+/// An icon `size` pixels a side from `bgra`: blue, green, red and straight
+/// alpha, from the top row down. The caller destroys it.
+pub(crate) fn icon(size: i32, bgra: &[u8]) -> Option<HICON> {
+    if bgra.len() != (size * size * 4) as usize {
+        return None;
+    }
+    // SAFETY: plain calls; the pixels fit the section, and both bitmaps
+    // are copied into the icon and deleted.
+    unsafe {
+        let header = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: size,
+                // Negative: the rows go from the top down.
+                biHeight: -size,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let color = CreateDIBSection(None, &header, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+        std::ptr::copy_nonoverlapping(bgra.as_ptr(), bits.cast::<u8>(), bgra.len());
+        // The alpha says what shows; the mask lets all of it.
+        let mask_bits = vec![0u8; (size as usize).div_ceil(16) * 2 * size as usize];
+        let mask = CreateBitmap(size, size, 1, 1, Some(mask_bits.as_ptr().cast()));
+        let icon = CreateIconIndirect(&ICONINFO {
+            fIcon: true.into(),
+            hbmMask: mask,
+            hbmColor: color,
+            ..Default::default()
+        });
+        let _ = DeleteObject(color.into());
+        let _ = DeleteObject(mask.into());
+        icon.ok()
+    }
 }
 
 /// The known folders Rustcord uses.

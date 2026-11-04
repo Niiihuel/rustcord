@@ -85,7 +85,13 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# The taskbar's overlay and preview buttons, drawn from `assets/glyphs`: the
+# resvg limn-egui already builds, with its features, so nothing new is
+# compiled.
+resvg = { version = "0.48.1", default-features = false }
 
 [dev-dependencies]
+# The taskbar's pictures are tested on every system, not only on Windows.
+resvg = { version = "0.48.1", default-features = false }
 # Private filesystem and D-Bus fixtures never use personal files or the session bus.
 tempfile = "3"

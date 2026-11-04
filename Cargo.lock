@@ -5972,6 +5972,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "png",
+ "resvg",
  "rustcord-i18n",
  "rustcord-model",
  "rustix 1.1.6",

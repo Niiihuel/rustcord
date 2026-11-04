@@ -35,6 +35,8 @@ pub mod shortcuts;
 /// One Rustcord per person: later starts hand their links to the first.
 #[cfg(any(target_os = "linux", windows))]
 pub mod single_instance;
+/// The window's button on the Windows taskbar during a call.
+pub mod taskbar;
 /// The icon in the system tray, and its menu.
 pub mod tray;
 /// The window as the parent of the portal's dialogs on Wayland.

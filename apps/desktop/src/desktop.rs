@@ -1,4 +1,5 @@
-//! The desktop side on the host: the tray and hiding in it,
+//! The desktop side on the host: the tray and hiding in it, the call on
+//! the taskbar's button (Windows),
 //! later starts of Rustcord, the desktop's theme, the interface's font,
 //! starting with the session, and what this device says the person is
 //! doing (other programs' Rich Presence, games by their processes). Each
@@ -11,6 +12,7 @@ use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
 use eframe::egui;
+use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
 use limn::UiAction;
 use rustcord_i18n::{es, tr};
 use rustcord_model::{ActivitySource, LocalActivity, LocalActivityKind, Status, UserId};
@@ -18,6 +20,7 @@ use rustcord_platform::appearance::{Appearance, ColorScheme};
 use rustcord_platform::fonts::Faces;
 use rustcord_platform::games::{Game, GameWatcher, Playing};
 use rustcord_platform::rich_presence::{self, PresenceEvent, RichPresence};
+use rustcord_platform::taskbar::{Taskbar, TaskbarCall, TaskbarEvent, TaskbarState};
 use rustcord_platform::tray::{Tray, TrayEvent, TrayState, TrayStatus};
 use rustcord_state::{Applied, Store};
 use rustcord_ui::games::RegisteredGame;
@@ -42,6 +45,7 @@ pub struct Desktop {
     enabled: bool,
     wake: Arc<dyn Fn() + Send + Sync>,
     tray: Option<Tray>,
+    taskbar: Option<Taskbar>,
     appearance: Option<Appearance>,
     instance: Option<Listener>,
     links: Vec<String>,
@@ -101,6 +105,7 @@ impl Desktop {
             enabled,
             wake: wake.clone(),
             tray: None,
+            taskbar: None,
             appearance: None,
             instance: None,
             links: links.into_iter().take(MAX_LINKS).collect(),
@@ -236,6 +241,15 @@ impl Desktop {
         }
     }
 
+    /// The window eframe just opened: its taskbar button shows the call
+    /// (Windows).
+    pub fn attach(&mut self, window: &impl HasWindowHandle) {
+        let handle = window.window_handle().ok().map(|handle| handle.as_raw());
+        if let (true, Some(RawWindowHandle::Win32(handle))) = (self.enabled, handle) {
+            self.taskbar = Taskbar::start(handle.hwnd, self.wake.clone());
+        }
+    }
+
     /// Bring the window to the front, from the tray or a later start.
     pub fn show(&mut self, ctx: &egui::Context) {
         self.starting_hidden = false;
@@ -317,6 +331,7 @@ impl Desktop {
             ctx.request_repaint();
         }
         intents.extend(self.tray_step(ctx, ui, store, now, wall));
+        intents.extend(self.taskbar_step(ctx, ui, store, now));
         // Before the links: a program's invitation opens in this frame.
         self.presence_step(ctx, ui, store);
         intents.extend(self.links_step(ctx, ui, store, now));
@@ -400,6 +415,54 @@ impl Desktop {
                 language: ui.language(),
             });
         }
+        intents
+    }
+
+    /// The preview's buttons clicked, as the window's own; and the call on
+    /// the button.
+    fn taskbar_step(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut Ui,
+        store: &mut Store,
+        now: Instant,
+    ) -> Vec<Intent> {
+        let Some(taskbar) = &mut self.taskbar else {
+            return Vec::new();
+        };
+        let mut intents = Vec::new();
+        while let Some(event) = taskbar.poll() {
+            let id = match event {
+                TaskbarEvent::ToggleCamera => rustcord_components::voice::ids::CAMERA,
+                TaskbarEvent::ToggleMute => "me:mute",
+                TaskbarEvent::ToggleDeafen => "me:deafen",
+                TaskbarEvent::Disconnect => rustcord_components::voice::ids::LEAVE,
+            };
+            let click = UiAction::Clicked { id: id.into() };
+            intents.extend(rustcord_ui::update(ui, store, &click, now));
+            ctx.request_repaint();
+        }
+        let me = store.my_voice();
+        let look = ui.look();
+        // The preview is the system's, light or dark: its glyphs follow it,
+        // as Discord's do.
+        let ink = match ui.desktop.system_dark {
+            Some(false) => rustcord_components::Look::LIGHT.muted,
+            _ => rustcord_components::Look::DARK.muted,
+        };
+        let rgb = |color: limn::Color| [color.r, color.g, color.b];
+        taskbar.update(TaskbarState {
+            call: store.call().map(|_| TaskbarCall {
+                muted: ui.muted || store.mic_held().is_some(),
+                deafened: ui.deafened || me.is_some_and(|me| me.server_deafened),
+                speaking: me.is_some_and(|me| me.speaking),
+                camera: ui.video.camera.on,
+            }),
+            ink: rgb(ink),
+            danger: rgb(look.danger_fill),
+            positive: rgb(look.online),
+            language: ui.language(),
+        });
         intents
     }
 
