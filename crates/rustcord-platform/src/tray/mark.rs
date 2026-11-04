@@ -1,6 +1,27 @@
 //! Rustcord's icon (`assets/icons/hicolor`: the white mark on its red tile)
 //! as the tray's pixmaps, at whatever size the tray asks for, with a red
-//! dot for mentions.
+//! dot for mentions; in a call, the call's state drawn in its place.
+
+use resvg::tiny_skia::{FillRule, Paint, PathBuilder, Pixmap as Canvas, Stroke, Transform};
+
+use super::TrayVoice;
+
+const MICROPHONE_MUTED: &str = include_str!("../../../../assets/glyphs/microphone-muted.svg");
+const HEADPHONES_OFF: &str = include_str!("../../../../assets/glyphs/headphones-off.svg");
+/// Discord's tray colors: the slash of what is off, a call's green and the
+/// ring of a silent one.
+const RED: [u8; 3] = [0xf0, 0x47, 0x47];
+const GREEN: [u8; 3] = [0x43, 0xb5, 0x81];
+const RING: [u8; 3] = [0x2e, 0x7b, 0x58];
+
+/// What the icon shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Face {
+    Mark,
+    /// The mark with the dot.
+    Unread,
+    Voice(TrayVoice),
+}
 
 /// The icon as drawn for each size, smallest first: 16 and 24 with the
 /// tile filling the box and the mark on whole pixels.
@@ -37,18 +58,130 @@ const DOT: [u8; 3] = [0xf2, 0x3f, 0x43];
 pub(crate) type Pixmap = (i32, i32, Vec<u8>);
 
 /// The icon at the sizes panels ask for, from 16 to 64: the panel takes
-/// the nearest; with the dot when `dot`.
+/// the nearest.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-pub(crate) fn pixmaps(dot: bool) -> Vec<Pixmap> {
+pub(crate) fn pixmaps(face: Face) -> Vec<Pixmap> {
     [16, 22, 24, 32, 48, 64]
         .into_iter()
-        .map(|size| pixmap(size, dot))
+        .map(|size| pixmap(size, face))
         .collect()
 }
 
-/// The icon at `size` pixels a side (the Windows tray asks for its own):
-/// the one drawn for it, or the next larger one shrunk.
-pub(crate) fn pixmap(size: usize, dot: bool) -> Pixmap {
+/// The icon at `size` pixels a side (the Windows tray asks for its own).
+pub(crate) fn pixmap(size: usize, face: Face) -> Pixmap {
+    match face {
+        Face::Mark => mark(size, false),
+        Face::Unread => mark(size, true),
+        Face::Voice(voice) => call(size.max(1), voice),
+    }
+}
+
+/// A call's state, `size` pixels a side, as Discord's tray draws it: a green
+/// ball, faint inside a darker ring while silent; the microphone or the
+/// sound white, crossed out in red.
+fn call(size: usize, voice: TrayVoice) -> Pixmap {
+    let blank = || (size as i32, size as i32, vec![0; size * size * 4]);
+    let Some(mut canvas) = Canvas::new(size as u32, size as u32) else {
+        return blank();
+    };
+    let side = size as f32;
+    let middle = side / 2.0;
+    match voice {
+        TrayVoice::Speaking | TrayVoice::Connected => {
+            let speaking = voice == TrayVoice::Speaking;
+            let mut paint = Paint::default();
+            let [red, green, blue] = GREEN;
+            paint.set_color_rgba8(red, green, blue, if speaking { 255 } else { 102 });
+            if let Some(ball) = PathBuilder::from_circle(middle, middle, middle) {
+                canvas.fill_path(
+                    &ball,
+                    &paint,
+                    FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
+            }
+            let width = side / 8.0;
+            let [red, green, blue] = RING;
+            paint.set_color_rgba8(red, green, blue, 255);
+            if let Some(ring) =
+                PathBuilder::from_circle(middle, middle, (side - width) / 2.0).filter(|_| !speaking)
+            {
+                let stroke = Stroke {
+                    width,
+                    ..Stroke::default()
+                };
+                canvas.stroke_path(&ring, &paint, &stroke, Transform::identity(), None);
+            }
+        }
+        TrayVoice::Muted | TrayVoice::Deafened => {
+            let glyph = if voice == TrayVoice::Muted {
+                MICROPHONE_MUTED
+            } else {
+                HEADPHONES_OFF
+            };
+            let scale = side / 24.0;
+            let transform = Transform::from_scale(scale, scale);
+            let (slash, rest) = slashed(glyph);
+            draw(&mut canvas, &rest, [255; 3], transform);
+            draw(&mut canvas, &slash, RED, transform);
+        }
+    }
+    let pixels = canvas
+        .pixels()
+        .iter()
+        .flat_map(|pixel| {
+            let color = pixel.demultiply();
+            [color.alpha(), color.red(), color.green(), color.blue()]
+        })
+        .collect();
+    (size as i32, size as i32, pixels)
+}
+
+/// A crossed-out glyph of `assets/glyphs` as two: its slash, the one shape
+/// of its path that crosses the whole box, and the rest. Its path is made
+/// of M, L, C and Z only, so its numbers are x and y in turn.
+fn slashed(glyph: &str) -> (String, String) {
+    let Some((start, end)) = glyph.find(" d=\"").and_then(|at| {
+        let start = at + 4;
+        Some((start, start + glyph[start..].find('"')?))
+    }) else {
+        return (String::new(), glyph.to_owned());
+    };
+    let crosses = |shape: &&str| {
+        let numbers: Vec<f32> = shape
+            .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+            .filter_map(|number| number.parse().ok())
+            .collect();
+        let span = |axis: usize| {
+            let values = || numbers.iter().skip(axis).step_by(2).copied();
+            values().fold(f32::MIN, f32::max) - values().fold(f32::MAX, f32::min)
+        };
+        span(0) > 20.0 && span(1) > 20.0
+    };
+    let (slash, rest): (Vec<&str>, Vec<&str>) =
+        glyph[start..end].split_inclusive('Z').partition(crosses);
+    let with = |path: Vec<&str>| format!("{}{}{}", &glyph[..start], path.concat(), &glyph[end..]);
+    (with(slash), with(rest))
+}
+
+/// Draw `glyph`, which paints in `currentColor`, in `color`; nothing for
+/// one that does not parse.
+pub(crate) fn draw(
+    canvas: &mut Canvas,
+    glyph: &str,
+    [red, green, blue]: [u8; 3],
+    transform: Transform,
+) {
+    let source = glyph.replace("currentColor", &format!("#{red:02x}{green:02x}{blue:02x}"));
+    if let Ok(tree) = resvg::usvg::Tree::from_str(&source, &resvg::usvg::Options::default()) {
+        resvg::render(&tree, transform, &mut canvas.as_mut());
+    }
+}
+
+/// Rustcord's mark at `size`: the one drawn for it, or the next larger one
+/// shrunk; with the dot when `dot`.
+fn mark(size: usize, dot: bool) -> Pixmap {
     let size = size.max(1);
     let (drawn, png) = DRAWN
         .iter()
@@ -180,7 +313,7 @@ mod tests {
     #[test]
     fn the_icon_is_red_with_a_white_mark_at_any_size_and_the_dot_red() {
         for size in [16, 20, 22, 24, 32, 40, 48, 64, 128] {
-            let plain = pixmap(size, false);
+            let plain = pixmap(size, Face::Mark);
             assert_eq!((plain.0, plain.1), (size as i32, size as i32));
             assert_eq!(plain.2.len(), size * size * 4);
             assert!(
@@ -205,11 +338,59 @@ mod tests {
                 "{size}: the rustcord"
             );
         }
-        let plain = pixmap(24, false);
-        let dotted = pixmap(24, true);
+        let plain = pixmap(24, Face::Mark);
+        let dotted = pixmap(24, Face::Unread);
         assert_eq!(&at(&dotted, 19, 5)[1..], &DOT);
         assert_eq!(at(&dotted, 19, 5)[0], 255);
         assert_eq!(at(&dotted, 8, 18), at(&plain, 8, 18), "the icon stays");
+    }
+
+    #[test]
+    fn in_a_call_the_icon_is_its_state_alone_in_discord_s_precedence() {
+        let state = |voice, mentions| super::super::TrayState {
+            voice,
+            mentions,
+            ..Default::default()
+        };
+        assert_eq!(state(None, 0).face(), Face::Mark);
+        assert_eq!(state(None, 2).face(), Face::Unread);
+        let deafened = TrayVoice::of(true, true, true);
+        assert_eq!(deafened, TrayVoice::Deafened);
+        assert_eq!(state(Some(deafened), 2).face(), Face::Voice(deafened));
+        assert_eq!(TrayVoice::of(true, false, true), TrayVoice::Muted);
+        assert_eq!(TrayVoice::of(false, false, true), TrayVoice::Speaking);
+        assert_eq!(TrayVoice::of(false, false, false), TrayVoice::Connected);
+
+        let pixel = |voice, x: usize, y: usize| at(&pixmap(16, Face::Voice(voice)), x, y);
+        // Speaking: a solid green ball; silent: faint green in a darker ring.
+        assert_eq!(pixel(TrayVoice::Speaking, 8, 8), [255, 0x43, 0xb5, 0x81]);
+        assert_eq!(pixel(TrayVoice::Speaking, 0, 0)[0], 0, "round");
+        assert_eq!(pixel(TrayVoice::Connected, 8, 8)[0], 102);
+        let ring = pixel(TrayVoice::Connected, 8, 1);
+        assert_eq!(ring[0], 255);
+        assert!(
+            ring[1..].iter().zip(RING).all(|(a, b)| a.abs_diff(b) <= 2),
+            "{ring:?}"
+        );
+        // Off: the glyph white, its slash red; no mark under them.
+        for voice in [TrayVoice::Muted, TrayVoice::Deafened] {
+            let drawn = pixmap(16, Face::Voice(voice));
+            let pixels = drawn.2.as_chunks::<4>().0;
+            assert!(pixels.contains(&[255, 255, 255, 255]), "{voice:?}: white");
+            assert!(
+                pixels.contains(&[255, RED[0], RED[1], RED[2]]),
+                "{voice:?}: slash"
+            );
+            let opaque = pixels.iter().filter(|pixel| pixel[0] > 200).count();
+            assert!(opaque < 16 * 16 / 2, "{voice:?}: no tile under it");
+        }
+        let (slash, rest) = slashed(MICROPHONE_MUTED);
+        assert!(slash.contains(" d=\"M2.7 22.7") && slash.trim_end().ends_with("Z\"/></svg>"));
+        assert!(rest.contains(" d=\"M10.8") && !rest.contains("M2.7 22.7"));
+        // The headphones' slash is not their first shape.
+        let (slash, rest) = slashed(HEADPHONES_OFF);
+        assert!(slash.contains(" d=\"M22.7 2.7") && !slash.contains("M20.2"));
+        assert!(rest.contains(" d=\"M20.2") && !rest.contains("M22.7 2.7"));
     }
 
     #[test]

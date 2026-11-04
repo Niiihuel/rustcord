@@ -21,7 +21,7 @@ use rustcord_platform::fonts::Faces;
 use rustcord_platform::games::{Game, GameWatcher, Playing};
 use rustcord_platform::rich_presence::{self, PresenceEvent, RichPresence};
 use rustcord_platform::taskbar::{Taskbar, TaskbarCall, TaskbarEvent, TaskbarState};
-use rustcord_platform::tray::{Tray, TrayEvent, TrayState, TrayStatus};
+use rustcord_platform::tray::{Tray, TrayEvent, TrayState, TrayStatus, TrayVoice};
 use rustcord_state::{Applied, Store};
 use rustcord_ui::games::RegisteredGame;
 use rustcord_ui::{Intent, Ui};
@@ -406,6 +406,8 @@ impl Desktop {
                 unread,
                 muted: ui.muted,
                 deafened: ui.deafened,
+                voice: call_state(ui, store)
+                    .map(|(muted, deafened, speaking)| TrayVoice::of(muted, deafened, speaking)),
                 status: store.me().map(|me| match store.presence(me).status {
                     Status::Idle => TrayStatus::Idle,
                     Status::DoNotDisturb => TrayStatus::DoNotDisturb,
@@ -442,7 +444,6 @@ impl Desktop {
             intents.extend(rustcord_ui::update(ui, store, &click, now));
             ctx.request_repaint();
         }
-        let me = store.my_voice();
         let look = ui.look();
         // The preview is the system's, light or dark: its glyphs follow it,
         // as Discord's do.
@@ -452,15 +453,13 @@ impl Desktop {
         };
         let rgb = |color: limn::Color| [color.r, color.g, color.b];
         taskbar.update(TaskbarState {
-            call: store.call().map(|_| TaskbarCall {
-                muted: ui.muted || store.mic_held().is_some(),
-                deafened: ui.deafened || me.is_some_and(|me| me.server_deafened),
-                speaking: me.is_some_and(|me| me.speaking),
+            call: call_state(ui, store).map(|(muted, deafened, _)| TaskbarCall {
+                muted,
+                deafened,
                 camera: ui.video.camera.on,
             }),
             ink: rgb(ink),
             danger: rgb(look.danger_fill),
-            positive: rgb(look.online),
             language: ui.language(),
         });
         intents
@@ -828,6 +827,19 @@ fn take<T>(slot: &mut Option<mpsc::Receiver<T>>) -> Option<T> {
             None
         }
     }
+}
+
+/// The account in its call, as the tray and the taskbar show it: muted
+/// (by its choice, the server's or held), deafened (its own or the
+/// server's) and speaking. `None` out of a call.
+fn call_state(ui: &Ui, store: &Store) -> Option<(bool, bool, bool)> {
+    store.call()?;
+    let me = store.my_voice();
+    Some((
+        ui.muted || store.mic_held().is_some(),
+        ui.deafened || me.is_some_and(|me| me.server_deafened),
+        me.is_some_and(|me| me.speaking),
+    ))
 }
 
 #[cfg(test)]

@@ -88,8 +88,8 @@ fn tooltip(state: &TrayState) -> [u16; 128] {
 
 /// The mark at `size` pixels, as a 32-bit Windows bitmap reads it:
 /// blue, green, red and alpha, from the top row down.
-fn bgra(size: usize, dot: bool) -> Vec<u8> {
-    let (_, _, argb) = mark::pixmap(size, dot);
+fn bgra(size: usize, face: mark::Face) -> Vec<u8> {
+    let (_, _, argb) = mark::pixmap(size, face);
     argb.as_chunks::<4>()
         .0
         .iter()
@@ -123,7 +123,7 @@ mod shell {
         WM_DESTROY, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
     };
 
-    use super::{bgra, command, menu, tooltip, Item, TrayEvent, TrayState};
+    use super::{bgra, command, mark, menu, tooltip, Item, TrayEvent, TrayState};
     use crate::win::wide;
 
     /// What the icon's window says when the icon is used.
@@ -143,8 +143,8 @@ mod shell {
         state: watch::Receiver<TrayState>,
         report: Report,
         icon: Option<HICON>,
-        /// The icon carries the dot now.
-        dot: bool,
+        /// What the icon shows now.
+        face: mark::Face,
         shown: bool,
         /// `TaskbarCreated`: Explorer (re)started.
         taskbar_created: u32,
@@ -210,7 +210,7 @@ mod shell {
                     state,
                     report,
                     icon: None,
-                    dot: false,
+                    face: mark::Face::Mark,
                     shown: false,
                     taskbar_created: RegisterWindowMessageW(w!("TaskbarCreated")),
                 })
@@ -298,11 +298,11 @@ mod shell {
         /// Put the icon in the notification area; say whether it shows.
         fn add(&mut self) {
             let state = self.state.borrow_and_update().clone();
-            self.dot = state.mentions > 0;
+            self.face = state.face();
             let mut data = self.data();
             data.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE | NIF_SHOWTIP;
             data.uCallbackMessage = CALLBACK;
-            data.hIcon = self.icon(self.dot).unwrap_or_default();
+            data.hIcon = self.icon(self.face).unwrap_or_default();
             data.szTip = tooltip(&state);
             // SAFETY: a filled structure of this window's icon.
             let added = unsafe { Shell_NotifyIconW(NIM_ADD, &data) }.as_bool();
@@ -334,10 +334,10 @@ mod shell {
                     let mut data = self.data();
                     data.uFlags = NIF_TIP | NIF_SHOWTIP;
                     data.szTip = tooltip(&state);
-                    let dot = state.mentions > 0;
-                    if dot != self.dot {
-                        self.dot = dot;
-                        if let Some(icon) = self.icon(dot) {
+                    let face = state.face();
+                    if face != self.face {
+                        self.face = face;
+                        if let Some(icon) = self.icon(face) {
                             data.uFlags |= NIF_ICON;
                             data.hIcon = icon;
                         }
@@ -362,9 +362,9 @@ mod shell {
         }
 
         /// The mark at the system's small icon size, replacing the last one.
-        fn icon(&mut self, dot: bool) -> Option<HICON> {
+        fn icon(&mut self, face: mark::Face) -> Option<HICON> {
             let size = crate::win::small_icon_size();
-            let icon = crate::win::icon(size, &bgra(size as usize, dot))?;
+            let icon = crate::win::icon(size, &bgra(size as usize, face))?;
             if let Some(old) = self.icon.replace(icon) {
                 // SAFETY: the icon made before, which the shell copied.
                 let _ = unsafe { DestroyIcon(old) };
@@ -516,10 +516,10 @@ mod tests {
             String::from_utf16_lossy(&tip[..tip.iter().position(|unit| *unit == 0).unwrap()]);
         assert_eq!(text, "Rustcord\n2 menciones");
         assert_eq!(tip[127], 0, "always ends in NUL");
-        let pixels = bgra(16, false);
+        let pixels = bgra(16, mark::Face::Mark);
         assert_eq!(pixels.len(), 16 * 16 * 4);
         // Rustcord's icon, its first pixel's channels turned.
-        let (_, _, argb) = mark::pixmap(16, false);
+        let (_, _, argb) = mark::pixmap(16, mark::Face::Mark);
         assert_eq!(&pixels[..4], &[argb[3], argb[2], argb[1], argb[0]]);
     }
 }

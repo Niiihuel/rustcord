@@ -26,6 +26,10 @@ serde_json.workspace = true
 # Rustcord's icon in the tray, from its PNGs: the decoder eframe's
 # `image` and rustcord-core already build, so nothing new is compiled.
 png = "0.18"
+# The tray's call states and the taskbar preview's buttons, drawn from
+# `assets/glyphs`: the resvg limn-egui already builds, with its features, so
+# nothing new is compiled.
+resvg = { version = "0.48.1", default-features = false }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Use the existing D-Bus implementation with Tokio for FileChooser/Request.
@@ -85,13 +89,7 @@ windows = { version = "0.62.2", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
-# The taskbar's overlay and preview buttons, drawn from `assets/glyphs`: the
-# resvg limn-egui already builds, with its features, so nothing new is
-# compiled.
-resvg = { version = "0.48.1", default-features = false }
 
 [dev-dependencies]
-# The taskbar's pictures are tested on every system, not only on Windows.
-resvg = { version = "0.48.1", default-features = false }
 # Private filesystem and D-Bus fixtures never use personal files or the session bus.
 tempfile = "3"

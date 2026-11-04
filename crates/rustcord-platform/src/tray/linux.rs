@@ -240,7 +240,7 @@ impl Item {
 
     #[zbus(property)]
     fn icon_pixmap(&self) -> Vec<Pixmap> {
-        pixmaps(self.state().mentions > 0)
+        pixmaps(self.state().face())
     }
 
     #[zbus(property)]

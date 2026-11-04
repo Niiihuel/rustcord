@@ -1,13 +1,11 @@
 //! The taskbar on Windows, through `ITaskbarList3`. What it shows is
-//! Discord's: the overlay is its tray in a call (deafened over muted over
-//! speaking over only connected; red with the glyph for the first two, a
-//! green dot for the others, faint inside a ring while silent), and the
-//! preview's buttons are its thumbnail toolbar (camera, microphone, sound,
-//! hang up), hidden out of a call. The glyphs are Rustcord's own
-//! (`assets/glyphs`), tinted. The pictures and buttons are worked out without
-//! Windows, so they are tested everywhere.
+//! Discord's: Rustcord's icon as it always is (the call's state is the
+//! tray's), and in a call the preview's buttons are its thumbnail toolbar
+//! (camera, microphone, sound, hang up), hidden out of a call. The glyphs
+//! are Rustcord's own (`assets/glyphs`), tinted. The pictures and buttons
+//! are worked out without Windows, so they are tested everywhere.
 
-use resvg::tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
+use resvg::tiny_skia::{Pixmap, Transform};
 use rustcord_i18n::t;
 
 use super::{TaskbarEvent, TaskbarState};
@@ -25,41 +23,6 @@ const CAMERA: u32 = 1;
 const MUTE: u32 = 2;
 const DEAFEN: u32 = 3;
 const DISCONNECT: u32 = 4;
-
-/// The overlay over Rustcord's icon.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Badge {
-    /// White on the dot; none on the green one.
-    glyph: Option<&'static str>,
-    color: [u8; 3],
-    /// Connected and silent: the dot faint inside a ring.
-    faint: bool,
-    /// What the shell reads out.
-    description: &'static str,
-}
-
-/// The overlay for `state`; `None` out of a call.
-fn badge(state: &TaskbarState) -> Option<Badge> {
-    let call = state.call?;
-    let _language = rustcord_i18n::scoped(state.language);
-    let (glyph, description) = if call.deafened {
-        (Some(HEADPHONES_OFF), t("Ensordecido"))
-    } else if call.muted {
-        (Some(MICROPHONE_MUTED), t("Silenciado"))
-    } else {
-        (None, t("Voz conectada"))
-    };
-    Some(Badge {
-        glyph,
-        color: if glyph.is_some() {
-            state.danger
-        } else {
-            state.positive
-        },
-        faint: glyph.is_none() && !call.speaking,
-        description,
-    })
-}
 
 /// A button of the preview.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,56 +96,13 @@ fn glyph_pixels(glyph: &str, color: [u8; 3], size: u32) -> Vec<u8> {
         return Vec::new();
     };
     let scale = size as f32 / 24.0;
-    draw(
+    crate::tray::mark::draw(
         &mut pixmap,
         glyph,
         color,
         Transform::from_scale(scale, scale),
     );
     bgra(&pixmap)
-}
-
-/// The overlay, `size` pixels a side: the dot, and its glyph in white in
-/// the middle five eighths.
-fn badge_pixels(badge: &Badge, size: u32) -> Vec<u8> {
-    let Some(mut pixmap) = Pixmap::new(size, size) else {
-        return Vec::new();
-    };
-    let side = size as f32;
-    let [red, green, blue] = badge.color;
-    let mut paint = Paint::default();
-    // Discord's tray while connected: its green at 40 % in a darker ring.
-    paint.set_color_rgba8(red, green, blue, if badge.faint { 102 } else { 255 });
-    if let Some(dot) = PathBuilder::from_circle(side / 2.0, side / 2.0, side / 2.0) {
-        pixmap.fill_path(&dot, &paint, FillRule::Winding, Transform::identity(), None);
-    }
-    if badge.faint {
-        let width = side / 8.0;
-        let darker = |channel: u8| (u16::from(channel) * 68 / 100) as u8;
-        paint.set_color_rgba8(darker(red), darker(green), darker(blue), 255);
-        if let Some(ring) = PathBuilder::from_circle(side / 2.0, side / 2.0, (side - width) / 2.0) {
-            let stroke = Stroke {
-                width,
-                ..Stroke::default()
-            };
-            pixmap.stroke_path(&ring, &paint, &stroke, Transform::identity(), None);
-        }
-    }
-    if let Some(glyph) = badge.glyph {
-        let inner = side * 0.625;
-        let (scale, offset) = (inner / 24.0, (side - inner) / 2.0);
-        let transform = Transform::from_row(scale, 0.0, 0.0, scale, offset, offset);
-        draw(&mut pixmap, glyph, [255; 3], transform);
-    }
-    bgra(&pixmap)
-}
-
-/// Draw `glyph`, which paints in `currentColor`, in `color`.
-fn draw(pixmap: &mut Pixmap, glyph: &str, [red, green, blue]: [u8; 3], transform: Transform) {
-    let source = glyph.replace("currentColor", &format!("#{red:02x}{green:02x}{blue:02x}"));
-    if let Ok(tree) = resvg::usvg::Tree::from_str(&source, &resvg::usvg::Options::default()) {
-        resvg::render(&tree, transform, &mut pixmap.as_mut());
-    }
 }
 
 /// As a 32-bit Windows icon reads it: blue, green, red and straight alpha,
@@ -205,7 +125,7 @@ pub(super) use shell::start;
 mod shell {
     use std::sync::mpsc;
 
-    use windows::core::{w, PCWSTR};
+    use windows::core::w;
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
@@ -219,9 +139,9 @@ mod shell {
         DestroyIcon, RegisterWindowMessageW, HICON, WM_COMMAND, WM_NCDESTROY,
     };
 
-    use super::{badge, badge_pixels, buttons, event, glyph_pixels, Badge, Button};
+    use super::{buttons, event, glyph_pixels, Button};
     use crate::taskbar::{Job, TaskbarEvent, TaskbarState};
-    use crate::win::{icon, small_icon_size, wide};
+    use crate::win::{icon, small_icon_size};
 
     /// This subclass among the window's others.
     const SUBCLASS: usize = 0x5243_5442;
@@ -319,7 +239,7 @@ mod shell {
                     for job in jobs {
                         match job {
                             Job::State(new) => state = new,
-                            // A new button has neither buttons nor overlay.
+                            // A new button has no buttons yet.
                             Job::Created => shown = Shown::default(),
                         }
                         shown.show(&list, window, &state);
@@ -337,7 +257,6 @@ mod shell {
     struct Shown {
         /// On the window's button; `None` until they are added to it.
         buttons: Option<[Button; 4]>,
-        badge: Option<Option<Badge>>,
     }
 
     impl Shown {
@@ -374,24 +293,6 @@ mod shell {
                     return;
                 }
                 self.buttons = Some(wanted);
-            }
-            let badge = badge(state);
-            if self.badge != Some(badge) {
-                let picture =
-                    badge.and_then(|badge| icon(size, &badge_pixels(&badge, size as u32)));
-                let description = wide(badge.map_or("", |badge| badge.description));
-                // SAFETY: as above; no picture takes the overlay away.
-                let given = unsafe {
-                    list.SetOverlayIcon(
-                        window,
-                        picture.unwrap_or_default(),
-                        PCWSTR(description.as_ptr()),
-                    )
-                };
-                destroy(picture);
-                if given.is_ok() {
-                    self.badge = Some(badge);
-                }
             }
         }
     }
@@ -432,52 +333,18 @@ mod tests {
 
     const INK: [u8; 3] = [154, 161, 178];
     const RED: [u8; 3] = [210, 45, 57];
-    const GREEN: [u8; 3] = [61, 158, 96];
 
     fn state(call: Option<TaskbarCall>) -> TaskbarState {
         TaskbarState {
             call,
             ink: INK,
             danger: RED,
-            positive: GREEN,
             language: Default::default(),
         }
     }
 
     fn call() -> TaskbarCall {
         TaskbarCall::default()
-    }
-
-    #[test]
-    fn the_overlay_is_discord_s_tray_in_a_call_and_nothing_out_of_one() {
-        assert_eq!(badge(&state(None)), None);
-        let everything = TaskbarCall {
-            muted: true,
-            deafened: true,
-            speaking: true,
-            camera: true,
-        };
-        let deafened = badge(&state(Some(everything))).unwrap();
-        assert_eq!(
-            (deafened.glyph, deafened.color, deafened.description),
-            (Some(HEADPHONES_OFF), RED, "Ensordecido")
-        );
-        let muted = badge(&state(Some(TaskbarCall {
-            deafened: false,
-            ..everything
-        })))
-        .unwrap();
-        assert_eq!((muted.glyph, muted.color), (Some(MICROPHONE_MUTED), RED));
-        let speaking = badge(&state(Some(TaskbarCall {
-            speaking: true,
-            ..call()
-        })))
-        .unwrap();
-        assert_eq!(
-            (speaking.glyph, speaking.color, speaking.faint),
-            (None, GREEN, false)
-        );
-        assert!(badge(&state(Some(call()))).unwrap().faint, "silent: faint");
     }
 
     #[test]
@@ -529,24 +396,5 @@ mod tests {
         let [red, green, blue] = RED;
         let pixels = pixels.as_chunks::<4>().0;
         assert!(pixels.contains(&[blue, green, red, 255]), "blue first");
-        let muted = badge(&state(Some(TaskbarCall {
-            muted: true,
-            ..call()
-        })))
-        .unwrap();
-        let dot = badge_pixels(&muted, 16);
-        assert_eq!(&dot[..4], &[0, 0, 0, 0], "a corner, outside the dot");
-        let dot = dot.as_chunks::<4>().0;
-        assert!(dot.contains(&[blue, green, red, 255]), "the red dot");
-        assert!(
-            dot.iter()
-                .any(|pixel| pixel[..3].iter().all(|channel| *channel > 230)),
-            "its white glyph"
-        );
-        let silent = badge_pixels(&badge(&state(Some(call()))).unwrap(), 16);
-        let silent = silent.as_chunks::<4>().0;
-        // The middle is the faint green, the edge its darker ring.
-        assert_eq!(silent[8 * 16 + 8][3], 102);
-        assert!(silent.iter().any(|pixel| pixel[3] == 255));
     }
 }

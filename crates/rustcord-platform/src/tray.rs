@@ -1,6 +1,7 @@
 //! Rustcord's icon in the system tray, with its menu: open the window, mute,
 //! deafen, choose the status, quit. A red dot marks unread mentions and the
-//! tooltip counts them.
+//! tooltip counts them. In a call the icon is the call's state instead, as
+//! Discord's tray: a green ball, or the microphone or the sound crossed out.
 //!
 //! On Linux this is a StatusNotifierItem with a `com.canonical.dbusmenu`
 //! menu, spoken over D-Bus as KDE, GNOME's AppIndicator extension, waybar
@@ -15,7 +16,7 @@ use rustcord_i18n::{t, tr, Language};
 
 #[cfg(target_os = "linux")]
 mod linux;
-mod mark;
+pub(crate) mod mark;
 #[cfg(any(windows, test))]
 mod windows;
 
@@ -47,6 +48,28 @@ impl TrayStatus {
     }
 }
 
+/// The account in a call, as the icon shows it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrayVoice {
+    Deafened,
+    Muted,
+    Speaking,
+    /// In the call and silent.
+    Connected,
+}
+
+impl TrayVoice {
+    /// Discord's precedence: deafened over muted over speaking.
+    pub fn of(muted: bool, deafened: bool, speaking: bool) -> Self {
+        match (deafened, muted, speaking) {
+            (true, ..) => Self::Deafened,
+            (_, true, _) => Self::Muted,
+            (_, _, true) => Self::Speaking,
+            _ => Self::Connected,
+        }
+    }
+}
+
 /// What the icon and its menu show.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TrayState {
@@ -56,6 +79,8 @@ pub struct TrayState {
     pub unread: u32,
     pub muted: bool,
     pub deafened: bool,
+    /// `None` out of a call; in one, what the icon shows instead of the mark.
+    pub voice: Option<TrayVoice>,
     /// `None` while no account is signed in: the status menu is off.
     pub status: Option<TrayStatus>,
     /// What the menu and the tooltip are written in; a change rewrites both.
@@ -63,6 +88,16 @@ pub struct TrayState {
 }
 
 impl TrayState {
+    /// What the icon shows: the call's state, else the mark, dotted while
+    /// mentions wait.
+    pub(crate) fn face(&self) -> mark::Face {
+        match self.voice {
+            Some(voice) => mark::Face::Voice(voice),
+            None if self.mentions > 0 => mark::Face::Unread,
+            None => mark::Face::Mark,
+        }
+    }
+
     /// The tooltip's line under the name.
     fn summary(&self) -> String {
         let _language = rustcord_i18n::scoped(self.language);

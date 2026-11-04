@@ -1,8 +1,8 @@
 //! The window's button on the Windows taskbar during a call, as Discord's:
-//! an overlay over Rustcord's icon with the voice state (deafened, muted,
-//! speaking or only connected) and, in the preview over the button,
-//! Discord's buttons: the camera, the microphone, the sound and hanging up.
-//! Out of a call there is neither. The pictures are drawn and the shell is
+//! Rustcord's icon stays as it is (the tray shows the call's state) and the
+//! preview over the button has Discord's buttons: the camera, the
+//! microphone, the sound and hanging up. Out of a call there are none.
+//! The pictures are drawn and the shell is
 //! told on a thread of their own; only the clicks come through the window's
 //! own thread. Elsewhere it is not started.
 
@@ -21,20 +21,18 @@ pub struct TaskbarCall {
     pub muted: bool,
     /// The sound off, by its choice or the server's.
     pub deafened: bool,
-    pub speaking: bool,
     pub camera: bool,
 }
 
 /// What the button shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TaskbarState {
-    /// `None` out of a call: no overlay and no buttons.
+    /// `None` out of a call: no buttons.
     pub call: Option<TaskbarCall>,
     /// The preview's glyphs, as RGB.
     pub ink: [u8; 3],
-    /// What is off (the microphone, the sound) is red, a call green.
+    /// What is off (the microphone, the sound) is red.
     pub danger: [u8; 3],
-    pub positive: [u8; 3],
     /// What the tooltips are written in.
     pub language: Language,
 }

@@ -132,7 +132,7 @@ async fn the_item_registers_shows_the_state_and_reports_its_menu() {
         .unwrap();
     assert_eq!(
         pixmaps,
-        super::super::mark::pixmaps(true),
+        super::super::mark::pixmaps(super::super::mark::Face::Unread),
         "the dot for mentions"
     );
     // The layout: the mute entry is checked, the status a radio submenu.
