@@ -386,3 +386,26 @@ every staged file afterwards; nothing was sent.
   the prepared bytes. While it decodes, the fill takes the whole media
   area, its size not known yet. Under a window 760 high the cards shrink
   with it, so the editor stays in view.
+
+## Windows taskbar and tray (desktop client)
+
+Read on 2026-11-04 from the desktop client 1.0.168 installed here (its
+`discord_desktop_core` module and the web bundle it cached): what it does
+and its pictures' colors; nothing copied.
+
+- Thumbnail toolbar, only while in a voice channel (none outside one), in
+  this order: camera (only when video is supported; disabled without a
+  camera), microphone, sound, disconnect. Tooltips «Silenciar» /
+  «Desactivar silencio», «Ensordecer» / «Desactivar ensordecimiento»,
+  «Desconectar» (English: Mute / Unmute, Deafen / Undeafen, Disconnect).
+  Glyphs `#b9bbbe` on a dark system, `#4f5660` on a light one;
+  microphone and sound crossed with a red (`#f04747`) slash while off;
+  the camera, oddly, crossed while it is on. Clicks toggle self mute,
+  self deafen, the camera, or hang up.
+- Tray icon by state, in this precedence: deafened (self or server),
+  muted (self, server or suppressed), speaking (a solid `#43b581` dot),
+  connected (that green at 40 % in a `#2e7b58` ring); outside a call,
+  unread (the mark with a red dot), else the mark.
+- The taskbar button's own overlay is the mention badge (1–9, «9+», or a
+  dot for unread), not the voice state. Rustcord puts the tray's voice
+  states on the overlay instead, in a call only.

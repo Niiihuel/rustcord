@@ -109,22 +109,17 @@ mod shell {
     use tokio::sync::watch;
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
-    use windows::Win32::Graphics::Gdi::{
-        CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DIB_RGB_COLORS,
-    };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::Shell::{
         Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_SHOWTIP, NIF_TIP, NIM_ADD, NIM_DELETE,
         NIM_MODIFY, NIM_SETVERSION, NIN_SELECT, NOTIFYICONDATAW, NOTIFYICON_VERSION_4,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreateIconIndirect, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
-        DestroyIcon, DestroyMenu, DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW,
-        GetSystemMetrics, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-        SetForegroundWindow, SetTimer, TrackPopupMenu, TranslateMessage, HICON, HMENU, ICONINFO,
-        MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MSG, SM_CXSMICON,
-        TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU,
+        AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu,
+        DestroyWindow, DispatchMessageW, GetCursorPos, GetMessageW, PostMessageW, PostQuitMessage,
+        RegisterClassW, RegisterWindowMessageW, SetForegroundWindow, SetTimer, TrackPopupMenu,
+        TranslateMessage, HICON, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING,
+        MSG, TPM_BOTTOMALIGN, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, WM_APP, WM_CONTEXTMENU,
         WM_DESTROY, WM_NULL, WM_TIMER, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED,
     };
 
@@ -368,45 +363,13 @@ mod shell {
 
         /// The mark at the system's small icon size, replacing the last one.
         fn icon(&mut self, dot: bool) -> Option<HICON> {
-            // SAFETY: plain calls; the bitmaps are copied into the icon and
-            // deleted, and the old icon is destroyed once replaced.
-            unsafe {
-                let size = GetSystemMetrics(SM_CXSMICON).clamp(16, 256);
-                let pixels = bgra(size as usize, dot);
-                let header = BITMAPINFO {
-                    bmiHeader: BITMAPINFOHEADER {
-                        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                        biWidth: size,
-                        // Negative: the rows go from the top down.
-                        biHeight: -size,
-                        biPlanes: 1,
-                        biBitCount: 32,
-                        biCompression: BI_RGB.0,
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                };
-                let mut bits = std::ptr::null_mut();
-                let color =
-                    CreateDIBSection(None, &header, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
-                std::ptr::copy_nonoverlapping(pixels.as_ptr(), bits.cast::<u8>(), pixels.len());
-                // The alpha says what shows; the mask lets all of it.
-                let mask_bits = vec![0u8; (size as usize).div_ceil(16) * 2 * size as usize];
-                let mask = CreateBitmap(size, size, 1, 1, Some(mask_bits.as_ptr().cast()));
-                let icon = CreateIconIndirect(&ICONINFO {
-                    fIcon: true.into(),
-                    hbmMask: mask,
-                    hbmColor: color,
-                    ..Default::default()
-                });
-                let _ = DeleteObject(color.into());
-                let _ = DeleteObject(mask.into());
-                let icon = icon.ok()?;
-                if let Some(old) = self.icon.replace(icon) {
-                    let _ = DestroyIcon(old);
-                }
-                Some(icon)
+            let size = crate::win::small_icon_size();
+            let icon = crate::win::icon(size, &bgra(size as usize, dot))?;
+            if let Some(old) = self.icon.replace(icon) {
+                // SAFETY: the icon made before, which the shell copied.
+                let _ = unsafe { DestroyIcon(old) };
             }
+            Some(icon)
         }
     }
 
