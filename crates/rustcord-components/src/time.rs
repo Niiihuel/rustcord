@@ -181,6 +181,40 @@ pub fn stamp(timestamp: Timestamp, now: Timestamp) -> String {
     }
 }
 
+/// How long ago `at` was, as Discord's «Actividad reciente» says it: in
+/// seconds under a minute, minutes under an hour, hours under 12, days under
+/// 9, weeks under 4, then months of 30 days, each rounded.
+pub fn ago(at: Timestamp, now: Timestamp) -> String {
+    let seconds = ((now.0 - at.0) / 1000).max(0);
+    let round = |unit: i64| ((seconds + unit / 2) / unit).max(1);
+    match seconds {
+        0..60 => match seconds.max(1) {
+            1 => tr!("hace {n} segundo", n = 1),
+            n => tr!("hace {n} segundos", n),
+        },
+        60..3_600 => match round(60) {
+            1 => tr!("hace {n} minuto", n = 1),
+            n => tr!("hace {n} minutos", n),
+        },
+        3_600..43_200 => match round(3_600) {
+            1 => tr!("hace {n} hora", n = 1),
+            n => tr!("hace {n} horas", n),
+        },
+        43_200..777_600 => match round(86_400) {
+            1 => tr!("hace {n} día", n = 1),
+            n => tr!("hace {n} días", n),
+        },
+        777_600..2_419_200 => match round(604_800) {
+            1 => tr!("hace {n} semana", n = 1),
+            n => tr!("hace {n} semanas", n),
+        },
+        _ => match round(2_592_000) {
+            1 => tr!("Hace {n} mes", n = 1),
+            n => tr!("Hace {n} meses", n),
+        },
+    }
+}
+
 /// A moment written in a message, as `style` asks, in the local zone; a
 /// relative one against `now`.
 pub fn moment(at: Timestamp, style: rustcord_model::TimeStyle, now: Timestamp) -> String {
@@ -256,6 +290,21 @@ pub fn lasted(millis: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ago_is_discord_s_recent_activity_time() {
+        let now = Timestamp(10_000_000_000);
+        let back = |seconds: i64| ago(Timestamp(now.0 - seconds * 1000), now);
+        assert_eq!(back(0), "hace 1 segundo");
+        assert_eq!(back(42), "hace 42 segundos");
+        assert_eq!(back(90), "hace 2 minutos");
+        assert_eq!(back(3 * 3_600), "hace 3 horas");
+        // Twelve hours and up are days; nine days and up, weeks.
+        assert_eq!(back(13 * 3_600), "hace 1 día");
+        assert_eq!(back(9 * 86_400), "hace 1 semana");
+        assert_eq!(back(15 * 86_400), "hace 2 semanas");
+        assert_eq!(back(70 * 86_400), "Hace 2 meses");
+    }
 
     #[test]
     fn moments_follow_their_style_and_relative_ones_round() {

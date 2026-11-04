@@ -161,6 +161,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("crear el hilo", "create the thread"),
     ("cambiar el hilo", "change the thread"),
     ("cargar los hilos", "load the threads"),
+    ("cargar la actividad reciente", "load the recent activity"),
     (
         "cambiar tu lugar en el escenario",
         "change your place on the stage",

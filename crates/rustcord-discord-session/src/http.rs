@@ -898,6 +898,27 @@ impl Http {
         Ok(events)
     }
 
+    /// `user`'s recent activity, for their full profile.
+    pub async fn recent_activity(
+        &self,
+        secret: &SessionSecret,
+        user: rustcord_model::UserId,
+    ) -> Result<Vec<Event>, RestError> {
+        let value = self
+            .request(
+                secret,
+                Method::GET,
+                &crate::profiles::recent_path(user),
+                None,
+                crate::profiles::MAX_RESPONSE,
+            )
+            .await?;
+        Ok(vec![Event::RecentActivity {
+            user,
+            entries: crate::profiles::recent(&value, crate::messages::wall_now()),
+        }])
+    }
+
     /// The link of rich-presence button `index` of `user`'s activity in
     /// `session`, as the official client asks its app for it: `button_urls`
     /// of the activity's metadata. A missing or unsafe link is a

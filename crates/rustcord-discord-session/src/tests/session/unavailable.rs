@@ -138,7 +138,7 @@ macro_rules! classified {
 }
 
 classified! {
-    LoadHistory, LoadContext, SendMessage, SendSticker, EditMessage, DeleteMessage,
+    LoadHistory, LoadContext, LoadRecentActivity, SendMessage, SendSticker, EditMessage, DeleteMessage,
     ToggleReaction, VotePoll, StartTyping, MarkRead, SetStatus, SetCustomStatus, CreateServer,
     EditServer, DeleteServer, LeaveServer, CreateChannel, EditChannel, DeleteChannel,
     SetOverwrite, RemoveOverwrite, CreateRole, EditRole, DeleteRole, SetMemberRoles, SetNick,
@@ -574,6 +574,7 @@ fn samples() -> Vec<Command> {
         }]),
         Command::SetMessagingPrivacy(PrivacyChange::ServerDms(false)),
         Command::LoadNote { user: PEER },
+        Command::LoadRecentActivity { user: PEER },
         Command::SetNote {
             user: PEER,
             note: "nota".into(),

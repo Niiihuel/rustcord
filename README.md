@@ -343,7 +343,10 @@ de su interfaz ([docs/discord-reference.md](docs/discord-reference.md)). Esa
 decisión no es una autorización ni un respaldo de Discord: esos recursos y el
 nombre y el logo de Discord siguen siendo de Discord y marcas suyas, **no**
 están bajo la licencia de Rustcord y no se pueden reutilizar bajo MIT ni
-Apache-2.0.
+Apache-2.0. Los logos de los servicios de las conexiones
+([assets/connections](assets/connections)), tal como el cliente web de Discord
+los sirve, son marcas de sus dueños, están sólo para nombrar cada conexión y
+tampoco están bajo la licencia de Rustcord.
 
 ## Apoyar el proyecto
 

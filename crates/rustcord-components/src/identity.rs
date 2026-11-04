@@ -909,9 +909,80 @@ pub fn badge_items(badges: &[BadgeChip], size: f32, most: usize, look: &Look) ->
     items
 }
 
-/// The glyph of a connected service, Rustcord's own or a neutral one, dark
-/// on a 24 px white square as Discord sets its services' marks.
+/// The services' logos as Discord's web client serves them (their light
+/// version, `assets/connections`), by the service's key.
+macro_rules! logos {
+    ($($key:literal),* $(,)?) => {
+        &[$(($key, include_bytes!(concat!("../../../assets/connections/", $key, ".png")))),*]
+    };
+}
+const LOGOS: &[(&str, &[u8])] = logos![
+    "amazon-music",
+    "battlenet",
+    "bluesky",
+    "bungie",
+    "crunchyroll",
+    "domain",
+    "ebay",
+    "epicgames",
+    "facebook",
+    "github",
+    "instagram",
+    "leagueoflegends",
+    "letterboxd",
+    "mastodon",
+    "paypal",
+    "playstation",
+    "reddit",
+    "riotgames",
+    "roblox",
+    "samsung",
+    "skype",
+    "spotify",
+    "steam",
+    "tiktok",
+    "twitch",
+    "twitter",
+    "xbox",
+    "youtube",
+];
+
+/// `service`'s logo, made once.
+fn logo(service: &str) -> Option<RasterImage> {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    static MADE: std::sync::OnceLock<Vec<(&'static str, RasterImage)>> = std::sync::OnceLock::new();
+    MADE.get_or_init(|| {
+        LOGOS
+            .iter()
+            .filter_map(|(key, png)| {
+                let image = RasterImage::new(
+                    format!("{:x}", sha2::Sha256::digest(png)),
+                    limn::RasterImageFormat::Png,
+                    u32::try_from(png.len()).ok()?,
+                    std::sync::Arc::from(base64::engine::general_purpose::STANDARD.encode(png)),
+                    *key,
+                )?;
+                Some((*key, image))
+            })
+            .collect()
+    })
+    .iter()
+    .find(|(key, _)| *key == service)
+    .map(|(_, image)| image.clone())
+}
+
+/// A connected service's mark on a 24 px white square, as Discord sets them:
+/// its logo, or for one Rustcord has none of a neutral glyph, dark.
 fn service_glyph(service: &str) -> Element {
+    if let Some(image) = logo(service) {
+        return Element::panel(centered(
+            Element::raster_image(image).size(Some(16.0), Some(16.0)),
+        ))
+        .size(Some(24.0), Some(24.0))
+        .radius(6.0)
+        .background(Color::rgb(255, 255, 255));
+    }
     let glyph = match service {
         "github" => Icon::Github,
         "domain" => Icon::Globe,
@@ -1010,6 +1081,17 @@ mod tests {
             "x",
         )
         .unwrap()
+    }
+
+    #[test]
+    fn every_service_logo_is_a_64_px_png_and_others_keep_a_glyph() {
+        for (key, png) in LOGOS {
+            assert!(png.starts_with(b"\x89PNG"), "{key}");
+            let side = |at: usize| u32::from_be_bytes(png[at..at + 4].try_into().unwrap());
+            assert_eq!((side(16), side(20)), (64, 64), "{key}");
+            assert!(logo(key).is_some(), "{key}");
+        }
+        assert!(logo("steam").is_some() && logo("myspace").is_none());
     }
 
     #[test]

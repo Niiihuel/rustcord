@@ -34,6 +34,39 @@ pub struct WishlistItem {
     pub picture: Option<RemoteImage>,
 }
 
+/// Entries of someone's recent activity kept, at most.
+pub const MAX_RECENT: usize = 50;
+
+/// What a recent activity was, as its card marks it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum RecentKind {
+    /// A game played, or the one played most this week.
+    #[default]
+    Game,
+    /// Music listened to.
+    Music,
+    /// Something watched.
+    Watched,
+    /// An activity launched in a call.
+    Activity,
+}
+
+/// One entry of someone's recent activity («Actividad reciente»), as the
+/// service reports the last 30 days of it.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RecentActivity {
+    pub kind: RecentKind,
+    /// The game, the track or what was watched.
+    pub title: String,
+    /// Its artist, or what it was of; nothing for a game.
+    pub subtitle: Option<String>,
+    pub image: Option<RemoteImage>,
+    /// When it was.
+    pub at: Timestamp,
+    /// Its page, when it has one: the track, what was watched.
+    pub link: Option<String>,
+}
+
 /// What the provider reports keeps a member from taking part in a server.
 /// The default restricts nothing; rows kept before it existed read so.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]

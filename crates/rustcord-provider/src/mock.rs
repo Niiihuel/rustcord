@@ -337,6 +337,7 @@ impl Provider for MockProvider {
                 server_folders: true,
                 messaging_privacy: true,
                 notes: true,
+                recent_activity: false,
                 // The simulation keeps
                 // the cursors and reminders, searches every made-up message
                 // and looks up a crowd of people; see `mock::search`.

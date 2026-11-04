@@ -8,7 +8,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustcord_i18n::{t, tr};
-use rustcord_model::{MemberList, Restriction, ServerId, Timestamp, UserId, UserProfile};
+use rustcord_model::{
+    MemberList, RecentActivity, Restriction, ServerId, Timestamp, UserId, UserProfile, MAX_RECENT,
+};
 use rustcord_provider::{ConnectionState, RequestId};
 
 use crate::{Abilities, Applied, Permit, ServerAbilities, Store};
@@ -18,6 +20,8 @@ const PROFILES_KEPT: usize = 32;
 /// How long a loaded profile is current: the official client asks again
 /// for one older than a minute as its popout opens.
 const PROFILE_FRESH: Duration = Duration::from_secs(60);
+/// How long someone's recent activity stands before it is asked for again.
+const RECENT_FRESH: Duration = Duration::from_secs(60);
 
 /// The system's wall clock.
 fn system_wall() -> Timestamp {
@@ -247,6 +251,44 @@ impl Store {
             let age = self.wall().0 - at.0;
             !(0..PROFILE_FRESH.as_millis() as i64).contains(&age)
         })
+    }
+
+    /// `user`'s recent activity, once read.
+    pub fn recent_activity(&self, user: UserId) -> Option<&[RecentActivity]> {
+        self.recent.get(&user).map(Vec::as_slice)
+    }
+
+    /// Whether to ask for `user`'s recent activity now, marking it asked: when
+    /// the provider reads it, the account is connected, and it was not asked
+    /// for within the last minute, as the official client.
+    pub fn begin_recent(&mut self, user: UserId) -> bool {
+        if !self.capabilities().recent_activity
+            || self.me.is_none()
+            || self.from_cache
+            || self.connection != ConnectionState::Connected
+        {
+            return false;
+        }
+        let now = self.wall();
+        let fresh = self
+            .recent_asked
+            .get(&user)
+            .is_some_and(|at| (0..RECENT_FRESH.as_millis() as i64).contains(&(now.0 - at.0)));
+        if fresh {
+            return false;
+        }
+        self.recent_asked.insert(user, now);
+        true
+    }
+
+    pub(crate) fn recent_loaded(
+        &mut self,
+        user: UserId,
+        mut entries: Vec<RecentActivity>,
+    ) -> Applied {
+        entries.truncate(MAX_RECENT);
+        self.recent.insert(user, entries);
+        Applied::Nothing
     }
 
     /// Whether a failure belongs to the read in flight; it ends it if so.

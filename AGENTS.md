@@ -39,7 +39,9 @@ en [limn](https://github.com/Niiihuel/limn).
   completo y lista de miembros por suscripción, los componentes de bots
   (botones, menús, modales) y los comandos de aplicación, y el socket local
   `discord-ipc` y la detección de juegos, estos dos apagados por defecto,
-  cada uno con su interruptor. Puede presentarse como el cliente web de
+  cada uno con su interruptor, y la ruta no documentada de la actividad
+  reciente del perfil (`/content-inventory/users/{id}/outbox`, 2026-11-04).
+  Puede presentarse como el cliente web de
   Discord en un navegador (2026-10-19): user agent, `X-Super-Properties`,
   huella y propiedades del Identify, una sola identidad coherente en REST,
   Gateway y la WebView del hCaptcha. Sin evasión de CAPTCHA/MFA (los resuelve
@@ -56,7 +58,9 @@ en [limn](https://github.com/Niiihuel/limn).
   cliente oficial en una sesión aislada y anotados en
   `docs/discord-reference.md`, para copiar su aspecto lo más fiel posible
   (2026-11-04); las animaciones se reimplementan, sus archivos Lottie no se
-  copian.
+  copian. Los logos de los servicios de las conexiones tal como el cliente
+  web de Discord los sirve, en su versión clara (`assets/connections`,
+  2026-11-04); son marcas de sus dueños, sólo para nombrar cada conexión.
   No abarca código, otros recursos, perfiles,
   cachés, credenciales, datos de sesión ni contenidos de servidores o
   cuentas ajenas.

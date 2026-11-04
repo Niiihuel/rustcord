@@ -6,8 +6,9 @@
 
 use rustcord_i18n::es;
 use rustcord_model::{
-    ImageKind, ProfileBanner, ProfileGame, RemoteImage, Rgb, ServerId, UserId, UserProfile,
-    WishlistItem, MAX_MUTUALS, MAX_PROFILE_GAMES, MAX_WISHLIST,
+    ImageKind, ProfileBanner, ProfileGame, RecentActivity, RecentKind, RemoteImage, Rgb, ServerId,
+    Timestamp, UserId, UserProfile, WishlistItem, MAX_MUTUALS, MAX_PROFILE_GAMES, MAX_RECENT,
+    MAX_WISHLIST,
 };
 use rustcord_provider::{Command, Event, RequestId, Snapshot};
 use serde_json::Value;
@@ -164,6 +165,132 @@ pub(crate) fn name_games(games: &mut [ProfileGame], answer: &Value) {
     }
 }
 
+/// The route of `user`'s recent activity, as the full profile asks for it.
+pub(crate) fn recent_path(user: UserId) -> String {
+    format!("/content-inventory/users/{user}/outbox")
+}
+
+/// A picture of a recent activity: an `https` one on the hosts its entries
+/// use (Spotify's covers, Discord's media proxy and CDN), as given.
+fn recent_picture(url: &str) -> Option<RemoteImage> {
+    let allowed = [
+        "https://i.scdn.co/",
+        "https://media.discordapp.net/",
+        "https://cdn.discordapp.com/",
+    ];
+    (allowed.iter().any(|host| url.starts_with(host))
+        && url.len() <= 512
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace()))
+    .then(|| RemoteImage {
+        url: url.to_owned(),
+        kind: ImageKind::Artwork,
+    })
+}
+
+/// A watched entry's large asset: a media proxy path (`mp:`) or a Spotify
+/// cover (`spotify:`), else an asset of its application.
+fn watched_picture(asset: &str, application: Option<u64>) -> Option<RemoteImage> {
+    if let Some(path) = asset.strip_prefix("mp:") {
+        return recent_picture(&format!("https://media.discordapp.net/{path}"));
+    }
+    if let Some(id) = asset.strip_prefix("spotify:") {
+        return recent_picture(&format!("https://i.scdn.co/image/{id}"));
+    }
+    let safe = |text: &str| !text.is_empty() && text.bytes().all(|b| b.is_ascii_alphanumeric());
+    (safe(asset) && !asset.contains(':'))
+        .then_some(application?)
+        .and_then(|app| {
+            recent_picture(&format!(
+                "https://cdn.discordapp.com/app-assets/{app}/{asset}.png?size=160"
+            ))
+        })
+}
+
+/// What `user`'s outbox (`answer`) says they did lately, in its order, as the
+/// official client's full profile shows it: games played (and the most
+/// played this week), music listened to, what was watched and activities
+/// launched; nothing live now, nothing past its `expires_at`. Each one's time
+/// is its ID's.
+pub(crate) fn recent(answer: &Value, now: Timestamp) -> Vec<RecentActivity> {
+    let text = |value: &Value| text(value, 256).filter(|text| !text.trim().is_empty());
+    let trait_of = |entry: &Value, kind: u64| {
+        entry["traits"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|found| found["type"].as_u64() == Some(kind))
+            .cloned()
+    };
+    answer["entries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let at = wire::created(UserId(wire::id(&entry["id"]).ok()?))?;
+            let expired = wire::timestamp(&entry["expires_at"]).is_ok_and(|end| end.0 <= now.0);
+            // Live now: the profile shows it as current activity instead.
+            let live =
+                trait_of(entry, 3).is_some_and(|found| found["is_live"].as_bool() == Some(true));
+            if expired || live {
+                return None;
+            }
+            let extra = &entry["extra"];
+            let application = wire::id(&extra["application_id"]).ok();
+            let (kind, title, subtitle, image, link) = match entry["content_type"].as_u64()? {
+                1 | 3 => (
+                    RecentKind::Game,
+                    text(&extra["game_name"])?,
+                    None,
+                    None,
+                    None,
+                ),
+                5 => {
+                    let media = &extra["entries"][0]["media"];
+                    let track = media["external_id"].as_str().filter(|id| {
+                        !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric())
+                    });
+                    (
+                        RecentKind::Music,
+                        text(&media["title"])?,
+                        text(&media["artists"][0]["name"]),
+                        media["image_url"].as_str().and_then(recent_picture),
+                        track.map(|id| format!("https://open.spotify.com/track/{id}")),
+                    )
+                }
+                2 => (
+                    RecentKind::Watched,
+                    text(&extra["media_title"])?,
+                    text(&extra["media_subtitle"]),
+                    extra["media_assets_large_image"]
+                        .as_str()
+                        .and_then(|asset| watched_picture(asset, application)),
+                    extra["url"]
+                        .as_str()
+                        .filter(|url| url.starts_with("https://") && url.len() <= 512)
+                        .map(str::to_owned),
+                ),
+                8 => (
+                    RecentKind::Activity,
+                    text(&extra["activity_name"])?,
+                    None,
+                    None,
+                    None,
+                ),
+                _ => return None,
+            };
+            Some(RecentActivity {
+                kind,
+                title,
+                subtitle,
+                image,
+                at,
+                link,
+            })
+        })
+        .take(MAX_RECENT)
+        .collect()
+}
+
 /// The wishlist `wishlist_settings` names, when the profile shares one.
 pub(crate) fn wishlist_id(value: &Value) -> Option<u64> {
     value["wishlist_settings"]
@@ -298,6 +425,56 @@ mod tests {
             Some(Event::ProfileLoaded { profile, .. }) => profile,
             _ => panic!("profile last"),
         }
+    }
+
+    #[test]
+    fn recent_activity_keeps_games_music_and_what_was_watched_in_order() {
+        // 2026-09 in the IDs' clock.
+        let id = |ms: u64| ((ms - 1_420_070_400_000) << 22).to_string();
+        let at = 1_790_000_000_000_u64;
+        let answer = serde_json::json!({"entries": [
+            {"id": id(at), "content_type": 5, "traits": [], "extra": {"entries": [{"media": {
+                "provider": 1, "title": "444 - Remix", "artists": [{"name": "Yan Block"}],
+                "image_url": "https://i.scdn.co/image/ab67616d0000b273", "external_id": "4uLU6hMCjMI75M1A2tKUQC"}}]}},
+            {"id": id(at - 1000), "content_type": 1, "traits": [{"type": 2, "duration_seconds": 600}],
+                "extra": {"application_id": "356875570916753438", "game_name": "Minecraft", "platform": 0}},
+            {"id": id(at - 2000), "content_type": 1, "traits": [{"type": 3, "is_live": true}],
+                "extra": {"game_name": "Live now"}},
+            {"id": id(at - 3000), "content_type": 2, "traits": [], "extra": {
+                "application_id": "1", "media_title": "Frieren", "media_subtitle": "Season 1, Episode 5",
+                "media_assets_large_image": "mp:external/abc/https/img.example/x.png",
+                "url": "https://www.crunchyroll.com/watch/x"}},
+            {"id": id(at - 4000), "content_type": 6, "extra": {}},
+            {"id": id(at - 5000), "content_type": 5, "extra": {"entries": [{"media": {
+                "title": "Bad cover", "image_url": "javascript:alert(1)"}}]}},
+            {"id": id(at - 6000), "content_type": 8, "expires_at": "2020-01-01T00:00:00+00:00",
+                "extra": {"activity_name": "Expired"}}
+        ]});
+        let found = recent(&answer, Timestamp(at as i64 + 60_000));
+        let titles: Vec<&str> = found.iter().map(|entry| entry.title.as_str()).collect();
+        assert_eq!(titles, ["444 - Remix", "Minecraft", "Frieren", "Bad cover"]);
+        let song = &found[0];
+        assert_eq!(song.kind, RecentKind::Music);
+        assert_eq!(song.subtitle.as_deref(), Some("Yan Block"));
+        assert_eq!(song.at, Timestamp(at as i64));
+        assert_eq!(
+            song.link.as_deref(),
+            Some("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC")
+        );
+        assert!(song
+            .image
+            .as_ref()
+            .is_some_and(|image| image.url.starts_with("https://i.scdn.co/")));
+        assert_eq!(
+            (found[1].kind, found[1].image.is_none()),
+            (RecentKind::Game, true)
+        );
+        assert_eq!(
+            found[2].image.as_ref().map(|image| image.url.as_str()),
+            Some("https://media.discordapp.net/external/abc/https/img.example/x.png")
+        );
+        assert!(found[3].image.is_none(), "an unsafe picture is left out");
+        assert_eq!(recent_path(UserId(7)), "/content-inventory/users/7/outbox");
     }
 
     #[test]

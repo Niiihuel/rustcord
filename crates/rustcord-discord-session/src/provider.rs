@@ -610,10 +610,9 @@ impl DiscordSessionProvider {
                                     Box::pin(async move {
                                         http.stage(&secret, server, me, &request).await
                                     })
-                                } else if let Some((server, forum)) =
-                                    open_threads(&active.snapshot, &request)
+                                } else if let Some(forum) = open_threads(&active.snapshot, &request)
                                 {
-                                    // Open threads are read through the guild.
+                                    // A forum's open threads come from its search.
                                     let Command::LoadThreads {
                                         request,
                                         parent,
@@ -628,7 +627,6 @@ impl DiscordSessionProvider {
                                             &secret,
                                             request,
                                             parent,
-                                            server,
                                             forum,
                                             before.as_deref(),
                                         )
@@ -679,6 +677,10 @@ impl DiscordSessionProvider {
                                         )
                                         .await
                                     })
+                                } else if let Command::LoadRecentActivity { user } = request {
+                                    Box::pin(
+                                        async move { http.recent_activity(&secret, user).await },
+                                    )
                                 } else if crate::identity::is_identity(&request) {
                                     // See `http::identity`.
                                     Box::pin(
@@ -997,6 +999,7 @@ impl DiscordSessionProvider {
                             | Command::SetCustomStatus { .. } | Command::SetNotifications { .. }
                             | Command::SetServerFolders(_) | Command::SetMessagingPrivacy(_)
                             | Command::LoadNote { .. } | Command::SetNote { .. }
+                            | Command::LoadRecentActivity { .. }
                             // Checked by
                             // `message_actions::allowed` and `admin::allowed`.
                             | Command::ForwardMessage { .. } | Command::CreatePoll { .. }
@@ -2486,12 +2489,9 @@ fn message_changed(command: &Command, updates: &[Event]) -> bool {
     }))
 }
 
-/// The server of an open-threads page and whether its parent is a forum,
-/// for a [`Command::LoadThreads`] of [`ThreadScope::Active`] only.
-fn open_threads(
-    snapshot: &Snapshot,
-    command: &Command,
-) -> Option<(rustcord_model::ServerId, bool)> {
+/// Whether the parent of an open-threads page in a server is a forum, for
+/// a [`Command::LoadThreads`] of [`ThreadScope::Active`] only.
+fn open_threads(snapshot: &Snapshot, command: &Command) -> Option<bool> {
     let Command::LoadThreads {
         parent,
         scope: rustcord_provider::ThreadScope::Active,
@@ -2501,7 +2501,8 @@ fn open_threads(
         return None;
     };
     let found = snapshot.channels.iter().find(|known| known.id == *parent)?;
-    Some((found.server?, found.kind == ChannelKind::Forum))
+    found.server?;
+    Some(found.kind == ChannelKind::Forum)
 }
 
 fn history_request(command: &Command, request: u64) -> bool {
@@ -2760,6 +2761,7 @@ impl Provider for DiscordSessionProvider {
                 server_folders: true,
                 messaging_privacy: true,
                 notes: true,
+                recent_activity: true,
                 // Acknowledgements,
                 // reminders and a whole server read by their routes,
                 // other devices' reads by `MESSAGE_ACK`, the search

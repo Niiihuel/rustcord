@@ -122,6 +122,14 @@ impl Messages {
                     _ => Ok(()),
                 };
             }
+            // Anyone's recent activity is read; the service keeps it private.
+            Command::LoadRecentActivity { user } => {
+                return if user.0 == 0 {
+                    Err(wire::invalid())
+                } else {
+                    Ok(())
+                };
+            }
             Command::LoadHistory { channel, .. } => (*channel, Permissions::READ_HISTORY),
             Command::LoadContext {
                 channel, anchor, ..

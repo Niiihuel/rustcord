@@ -708,6 +708,12 @@ pub enum Command {
     SetServerFolders(Vec<ServerFolder>),
     /// Answered by [`Event::MessagingPrivacy`].
     SetMessagingPrivacy(PrivacyChange),
+    /// Read `user`'s recent activity, the last 30 days the service keeps
+    /// of their games, music and what they watched. Answered by
+    /// [`Event::RecentActivity`].
+    LoadRecentActivity {
+        user: UserId,
+    },
     /// Read the account's private note on `user`. Answered by
     /// [`Event::NoteChanged`].
     LoadNote {
@@ -1435,6 +1441,10 @@ pub enum Failure {
     Note {
         user: UserId,
     },
+    /// Reading someone's recent activity.
+    RecentActivity {
+        user: UserId,
+    },
     /// Holding a conversation unread at the provider.
     Unread {
         channel: ChannelId,
@@ -1792,6 +1802,7 @@ impl Failure {
             Command::LoadNote { user } | Command::SetNote { user, .. } => {
                 Self::Note { user: *user }
             }
+            Command::LoadRecentActivity { user } => Self::RecentActivity { user: *user },
             Command::MarkUnread { channel, .. } => Self::Unread { channel: *channel },
             Command::MarkServerRead { server, .. } => Self::ServerRead { server: *server },
             Command::SearchMessages { request, .. } => Self::Search { request: *request },
@@ -1975,6 +1986,7 @@ impl Failure {
             Self::Folders => t("cambiar las carpetas de servidores"),
             Self::Privacy => t("cambiar la privacidad"),
             Self::Note { .. } => t("guardar la nota"),
+            Self::RecentActivity { .. } => t("cargar la actividad reciente"),
             Self::Unread { .. } => t("marcar como no leído"),
             Self::ServerRead { .. } => t("marcar el servidor como leído"),
             Self::Search { .. } => t("buscar mensajes"),
@@ -2355,6 +2367,12 @@ pub enum Event {
     /// go first, the newest first, as the service shows them.
     ServerFolders(Vec<ServerFolder>),
     MessagingPrivacy(MessagingPrivacy),
+    /// `user`'s recent activity, in the service's order; empty when there
+    /// is none to show.
+    RecentActivity {
+        user: UserId,
+        entries: Vec<rustcord_model::RecentActivity>,
+    },
     /// The account's private note on `user`; empty when there is none.
     NoteChanged {
         user: UserId,
@@ -2792,6 +2810,9 @@ pub struct Capabilities {
     pub messaging_privacy: bool,
     /// The account keeps a private note on each person.
     pub notes: bool,
+    /// Someone's recent activity can be read for their full profile
+    /// ([`Command::LoadRecentActivity`]).
+    pub recent_activity: bool,
     /// A whole server can be marked read at once ([`Command::MarkServerRead`]).
     pub server_read: bool,
     /// Holding a conversation unread reaches the provider and the account's

@@ -546,6 +546,9 @@ pub struct Store {
     voice_started: HashMap<ChannelId, Timestamp>,
     /// When each loaded profile arrived, by the store's clock.
     profile_at: HashMap<(UserId, Option<ServerId>), Timestamp>,
+    /// Recent activity read, by person, and when each was last asked for.
+    recent: HashMap<UserId, Vec<rustcord_model::RecentActivity>>,
+    recent_asked: HashMap<UserId, Timestamp>,
     join: onboarding::JoinState,
     events: events::EventsState,
     automod: automod::AutoModState,
@@ -1061,6 +1064,7 @@ impl Store {
             Event::ServerFolders(folders) => self.folders_changed(folders),
             Event::MessagingPrivacy(privacy) => self.privacy_changed(privacy),
             Event::NoteChanged { user, note } => self.note_changed(user, note),
+            Event::RecentActivity { user, entries } => self.recent_loaded(user, entries),
             Event::MarkedUnread {
                 account,
                 channel,
@@ -1322,7 +1326,9 @@ impl Store {
             | Failure::Notifications { .. }
             | Failure::Folders
             | Failure::Privacy
-            | Failure::Note { .. } => {}
+            | Failure::Note { .. }
+            // As the official client: the section stays out, quietly.
+            | Failure::RecentActivity { .. } => {}
             // Reads, search and remote members: a reminder and a server
             // read stay marked here; a search owns its own error.
             Failure::Unread { .. } | Failure::ServerRead { .. } | Failure::Search { .. } => {}

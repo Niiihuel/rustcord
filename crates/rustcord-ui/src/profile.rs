@@ -872,6 +872,22 @@ pub(crate) fn request_profile(
     intents
 }
 
+/// What the full profile of `user` asks for as it opens: their profile, and
+/// their recent activity, which only the full profile reads (as the official
+/// client's), a minute apart at most.
+fn request_full(
+    ui: &mut Ui,
+    store: &mut Store,
+    user: UserId,
+    server: Option<ServerId>,
+) -> Vec<Intent> {
+    let mut intents = request_profile(ui, store, user, server);
+    if store.begin_recent(user) {
+        intents.push(Intent::Command(Command::LoadRecentActivity { user }));
+    }
+    intents
+}
+
 /// After a layout: once the member list's card is open, take where its
 /// row is, so the card stays there (see [`Profiles::member_at`]). Only the
 /// row of the list counts; a mention of the same person does not.
@@ -1456,7 +1472,7 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
             close_floating(ui);
             ui.profiles.full = Some((user, server));
             ui.profiles.full_tab = tab;
-            return Some(request_profile(ui, store, user, server));
+            return Some(request_full(ui, store, user, server));
         }
     }
     // Reporting copies the person's ID for the provider's form, and opens it.
@@ -1513,7 +1529,7 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         close_floating(ui);
         ui.profiles.full = Some((user, server));
         ui.profiles.full_tab = FullTab::default();
-        return Some(request_profile(ui, store, user, server));
+        return Some(request_full(ui, store, user, server));
     }
     for (prefix, on_mark) in [("pp:name:", false), ("pp:avatar:", true)] {
         if let Some(message) = number(prefix) {
@@ -2336,6 +2352,7 @@ fn saved_in(ui: &mut Ui, store: &Store, server: ServerId, saved: bool) -> Vec<In
 
 /// Someone's full profile, while open.
 fn full_view(ui: &Ui, store: &Store, look: &Look) -> Option<FullProfile> {
+    use rustcord_components::profile::RecentGlyph;
     let (user, server) = ui.profiles.full?;
     // Its «…» and the «+» of its roles are the card's, named by this action.
     let profile = card_of(ui, store, server, user, look)?;
@@ -2353,6 +2370,23 @@ fn full_view(ui: &Ui, store: &Store, look: &Look) -> Option<FullProfile> {
         mutual_friends,
         tab: ui.profiles.full_tab,
         connections: crate::identity::connections(store, user, server),
+        recent: store
+            .recent_activity(user)
+            .unwrap_or_default()
+            .iter()
+            .map(|entry| rustcord_components::profile::RecentCard {
+                glyph: match entry.kind {
+                    rustcord_model::RecentKind::Game => RecentGlyph::Game,
+                    rustcord_model::RecentKind::Music => RecentGlyph::Music,
+                    rustcord_model::RecentKind::Watched => RecentGlyph::Watched,
+                    rustcord_model::RecentKind::Activity => RecentGlyph::Activity,
+                },
+                title: entry.title.clone(),
+                subtitle: entry.subtitle.clone(),
+                image: ui.picture(entry.image.as_ref()),
+                when: rustcord_components::time::ago(entry.at, store.wall()),
+            })
+            .collect(),
     })
 }
 

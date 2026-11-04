@@ -665,6 +665,83 @@ pub struct FullProfile {
     /// Their profile is being read and none of it is kept yet: the activity
     /// tab shows its lines instead of claiming there is none.
     pub loading: bool,
+    /// What they did lately («Actividad reciente»), in the service's order.
+    pub recent: Vec<RecentCard>,
+}
+
+/// What a recent activity was, for the glyph of its card's last line.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RecentGlyph {
+    #[default]
+    Game,
+    Music,
+    Watched,
+    Activity,
+}
+
+/// One card of «Actividad reciente».
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RecentCard {
+    pub glyph: RecentGlyph,
+    pub title: String,
+    pub subtitle: Option<String>,
+    /// Its picture, once loaded; the glyph on a plain square until then.
+    pub image: Option<limn::RasterImage>,
+    /// How long ago, as a person reads it: «hace 2 semanas».
+    pub when: String,
+}
+
+/// A card of «Actividad reciente», as Discord's: on the raised ground, 12 in,
+/// a 60 px picture then its title (14 semibold), its subtitle (12) and a line
+/// with its kind's glyph and how long ago (12, subtle).
+fn recent_card(card: &RecentCard, look: &Look) -> Element {
+    let glyph = match card.glyph {
+        RecentGlyph::Game | RecentGlyph::Activity => Icon::Gamepad,
+        RecentGlyph::Music => Icon::MusicNote,
+        RecentGlyph::Watched => Icon::Video,
+    };
+    let picture = match &card.image {
+        Some(image) => Element::raster_image(image.clone().cover())
+            .size(Some(60.0), Some(60.0))
+            .radius(4.0),
+        None => Element::panel(crate::centered(
+            icon(glyph, look.muted).size(Some(24.0), Some(24.0)),
+        ))
+        .size(Some(60.0), Some(60.0))
+        .radius(4.0)
+        .background(raised(look, 24)),
+    };
+    let mut details = vec![strong_line(&card.title, 14.0, look.text).shrink_to_fit()];
+    if let Some(subtitle) = &card.subtitle {
+        details.push(line(subtitle, 12.0, look.muted).shrink_to_fit());
+    }
+    details.push(
+        Element::row(vec![
+            icon(glyph, look.faint)
+                .size(Some(12.0), Some(12.0))
+                .centered_y(),
+            line(&card.when, 12.0, look.faint).centered_y(),
+        ])
+        .gap(4.0),
+    );
+    Element::row(vec![
+        picture,
+        Element::column(details).gap(4.0).flex(1.0).centered_y(),
+    ])
+    .gap(12.0)
+    .padding(12.0)
+    .radius(8.0)
+    .background(raised(look, 16))
+}
+
+/// «Actividad reciente»: its heading (12, subtle) and its cards, 8 apart.
+fn recent_section(cards: &[RecentCard], look: &Look) -> Option<Element> {
+    if cards.is_empty() {
+        return None;
+    }
+    let mut parts = vec![strong_line(t("Actividad reciente"), 12.0, look.muted)];
+    parts.extend(cards.iter().map(|card| recent_card(card, look)));
+    Some(Element::column(parts).gap(8.0))
 }
 
 /// A popout's ground: Discord's floating black (#0a0a0c, the default look's
@@ -2119,10 +2196,16 @@ fn full_tabs(full: &FullProfile, width: f32, look: &Look) -> Element {
                 ));
             }
             let activities = activity_parts(profile, width, look);
-            if activities.is_empty() {
+            let recent = recent_section(&full.recent, look);
+            if activities.is_empty() && recent.is_none() {
                 parts.push(text(t("Sin actividad por ahora."), 14.0, look.muted));
             }
             parts.extend(activities);
+            // Sections 24 apart, as Discord's.
+            if let Some(recent) = recent {
+                parts.push(gap(0.0, 16.0));
+                parts.push(recent);
+            }
             Element::column(parts).gap(8.0)
         }
         FullTab::Friends => mutual_list(&full.mutual_friends, look),
@@ -4110,6 +4193,7 @@ mod tests {
             mutual_friends: friends,
             tab,
             loading: false,
+            recent: Vec::new(),
         };
         texts(
             &frame(
@@ -4181,6 +4265,7 @@ mod tests {
             mutual_friends: Mutual::Unknown,
             tab: FullTab::Activity,
             loading: false,
+            recent: Vec::new(),
         };
         let (_, laid) = frame(
             full_profile(Element::spacer(), &full, Size::new(900.0, 900.0), &LOOK),
@@ -4232,6 +4317,7 @@ mod tests {
             mutual_friends: Mutual::Unknown,
             tab: FullTab::Activity,
             loading: false,
+            recent: Vec::new(),
         };
         let at = |laid: &limn::Frame, wanted: &str| {
             laid.commands
@@ -4925,6 +5011,7 @@ mod tests {
             mutual_friends: Mutual::Loading,
             tab: FullTab::Activity,
             loading,
+            recent: Vec::new(),
         };
         let (_, reading) = frame(
             full_profile(
@@ -4962,6 +5049,31 @@ mod tests {
         assert!(texts(&settled)
             .iter()
             .any(|text| text == "Sin actividad por ahora."));
+        // What they did lately: its heading and cards, and no «none».
+        let lately = FullProfile {
+            recent: vec![RecentCard {
+                glyph: RecentGlyph::Music,
+                title: "444 - Remix".into(),
+                subtitle: Some("Yan Block".into()),
+                image: None,
+                when: "hace 2 semanas".into(),
+            }],
+            ..full(false)
+        };
+        let (_, laid) = frame(
+            full_profile(Element::spacer(), &lately, Size::new(900.0, 900.0), &LOOK),
+            Size::new(900.0, 900.0),
+        );
+        let said = texts(&laid);
+        for text in [
+            "Actividad reciente",
+            "444 - Remix",
+            "Yan Block",
+            "hace 2 semanas",
+        ] {
+            assert!(said.iter().any(|said| said == text), "{text}: {said:?}");
+        }
+        assert!(!said.iter().any(|text| text == "Sin actividad por ahora."));
     }
 
     fn games(count: usize) -> Vec<GameIcon> {
