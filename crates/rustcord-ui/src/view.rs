@@ -309,7 +309,7 @@ fn column(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Element {
             channel_list::rows(ui, store, server.id, look, wall),
         ),
         None => (
-            sidebar::header(t("Mensajes directos"), look),
+            sidebar::direct_header(look),
             direct_rows(ui, store, look, wall),
         ),
     };
@@ -354,16 +354,22 @@ fn account(
             sections.push(
                 Element::panel(Element::spacer())
                     .size(None, Some(1.0))
-                    .background(look.border),
+                    .background(chrome::USER_PANEL_EDGE),
             );
         }
         sections.push(part);
     }
-    let card = Element::panel(Element::column(sections))
-        .radius(8.0)
-        .background(look.rail)
-        .border(look.border, 1.0)
-        .clip_children();
+    // As measured on Discord's, the sections sit inside the 1 px edge at
+    // the top, bottom and right, but start under it at the left.
+    let card = Element::panel(Element::column(vec![
+        gap(0.0, 1.0),
+        Element::row(vec![Element::column(sections).flex(1.0), gap(1.0, 0.0)]),
+        gap(0.0, 1.0),
+    ]))
+    .radius(8.0)
+    .background(look.rail)
+    .border(chrome::USER_PANEL_EDGE, 1.0)
+    .clip_children();
     let (left, right, bottom) = chrome::USER_PANEL_MARGIN;
     // The dividers of the rail and the column run on behind the panel.
     let dividers = Element::row(vec![
@@ -400,9 +406,10 @@ fn direct_rows(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Vec<Elem
     let selected = ui.channel().filter(|_| !friends);
     let show_presence = store.friends_presence();
     let pending = store.pending_requests();
-    let mut rows = vec![rustcord_components::friends::home_entry(
-        friends, pending, look,
-    )];
+    let mut rows = vec![
+        rustcord_components::friends::home_entry(friends, pending, look),
+        sidebar::section_divider(look),
+    ];
     // The pinned ones on top, under their own heading.
     let (pinned, rest) = crate::desktop::split_pinned(ui, store.directs());
     if !pinned.is_empty() {
@@ -464,6 +471,25 @@ fn direct_rows(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Vec<Elem
                 accent,
                 status: presence.map(|presence| look.status(presence.status)),
                 group,
+                // Discord's ×: a group's leaves it, a conversation's closes it.
+                close: if group {
+                    store
+                        .group_abilities(channel.id)
+                        .filter(|can| can.leave.allowed())
+                        .map(|_| {
+                            (
+                                format!("group:{}:leave", channel.id),
+                                t("Abandonar grupo").to_owned(),
+                            )
+                        })
+                } else {
+                    store.close_direct(channel.id).allowed().then(|| {
+                        (
+                            format!("group:{}:close", channel.id),
+                            t("Cerrar conversación").to_owned(),
+                        )
+                    })
+                },
                 selected: selected == Some(channel.id),
                 // Muted, it waits without saying so.
                 unread: store.read(channel.id).unread()

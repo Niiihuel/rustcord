@@ -190,13 +190,19 @@ pub(super) const ENTRIES: super::Entries = &[
     // Friends (`friends.rs`).
     ("En línea", "Online"),
     ("Todos", "All"),
-    ("Pendientes", "Pending"),
-    ("Bloqueados", "Blocked"),
-    ("Añadir amigo", "Add friend"),
+    ("Pendiente", "Pending"),
+    ("{label}, {count} nuevo", "{label}, {count} new"),
+    ("{label}, {count} nuevos", "{label}, {count} new"),
+    ("Nuevo grupo de MD", "New Group DM"),
+    (
+        "¿Estás buscando las cuentas que bloqueaste o ignoraste?",
+        "Looking for the accounts you blocked or ignored?",
+    ),
+    ("Dirígete a ajustes", "Head to Settings"),
+    ("Ingresa un nombre de usuario", "Enter a username"),
     ("Amigos", "Friends"),
     ("Más", "More"),
     ("Nombre de usuario", "Username"),
-    ("Enviar solicitud", "Send friend request"),
     (
         "Puedes añadir amigos con su nombre de usuario.",
         "You can add friends with their username.",

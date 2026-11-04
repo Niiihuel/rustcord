@@ -106,6 +106,8 @@ impl SettingsPage {
         Some(match key {
             "audio" => Self::Voice,
             "keybinds" | "shortcuts" | "desktop" | "updates" => Self::System,
+            // The friends page's note goes to the blocked and ignored people.
+            "ignore-block" => Self::Messaging,
             _ => *Self::ALL.iter().find(|page| page.key() == key)?,
         })
     }
@@ -148,6 +150,7 @@ fn section_of_key(key: &str) -> Option<&'static str> {
         "keybinds" | "shortcuts" => Some("shortcuts"),
         "desktop" => Some("desktop"),
         "updates" => Some("updates"),
+        "ignore-block" => Some("ignore-block"),
         _ => None,
     }
 }
@@ -174,6 +177,8 @@ pub struct Prefs {
     pub unread_badges: bool,
     /// The rail counts mentions.
     pub mention_badges: bool,
+    /// The friends page still says where the blocked people went; its × ends it.
+    pub blocked_notice: bool,
     /// How the microphone is processed: a preset, or [`Self::processing`].
     pub input_profile: InputProfile,
     /// The processing of [`InputProfile::Custom`]; off until chosen.
@@ -387,6 +392,7 @@ impl Default for Prefs {
             role_colors: true,
             unread_badges: true,
             mention_badges: true,
+            blocked_notice: true,
             input_profile: InputProfile::default(),
             processing: Processing::default(),
             // Measured: it removes a game's and
@@ -532,6 +538,7 @@ impl Prefs {
             ("role_colors", flag(self.role_colors)),
             ("unread_badges", flag(self.unread_badges)),
             ("mention_badges", flag(self.mention_badges)),
+            ("blocked_notice", flag(self.blocked_notice)),
             ("input_profile", Some(self.input_profile.key().into())),
             (
                 "noise_suppression",
@@ -598,6 +605,7 @@ impl Prefs {
         self.role_colors = flag("role_colors", usual.role_colors);
         self.unread_badges = flag("unread_badges", usual.unread_badges);
         self.mention_badges = flag("mention_badges", usual.mention_badges);
+        self.blocked_notice = flag("blocked_notice", usual.blocked_notice);
         // Settings from before profiles were one's own processing: keep it.
         let earlier = setting("input_profile").is_none()
             && ["noise_suppression", "echo_cancellation", "automatic_gain"]
@@ -1762,6 +1770,7 @@ mod tests {
             role_colors: false,
             unread_badges: false,
             mention_badges: false,
+            blocked_notice: false,
             input_profile: InputProfile::VoiceIsolation,
             processing: Processing {
                 suppression: rustcord_media::ProcessingMode::RnNoise,

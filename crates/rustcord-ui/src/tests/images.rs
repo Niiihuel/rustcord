@@ -306,7 +306,6 @@ fn every_list_of_people_asks_for_the_faces_it_shows() {
         ("all", RelationshipKind::Friend),
         ("pending", RelationshipKind::IncomingRequest),
         ("pending", RelationshipKind::OutgoingRequest),
-        ("blocked", RelationshipKind::Blocked),
     ] {
         host.click(&format!("{}{tab}", rustcord_components::friends::ids::TAB));
         let people = listed(&host, kind);

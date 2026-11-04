@@ -82,13 +82,19 @@ fn the_page_lists_friends_and_requests_and_accepting_waits_for_the_provider() {
     assert!(crate::relationships::visible(&host.ui));
     let painted = host.painted();
     assert!(
-        painted.iter().any(|text| text == "RECIBIDAS — 2"),
+        painted.iter().any(|text| text == "Recibidas — 2"),
         "{painted:?}"
     );
-    assert!(painted.iter().any(|text| text == "ENVIADAS — 1"));
+    assert!(painted.iter().any(|text| text == "Enviadas — 1"));
     // The service's spam folder waits apart and is not counted as waiting.
-    assert!(painted.iter().any(|text| text == "POSIBLE SPAM — 1"));
-    assert!(painted.iter().any(|text| text == "Pendientes · 2"));
+    assert!(painted.iter().any(|text| text == "Posible spam — 1"));
+    let tab = host
+        .frame()
+        .access
+        .into_iter()
+        .find(|node| node.name.starts_with("Pendiente"))
+        .expect("the pending tab");
+    assert_eq!(tab.name, "Pendiente, 2 nuevos");
     let accept = ids::person(JULIAN, "accept");
     let sent = host.sent.len();
     host.click(&accept);
@@ -135,7 +141,12 @@ fn blocking_asks_first_and_then_takes_away_their_conversation() {
     let direct = host.store.direct_with(BRUNO).unwrap();
     let write = host.store.abilities(direct).unwrap().write;
     assert!(write.reason().unwrap().starts_with("Bloqueaste a Bruno"));
-    host.click(&format!("{}blocked", ids::TAB));
+    // The blocked are in the settings, as Discord has them: the page's note
+    // goes there.
+    host.click(ids::NOTICE_SETTINGS);
+    assert_eq!(host.ui.settings, Some(SettingsPage::Messaging));
+    host.tree.scroll_to_end("us:content:messaging");
+    host.frame();
     let unblock = ids::person(BRUNO, "unblock");
     assert!(host.offers(&unblock) && host.offers(&ids::person(YAGO, "unblock")));
     let sent = host.sent.len();
@@ -672,4 +683,60 @@ fn the_ignore_question_offers_blocking_instead_and_asks_that_one() {
     assert_eq!(host.sent[sent..], [Command::BlockUser { user: BRUNO }]);
     host.answer_social(sent);
     assert!(host.store.blocked(BRUNO) && !host.store.is_ignored(BRUNO));
+}
+
+#[test]
+fn the_note_about_the_blocked_closes_for_good_and_a_row_opens_its_conversation() {
+    let mut host = Host::new();
+    host.friends("online");
+    assert!(host
+        .painted()
+        .iter()
+        .any(|text| text.starts_with("¿Estás buscando las cuentas")));
+    let intents = update(
+        &mut host.ui,
+        &mut host.store,
+        &UiAction::Clicked {
+            id: ids::NOTICE_CLOSE.into(),
+        },
+        host.now,
+    );
+    assert_eq!(
+        intents,
+        [Intent::SaveSetting {
+            key: "blocked_notice".into(),
+            value: Some("false".into()),
+        }]
+    );
+    assert!(!host
+        .painted()
+        .iter()
+        .any(|text| text.starts_with("¿Estás buscando las cuentas")));
+    // The whole row opens the conversation, as its round button does.
+    let direct = host.store.direct_with(BRUNO).unwrap();
+    host.click(&ids::person(BRUNO, "open"));
+    assert_eq!(host.ui.channel(), Some(direct));
+    assert!(!crate::relationships::visible(&host.ui));
+}
+
+#[test]
+fn the_direct_column_searches_with_the_switcher_and_closes_a_conversation_from_its_row() {
+    let mut host = Host::new();
+    host.click("home");
+    host.click("switcher:open");
+    assert!(host.ui.switcher.is_some());
+    host.ui.switcher = None;
+    let direct = host.store.direct_with(BRUNO).unwrap();
+    let close = format!("group:{direct}:close");
+    assert!(
+        host.offers(&close),
+        "the × is there, shown under the pointer"
+    );
+    let sent = host.sent.len();
+    host.click(&close);
+    host.click(rustcord_components::group::ids::CONFIRM);
+    assert_eq!(
+        host.sent[sent..],
+        [Command::CloseDirect { channel: direct }]
+    );
 }
