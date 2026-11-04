@@ -1040,28 +1040,25 @@ fn pf_a_members_card_loads_their_profile_once_and_ignores_stale_answers() {
     assert_eq!(host.ui.profiles.full, Some((user, Some(server))));
     let painted = host.painted();
     let name = host.store.server(server).unwrap().name.clone();
-    assert!(painted.contains(&format!("En {name}")), "{painted:?}");
+    // Its roles there, on the card beside the tabs.
+    assert!(painted.contains(&"Roles".to_owned()), "{painted:?}");
     // The tabs say how many once known; the servers' tab lists them.
     assert!(painted
         .iter()
-        .any(|t| t.starts_with("Servidores en común · ")));
+        .any(|t| t.ends_with(" en común") && t.contains("servidor")));
     host.click(&format!("{}servers", ids::FULL_TAB));
     let painted = host.painted();
     assert!(painted.contains(&name), "{painted:?}");
-    assert!(
-        !painted.contains(&format!("En {name}")),
-        "«Sobre mí» is left"
-    );
     assert!(!painted
         .iter()
         .any(|t| t == "No disponible en esta conexión."));
-    // Opening a profile again starts on «Sobre mí».
+    // Opening a profile again starts on «Actividad».
     host.pf_act(ids::FULL_CLOSE);
     host.click(&format!("member:{user}"));
     // The full profile is in the «…» menu of the card now.
     host.click(&format!("{}{user}", ids::CARD_MORE));
     host.pf_act(&format!("{}{user}", ids::FULL));
-    assert_eq!(host.ui.profiles.full_tab, FullTab::About);
+    assert_eq!(host.ui.profiles.full_tab, FullTab::Activity);
     host.key(Key::Escape, false, false);
     assert_eq!(host.ui.profiles.full, None, "Escape closes it");
 }

@@ -909,17 +909,23 @@ pub fn badge_items(badges: &[BadgeChip], size: f32, most: usize, look: &Look) ->
     items
 }
 
-/// The glyph of a connected service: Rustcord's own or a neutral one.
-fn service_glyph(service: &str, look: &Look) -> Element {
-    match service {
-        "github" => icon(Icon::Github, look.text),
-        "domain" => icon(Icon::Globe, look.text),
-        "spotify" => icon(Icon::MusicNote, look.text),
+/// The glyph of a connected service, Rustcord's own or a neutral one, dark
+/// on a 24 px white square as Discord sets its services' marks.
+fn service_glyph(service: &str) -> Element {
+    let glyph = match service {
+        "github" => Icon::Github,
+        "domain" => Icon::Globe,
+        "spotify" => Icon::MusicNote,
         "steam" | "xbox" | "playstation" | "battlenet" | "epicgames" | "leagueoflegends"
-        | "riotgames" | "roblox" => icon(Icon::Gamepad, look.text),
-        _ => icon(Icon::ExternalLink, look.muted),
-    }
-    .size(Some(20.0), Some(20.0))
+        | "riotgames" | "roblox" => Icon::Gamepad,
+        _ => Icon::ExternalLink,
+    };
+    Element::panel(centered(
+        icon(glyph, Color::rgb(0, 0, 0)).size(Some(16.0), Some(16.0)),
+    ))
+    .size(Some(24.0), Some(24.0))
+    .radius(6.0)
+    .background(Color::rgb(255, 255, 255))
 }
 
 /// The accounts elsewhere someone connected, each opening its page.
@@ -932,7 +938,7 @@ pub fn connections(rows: &[ConnectionRow], look: &Look) -> Element {
             .enumerate()
             .map(|(index, row)| {
                 let mut parts = vec![
-                    service_glyph(&row.service, look).centered_y(),
+                    service_glyph(&row.service).centered_y(),
                     Element::column(vec![
                         line(row.label.clone(), 12.0, look.muted),
                         line(row.name.clone(), 14.0, look.text),
@@ -970,13 +976,12 @@ pub fn connections(rows: &[ConnectionRow], look: &Look) -> Element {
                         .centered_y(),
                     );
                 }
-                Element::panel(Element::row(parts).gap(10.0).padding(8.0))
-                    .radius(8.0)
-                    .background(look.raised)
+                // Discord's rows: no card, only the mark and the name.
+                Element::row(parts).gap(12.0)
             })
             .collect(),
     )
-    .gap(6.0)
+    .gap(12.0)
 }
 
 /// Seconds as a clock: "4:05", or "1:02:03" past an hour.

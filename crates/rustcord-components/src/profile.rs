@@ -1,22 +1,24 @@
 //! Profiles and the account's status, from plain props: the card of a person
 //! (opened from the member list or from a message's author), the account's
 //! own popout over its panel with the status menu and how long a status
-//! lasts, the dialog that sets the custom status, the menus of the
-//! microphone's and the headphones' arrows, and the full-window profile
-//! editor with its live preview and a read-only account view.
+//! lasts, someone's full profile (a card beside its tabs), the dialog that
+//! sets the custom status, the menus of the microphone's and the
+//! headphones' arrows, and the full-window profile editor with its live
+//! preview and a read-only account view.
 //!
-//! Measures follow Discord's captures at 1361×797 logical pixels: a
-//! popout (300 px, the official client's) with an 80 px
-//! mark over its banner and action rows 52 px apart, a 310 px status menu
+//! Measures follow Discord's, as `docs/discord-reference.md` notes them: a
+//! popout (300 px on #0a0a0c) with an 80 px mark over its banner, its
+//! actions in cards of 32 px rows, a full profile of a 400 px card beside its
+//! tabs in a 960 px panel, a 310 px status menu
 //! with 200 px menus of durations, 235 px device
 //! menus and a 510.5 px status dialog. The editor adapts its form and preview
 //! to one or two columns, with fixed close and save controls outside the scroll.
 
 use limn::{
-    Button, ButtonVariant, Color, Component, ComponentPalette, DropdownMenu, DropdownMenuEntry,
-    DropdownMenuItem, Element, FontFamily, Icon, IconButton, Modal, Point, Popover,
-    PopoverPlacement, ScrollArea, Size, Skeleton, Slider, Tab, Tabs, TabsVariant, TextArea,
-    TextField, Tooltip,
+    Button, ButtonVariant, Color, Component, ComponentPalette, CornerRadii, DismissButton,
+    DropdownMenu, DropdownMenuEntry, DropdownMenuItem, Element, FontFamily, Icon, IconButton,
+    Modal, Point, Popover, PopoverPlacement, ScrollArea, Size, Skeleton, Slider, Tab, Tabs,
+    TabsVariant, TextArea, TextField, Tooltip,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{Rgb, Status, Timestamp, UserId};
@@ -192,8 +194,6 @@ const HEAD: f32 = 140.0;
 const MARK_TOP: f32 = 61.0;
 /// The status dot of a card's mark: 16 px, in a 28 px disc of the ground.
 const DOT: f32 = 16.0;
-/// The decoration is 1.2 times the mark, centred on it.
-const DECORATION: f32 = AVATAR * 1.2;
 /// The skeleton of a card being read: its height, and its four text lines
 /// (from the card's 268 px body).
 const SKELETON_HEIGHT: f32 = 350.0;
@@ -203,10 +203,6 @@ pub const STATUS_MENU_WIDTH: f32 = 310.0;
 pub const DURATION_MENU_WIDTH: f32 = 200.0;
 /// The dialog of the custom status, and its menu of when it goes.
 pub const DIALOG_WIDTH: f32 = 510.5;
-/// The full profile, as wide as Discord's; a fixed height keeps it
-/// from resizing as its tabs change.
-const FULL_WIDTH: f32 = 600.0;
-const FULL_HEIGHT: f32 = 640.0;
 const EXPIRY_MENU_WIDTH: f32 = 274.0;
 /// The settings' profile: the preview's gap from the form, and the narrowest
 /// content column that puts the form and the preview side by side (a 360 px
@@ -536,13 +532,17 @@ fn note_section(note: &NoteField, look: &Look) -> Element {
     } else {
         t("Haz clic para agregar una nota")
     };
-    let field = TextField::new(
-        note.id.clone(),
-        note.text.clone(),
-        placeholder,
-        look.menu_palette(),
-    )
-    .accessibility_label(t("Nota"));
+    // Discord's note reads as its placeholder until it is written: no fill,
+    // no outline but the focus's.
+    let palette = ComponentPalette {
+        raised: Color::TRANSPARENT,
+        border: Color::TRANSPARENT,
+        muted: look.dim,
+        ..look.menu_palette()
+    };
+    let field = TextField::new(note.id.clone(), note.text.clone(), placeholder, palette)
+        .outline(Color::TRANSPARENT, look.accent)
+        .accessibility_label(t("Nota"));
     let field = if note.loading || note.denied.is_some() {
         field.disabled()
     } else {
@@ -551,10 +551,14 @@ fn note_section(note: &NoteField, look: &Look) -> Element {
     let hint = note
         .denied
         .clone()
-        .unwrap_or_else(|| t("Solo la ves tú. Enter la guarda.").into());
+        .unwrap_or_else(|| t("Enter la guarda.").into());
     section(
-        t("Nota"),
-        Element::column(vec![field.render(), text(hint, 12.0, look.faint)]).gap(4.0),
+        t("Nota (solo visible para ti)"),
+        Element::column(vec![
+            field.render().font_size(14.0),
+            text(hint, 12.0, look.faint),
+        ])
+        .gap(4.0),
         look,
     )
 }
@@ -575,7 +579,7 @@ pub struct Since {
     /// "Cuenta", or the server's name.
     pub scope: String,
     pub face: Option<Face>,
-    /// "3 de mayo de 2019".
+    /// "3 may 2019".
     pub date: String,
 }
 
@@ -587,21 +591,22 @@ pub enum Mutual {
     Known(Vec<Face>),
 }
 
-/// The tabs of the full profile.
+/// The tabs of the full profile's column beside its card, in Discord's
+/// order: what they do, then the friends and the servers in common.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FullTab {
     #[default]
-    About,
-    Servers,
+    Activity,
     Friends,
+    Servers,
 }
 
 impl FullTab {
-    pub const ALL: [Self; 3] = [Self::About, Self::Servers, Self::Friends];
+    pub const ALL: [Self; 3] = [Self::Activity, Self::Friends, Self::Servers];
 
     pub fn key(self) -> &'static str {
         match self {
-            Self::About => "about",
+            Self::Activity => "activity",
             Self::Servers => "servers",
             Self::Friends => "friends",
         }
@@ -610,36 +615,62 @@ impl FullTab {
     pub fn from_key(key: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|tab| tab.key() == key)
     }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::About => t("Sobre mí"),
-            Self::Servers => t("Servidores en común"),
-            Self::Friends => t("Amigos en común"),
-        }
-    }
 }
 
 /// What the full profile shows beyond the card.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FullProfile {
     pub profile: Profile,
-    /// The server the card is seen in: its roles, nickname and date are of it.
+    /// The server the card is seen in: its roles and date are of it.
     pub server: Option<String>,
-    /// Their nickname in that server, when they set one.
-    pub nick: Option<String>,
+    /// Since when the account and they are friends, when the provider says:
+    /// "3 may 2019".
+    pub friends_since: Option<String>,
     pub mutual_servers: Mutual,
     pub mutual_friends: Mutual,
     pub tab: FullTab,
     /// The accounts elsewhere they show.
     pub connections: Vec<crate::identity::ConnectionRow>,
-    /// Their profile is being read and none of it is kept yet: the About
-    /// tab shows its lines instead of claiming there is no more data.
+    /// Their profile is being read and none of it is kept yet: the activity
+    /// tab shows its lines instead of claiming there is none.
     pub loading: bool,
 }
 
-/// `content` floating against `anchor` on a card's surface, `WIDTH` wide,
-/// while there is content. Escape and a click outside report `dismiss`.
+/// A popout's ground: Discord's floating black (#0a0a0c, the default look's
+/// `card`) on a dark look; a light look keeps its white menus.
+fn ground(look: &Look) -> Color {
+    if look.canvas.r > 128 {
+        look.menu
+    } else {
+        look.card
+    }
+}
+
+/// The popout's ground with the text laid over it at `alpha` of 255, opaque so
+/// it reads the same over a banner: Discord's cards and bubbles (#17181b,
+/// 16) and its badges' box (#1a1a1d, 20) on #0a0a0c.
+fn raised(look: &Look, alpha: u8) -> Color {
+    let (under, ink) = (ground(look), look.text);
+    let mix = |under: u8, ink: u8| {
+        (f32::from(under) + (f32::from(ink) - f32::from(under)) * f32::from(alpha) / 255.0).round()
+            as u8
+    };
+    Color::rgb(
+        mix(under.r, ink.r),
+        mix(under.g, ink.g),
+        mix(under.b, ink.b),
+    )
+}
+
+/// Discord's hairlines inside a popout: its grey at `alpha` of 255 (41 is
+/// its 16 %, 51 its 20 %, 61 its 24 %).
+fn hairline(look: &Look, alpha: u8) -> Color {
+    Look::alpha(look.muted, alpha)
+}
+
+/// `content` floating against `anchor` on a popout's surface, `WIDTH` wide,
+/// while there is content: Discord's ground, 8 px corners, a 1 px ring and its
+/// shadow. Escape and a click outside report `dismiss`.
 pub fn popout(
     anchor: Element,
     content: Option<Element>,
@@ -647,10 +678,21 @@ pub fn popout(
     placement: PopoverPlacement,
     look: &Look,
 ) -> Element {
-    popout_radius(anchor, content, dismiss, placement, 12.0, look)
+    let Some(content) = content else {
+        return anchor;
+    };
+    let surface = Element::panel(content)
+        .size(Some(WIDTH), None)
+        .background(ground(look))
+        .border(look.border, 1.0)
+        .radius(CARD_RADIUS)
+        .shadow(look.shadow, Point::new(0.0, 12.0), 24.0, 0.0)
+        .clip_children();
+    Element::popover(anchor, surface, dismiss, placement).popover_gap(8.0)
 }
 
-/// [`popout`] for a person's card, with its 8 px corners.
+/// [`popout`] for a person's card: the account's and someone else's are the
+/// same surface.
 pub fn card_popout(
     anchor: Element,
     content: Option<Element>,
@@ -658,28 +700,7 @@ pub fn card_popout(
     placement: PopoverPlacement,
     look: &Look,
 ) -> Element {
-    popout_radius(anchor, content, dismiss, placement, CARD_RADIUS, look)
-}
-
-fn popout_radius(
-    anchor: Element,
-    content: Option<Element>,
-    dismiss: &str,
-    placement: PopoverPlacement,
-    radius: f32,
-    look: &Look,
-) -> Element {
-    let Some(content) = content else {
-        return anchor;
-    };
-    let surface = Element::panel(content)
-        .size(Some(WIDTH), None)
-        .background(look.menu)
-        .border(look.border, 1.0)
-        .radius(radius)
-        .shadow(look.shadow, Point::new(0.0, 9.0), 22.0, 0.0)
-        .clip_children();
-    Element::popover(anchor, surface, dismiss, placement).popover_gap(8.0)
+    popout(anchor, content, dismiss, placement, look)
 }
 
 /// A thought bubble: the custom status, or an invitation to set one. It
@@ -691,9 +712,13 @@ fn bubble(
     action: Option<&str>,
     look: &Look,
 ) -> Element {
-    let mut parts = Vec::new();
+    let mut parts = vec![gap(4.0, 0.0)];
     if invitation {
-        parts.push(icon(Icon::Add, look.muted).centered_y());
+        parts.push(
+            icon(Icon::Add, look.dim)
+                .size(Some(16.0), Some(16.0))
+                .centered_y(),
+        );
     }
     // A server's emoji before the line: 16 px, 32 alone, as the official
     // client's popout draws it.
@@ -702,17 +727,22 @@ fn bubble(
         parts.push(crate::identity::picture(emoji, side, look).centered_y());
     }
     if !content.is_empty() {
+        // 14/18 as Discord's: formatted text takes a line height.
         parts.push(
-            text(
+            Element::formatted_text(vec![limn::TextSpan::new(
                 content,
-                13.0,
-                if invitation { look.muted } else { look.text },
-            )
-            .font_family(FontFamily::SansItalic)
+                if invitation { look.dim } else { look.text },
+                14.0,
+                FontFamily::SansItalic,
+            )])
+            .font_size(14.0)
+            .line_height(18.0)
             .flex(1.0),
         );
     }
-    let body = Element::row(parts).gap(6.0).padding(10.0);
+    parts.push(gap(4.0, 0.0));
+    // Discord's: 8 above and below, 12 at the sides, 16 px corners.
+    let body = Element::row(parts).gap(4.0).padding(8.0);
     let body = match action {
         Some(id) => Element::clickable(id, body)
             .hover_background(look.selected)
@@ -723,9 +753,9 @@ fn bubble(
             })),
         None => Element::panel(body),
     };
-    body.radius(14.0)
-        .background(look.raised)
-        .border(look.border, 1.0)
+    body.radius(16.0)
+        .background(raised(look, 16))
+        .border(hairline(look, 41), 1.0)
 }
 
 /// What someone set beside their status: its line and a server's emoji
@@ -738,112 +768,124 @@ fn custom_status(profile: &Profile) -> Option<(&str, Option<&crate::identity::Te
     }
 }
 
-/// How large a head is: the popout's, or the full profile's.
+/// Where a card's bubble stands, and the two dots that lead to it from the
+/// mark as Discord's thought bubble: measured on its popout.
+const BUBBLE_X: f32 = INSET + AVATAR + 9.0;
+const BUBBLE_TOP: f32 = 98.0;
+
+/// The sizes of a head: a card's (80 px mark at (16, 61) under a 105 px
+/// banner, a 16 px status) or the full profile's (120 at (32, 80) under 140).
 #[derive(Clone, Copy)]
 struct HeadSize {
+    width: f32,
     banner: f32,
     avatar: f32,
-    /// The banner's corners: the full profile's sits inside the dialog's padding.
-    radius: f32,
+    ring: f32,
+    left: f32,
+    top: f32,
+    dot: f32,
+    /// At least this tall: the mark hangs below the banner.
+    height: f32,
 }
 
 const CARD_HEAD: HeadSize = HeadSize {
+    width: WIDTH,
     banner: BANNER,
     avatar: AVATAR,
-    radius: 0.0,
+    ring: RING,
+    left: INSET,
+    top: MARK_TOP,
+    dot: DOT,
+    height: HEAD,
 };
-const FULL_HEAD: HeadSize = HeadSize {
-    banner: 150.0,
-    avatar: 104.0,
-    radius: 8.0,
-};
-
-/// The top of the account's own popout and of its custom status dialog: the
-/// popout's head as it was (the card of someone else has [`card_head`]).
-fn head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element {
-    head_sized(profile, bubble, CARD_HEAD, look)
-}
 
 /// The top of a card: the banner, its color when it has no picture,
 /// and the mark over its bottom edge with the ring cut into the banner, the
 /// decoration 1.2 times the mark, the status dot, and `bubble` beside it.
+/// A two-line bubble makes the head taller, as Discord's does.
 fn card_head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element {
-    let banner = Element::panel(match &profile.banner {
-        Some(image) => Element::raster_image(image.clone().cover()).size(None, Some(BANNER)),
-        None => Element::spacer(),
-    })
-    .size(None, Some(BANNER))
-    .background(profile.banner_tint.unwrap_or(look.raised))
-    .clip_children();
-    let face =
-        crate::avatar_with_image(&profile.name, profile.accent, AVATAR, profile.image.clone());
-    let face = if profile.presence {
-        card_mark(face, profile.status, look)
-    } else {
-        face
-    };
-    let ring = Element::panel(face)
-        .padding(RING)
-        .radius((AVATAR + 2.0 * RING) / 2.0)
-        .background(look.menu);
-    let (mark_x, mark_y) = (INSET - RING, MARK_TOP - RING);
-    // A column keeps the banner its height: a stack child would take the head's.
-    let mut layers = vec![Element::column(vec![banner]), at(mark_x, mark_y, ring)];
-    if let Some(decoration) = &profile.identity.marks.decoration {
-        let centre = INSET + AVATAR / 2.0;
-        let middle = MARK_TOP + AVATAR / 2.0;
-        layers.push(at(
-            centre - DECORATION / 2.0,
-            middle - DECORATION / 2.0,
-            Element::raster_image(decoration.clone()).size(Some(DECORATION), Some(DECORATION)),
-        ));
-    }
+    let mut layers = vec![sized_head(profile, CARD_HEAD, look)];
     if let Some(bubble) = bubble {
-        // Beside the mark, as high as the banner's edge rises above its ring.
+        let dot = |side: f32| {
+            Element::panel(Element::spacer())
+                .size(Some(side), Some(side))
+                .radius(side / 2.0)
+                .background(raised(look, 16))
+                .border(hairline(look, 41), 1.0)
+        };
+        layers.push(at(BUBBLE_X - 3.0, BUBBLE_TOP - 15.0, dot(10.0)));
+        layers.push(at(BUBBLE_X + 7.0, BUBBLE_TOP - 7.0, dot(20.0)));
         layers.push(Element::column(vec![
-            gap(0.0, mark_y + RING / 2.0 + 6.0),
-            Element::row(vec![
-                gap(INSET + AVATAR + 8.0, 0.0),
-                bubble.flex(1.0),
-                gap(INSET, 0.0),
-            ]),
+            gap(0.0, BUBBLE_TOP),
+            Element::row(vec![gap(BUBBLE_X, 0.0), bubble.flex(1.0), gap(INSET, 0.0)]),
         ]));
     }
     // Over everything, so the buttons take their clicks.
     layers.extend(banner_buttons(profile, look));
-    Element::stack(layers).size(Some(WIDTH), Some(HEAD))
+    Element::stack(layers).size(Some(WIDTH), None)
 }
 
-/// The status of a card's mark: a 16 px dot in the bottom right corner,
-/// ringed in the card's ground so it reads over the picture.
-fn card_mark(face: Element, status: Status, look: &Look) -> Element {
-    let mark = Element::panel(status_mark(status, look, DOT, look.menu))
-        .padding(6.0)
-        .radius(14.0)
-        .background(look.menu);
-    Element::stack(vec![
-        face,
-        Element::column(vec![
-            Element::spacer().flex(1.0),
-            Element::row(vec![Element::spacer().flex(1.0), mark]),
-        ]),
-    ])
-    .size(Some(AVATAR), Some(AVATAR))
+/// A head of `size`: the banner, the mark ringed in the popout's ground with
+/// its status and decoration. Its height is fixed, the mark drawn past it.
+fn sized_head(profile: &Profile, size: HeadSize, look: &Look) -> Element {
+    let banner = Element::panel(match &profile.banner {
+        Some(image) => Element::raster_image(image.clone().cover()).size(None, Some(size.banner)),
+        None => Element::spacer(),
+    })
+    .size(None, Some(size.banner))
+    .background(profile.banner_tint.unwrap_or(look.raised))
+    .clip_children();
+    let face = crate::avatar_with_image(
+        &profile.name,
+        profile.accent,
+        size.avatar,
+        profile.image.clone(),
+    );
+    let ring = Element::panel(face)
+        .padding(size.ring)
+        .radius(size.avatar / 2.0 + size.ring)
+        .background(ground(look));
+    // A column keeps the banner its height: a stack child would take the head's.
+    let mut layers = vec![
+        Element::column(vec![banner]),
+        at(size.left - size.ring, size.top - size.ring, ring),
+    ];
+    if let Some(decoration) = &profile.identity.marks.decoration {
+        let across = size.avatar * 1.2;
+        let (centre, middle) = (size.left + size.avatar / 2.0, size.top + size.avatar / 2.0);
+        layers.push(at(
+            centre - across / 2.0,
+            middle - across / 2.0,
+            Element::raster_image(decoration.clone()).size(Some(across), Some(across)),
+        ));
+    }
+    // The status over the decoration, in the mark's bottom right corner, ringed
+    // in the popout's ground so it reads over the picture.
+    if profile.presence {
+        let side = size.dot + 12.0;
+        let mark = Element::panel(status_mark(profile.status, look, size.dot, ground(look)))
+            .padding(6.0)
+            .radius(side / 2.0)
+            .background(ground(look));
+        layers.push(at(
+            size.left + size.avatar - side,
+            size.top + size.avatar - side,
+            mark,
+        ));
+    }
+    Element::stack(layers).size(Some(size.width), Some(size.height))
 }
 
-fn head_sized(profile: &Profile, bubble: Option<Element>, size: HeadSize, look: &Look) -> Element {
-    let HeadSize {
-        banner: tall,
-        avatar: across,
-        radius,
-    } = size;
+/// The top of the custom status dialog: a banner in the profile's color, the
+/// mark and the bubble beside it (a card has [`card_head`]).
+fn head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element {
+    let (tall, across) = (BANNER, AVATAR);
     let ring = across + 2.0 * RING;
     let banner = Element::panel(match &profile.banner {
         Some(image) => Element::raster_image(image.clone().cover()).size(None, Some(tall)),
         None => Element::spacer(),
     })
     .size(None, Some(tall))
-    .radius(radius)
     .background(profile.accent)
     .clip_children();
     let face = crate::identity::decorated(
@@ -957,13 +999,14 @@ fn names(profile: &Profile, copy: bool, note: Option<&str>, size: f32, look: &Lo
     Element::column(column).gap(2.0)
 }
 
-/// A titled part of a card: «Sobre mí», «Roles», under a small muted heading.
+/// A titled part of a profile: «Miembro desde», «Roles», under Discord's
+/// 12 px medium muted heading, 8 above its body.
 fn section(title: &str, body: Element, look: &Look) -> Element {
     Element::column(vec![
-        line(title, 12.0, look.muted).font_family(FontFamily::SansBold),
+        line(title, 12.0, look.muted).font_family(FontFamily::SansMedium),
         body,
     ])
-    .gap(6.0)
+    .gap(8.0)
 }
 
 /// A hairline between the parts of a card.
@@ -973,77 +1016,45 @@ fn divider(look: &Look) -> Element {
         .background(look.border)
 }
 
-/// A role as a chip on a neutral ground: only its dot carries its color,
-/// then its picture or emoji when it has one.
-fn role_chip(
-    name: &str,
-    color: Color,
-    mark: Option<&crate::identity::RoleMark>,
-    look: &Look,
-) -> Element {
-    let mut inside = vec![parts::color_dot(color, 10.0).centered_y()];
-    if let Some(mark) = mark {
-        inside.push(crate::identity::role_mark(mark, 14.0, look).centered_y());
-    }
-    inside.push(line(name, 12.0, look.text).centered_y());
-    Element::panel(Element::row(inside).gap(5.0).padding(6.0))
-        .size(None, Some(24.0))
-        .radius(6.0)
-        .background(look.raised)
-        .border(look.border, 1.0)
-}
-
-/// Roles as chips, in as many lines as they need, with their marks.
-fn role_chips(
-    roles: &[(String, Color)],
-    marks: &[Option<crate::identity::RoleMark>],
-    look: &Look,
-) -> Element {
-    Element::row(
-        roles
-            .iter()
-            .enumerate()
-            .map(|(index, (name, color))| {
-                role_chip(
-                    name,
-                    *color,
-                    marks.get(index).and_then(Option::as_ref),
-                    look,
-                )
-            })
-            .collect(),
-    )
-    .gap(4.0)
-    .wrap()
-}
-
 /// A face `size` across: their picture, or their initial on their color.
 fn face(face: &Face, size: f32) -> Element {
     crate::avatar_with_image(&face.name, face.accent, size, face.image.clone())
 }
 
-/// «Miembro desde»: one line per scope, its mark, the date and where.
+/// A 4 px dot between two parts of a line.
+fn bullet(color: Color) -> Element {
+    Element::panel(Element::spacer())
+        .size(Some(4.0), Some(4.0))
+        .radius(2.0)
+        .background(color)
+        .centered_y()
+}
+
+/// «Miembro desde» in one line, as Discord's: each date after its mark (the
+/// app's for the account, the server's face), a dot between. Where each
+/// date is from is said to a reader.
 fn member_since(entries: &[Since], look: &Look) -> Element {
-    Element::column(
-        entries
-            .iter()
-            .map(|since| {
-                let mark = match &since.face {
-                    Some(server) => face(server, 18.0),
-                    None => icon(Icon::At, look.muted).size(Some(18.0), Some(18.0)),
-                };
-                Element::row(vec![
-                    mark.centered_y(),
-                    line(since.date.clone(), 14.0, look.text).centered_y(),
-                    line(since.scope.clone(), 13.0, look.muted)
-                        .shrink_to_fit()
-                        .centered_y(),
-                ])
-                .gap(8.0)
-            })
-            .collect(),
-    )
-    .gap(6.0)
+    let mut parts = Vec::new();
+    for since in entries {
+        if !parts.is_empty() {
+            parts.push(bullet(look.muted));
+        }
+        let mark = match &since.face {
+            Some(server) => face(server, 16.0),
+            None => icon(Icon::Custom(crate::MARK), look.muted).size(Some(16.0), Some(16.0)),
+        };
+        parts.push(
+            Element::row(vec![
+                mark.centered_y(),
+                line(since.date.clone(), 14.0, look.text).centered_y(),
+            ])
+            .gap(8.0)
+            .accessible(
+                limn::Access::default().description(format!("{}: {}", since.scope, since.date)),
+            ),
+        );
+    }
+    Element::row(parts).gap(8.0).wrap()
 }
 
 /// What the person does: their activity cards, or else the line their
@@ -1091,34 +1102,6 @@ fn bio(profile: &Profile, clamp: bool, width: f32, look: &Look) -> Option<Elemen
     Some(bio)
 }
 
-/// The parts of the full profile under its names: what they do, what
-/// restricts them, «Sobre mí» and «Miembro desde».
-fn about_parts(profile: &Profile, width: f32, look: &Look) -> Vec<Element> {
-    let mut body = Vec::new();
-    let identity = &profile.identity;
-    if !identity.platforms.is_empty() && profile.presence {
-        body.push(crate::identity::platforms(&identity.platforms, look));
-    }
-    body.extend(activity_parts(profile, width, look));
-    if profile.bot {
-        body.push(text(t("Cuenta automatizada (bot)."), 12.0, look.faint));
-    }
-    if let Some(restriction) = &profile.restriction {
-        body.push(restriction_badge(restriction, look));
-    }
-    if let Some(about) = bio(profile, false, width, look) {
-        body.push(section(t("Sobre mí"), about, look));
-    }
-    if !profile.member_since.is_empty() {
-        body.push(section(
-            t("Miembro desde"),
-            member_since(&profile.member_since, look),
-            look,
-        ));
-    }
-    body
-}
-
 /// A round button over a card's banner, 32 px on a dark disc with a white
 /// icon, its tooltip the label.
 fn banner_button(id: &str, glyph: Icon, label: &str, look: &Look) -> Element {
@@ -1158,9 +1141,16 @@ fn card_menu(
     .render()
 }
 
-/// The round buttons over a card's banner, at its top right: the friendship's
-/// and «…», each with its menu. Nothing when neither shows.
-fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
+/// The friendship's button and «…» of a profile, each with its menu, drawn
+/// by `button` and opening `placement` from it. In the full profile
+/// (`full`), «…» leaves out «Ver perfil completo», which is where it is.
+fn person_buttons(
+    profile: &Profile,
+    button: fn(&str, Icon, &str, &Look) -> Element,
+    placement: PopoverPlacement,
+    full: bool,
+    look: &Look,
+) -> Vec<Element> {
     let mut buttons = Vec::new();
     if let Some(relation) = &profile.relation {
         let (glyph, label) = match relation.state {
@@ -1176,27 +1166,48 @@ fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
             Vec::new()
         };
         buttons.push(card_menu(
-            banner_button(&relation.action, glyph, label, look),
+            button(&relation.action, glyph, label, look),
             entries,
             open,
             ids::CARD_RELATION_DISMISS,
-            PopoverPlacement::BottomEnd,
+            placement,
             look,
         ));
     }
     if let (Some(entries), Some(action)) = (&profile.more, profile.full_action.as_ref()) {
         let open = profile.open_menu == Some(CardMenu::More);
         let id = action.replacen(ids::FULL, ids::CARD_MORE, 1);
-        let entries = if open { entries.clone() } else { Vec::new() };
+        let mut entries: Vec<MenuEntry> = if open { entries.clone() } else { Vec::new() };
+        if full {
+            entries.retain(
+                |entry| !matches!(entry, MenuEntry::Item(id, ..) if id.starts_with(ids::FULL)),
+            );
+            if matches!(entries.first(), Some(MenuEntry::Separator)) {
+                entries.remove(0);
+            }
+        }
         buttons.push(card_menu(
-            banner_button(&id, Icon::More, t("Más"), look),
+            button(&id, Icon::More, t("Más"), look),
             entries,
             open,
             ids::CARD_MORE_DISMISS,
-            PopoverPlacement::BottomEnd,
+            placement,
             look,
         ));
     }
+    buttons
+}
+
+/// The round buttons over a card's banner, at its top right: the friendship's
+/// and «…», each with its menu. Nothing when neither shows.
+fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
+    let buttons = person_buttons(
+        profile,
+        banner_button,
+        PopoverPlacement::BottomEnd,
+        false,
+        look,
+    );
     if buttons.is_empty() {
         return None;
     }
@@ -1208,6 +1219,23 @@ fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
             gap(12.0, 0.0),
         ]),
     ]))
+}
+
+/// A square button of the full profile, as Discord's: 32 px, 8 px corners,
+/// a faint fill and hairline, its tooltip the label.
+fn full_button(id: &str, glyph: Icon, label: &str, look: &Look) -> Element {
+    let square = Element::panel(centered(
+        icon(glyph, look.text).size(Some(16.0), Some(16.0)),
+    ))
+    .size(Some(32.0), Some(32.0))
+    .radius(8.0)
+    .background(hairline(look, 31))
+    .border(hairline(look, 41), 1.0);
+    let button = Element::clickable(id, square)
+        .radius(8.0)
+        .hover_background(look.hover)
+        .accessible(limn::Access::new(limn::Role::Button).name(label.to_owned()));
+    Tooltip::new(button, id, label, look.menu_palette()).render()
 }
 
 /// `child` at (`x`, `y`) of the stack it is in, placed by spacers.
@@ -1263,7 +1291,7 @@ pub fn card_skeleton(id: &str, look: &Look) -> Element {
     )
     .padding(RING)
     .radius(AVATAR / 2.0)
-    .background(look.menu);
+    .background(ground(look));
     let chips = Element::row(vec![
         block("chip:0", 52.0, 16.0, 4.0),
         gap(16.0, 0.0),
@@ -1311,7 +1339,7 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
         .as_ref()
         .map(|action| action.replacen(ids::FULL, ids::FULL_NOTE, 1));
     let width = WIDTH - 2.0 * INSET;
-    let mut body = vec![card_names(profile, note.as_deref(), look)];
+    let mut body = vec![card_names(profile, note.as_deref(), false, look)];
     if let Some(notice) = &profile.notice {
         body.push(card_notice(notice, look));
     }
@@ -1325,20 +1353,24 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     if let Some(note) = profile.note.as_ref().filter(|_| note.is_none()) {
         body.push(note_section(note, look));
     }
+    // Discord's spacing: the name 12 under the head, its parts 12 apart, 16
+    // around the field at the bottom.
     let mut parts = vec![
         card_head(profile, bubble, look),
         ScrollArea::new(
             ids::card_body(&profile.handle),
             Element::column(vec![
-                gap(0.0, 4.0),
+                gap(0.0, 12.0),
                 Element::row(vec![
                     gap(INSET, 0.0),
                     Element::column(body).gap(12.0).flex(1.0),
                     gap(INSET, 0.0),
                 ]),
-                gap(0.0, 8.0),
+                gap(0.0, 16.0),
             ]),
         )
+        // Discord's thin scrollbar, shown under the pointer.
+        .appearance(look.scrollbar(false))
         .render()
         .flex(1.0),
     ];
@@ -1353,21 +1385,26 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     )
 }
 
-/// The footer of a card: a one-line field to write to its person,
-/// whose hint names them, or on the account's own card «Editar perfil».
+/// The footer of a card: Discord's 46 px field to write to its person, whose
+/// hint names them, or on the account's own card «Editar perfil».
 fn card_footer(profile: &Profile, look: &Look) -> Option<Element> {
     let row = match &profile.message {
         Some(field) => {
             let hint = tr!("Enviar un mensaje a @{name}", name = profile.name);
-            TextField::new(
-                field.id.clone(),
-                field.text.clone(),
-                hint.clone(),
-                look.menu_palette(),
-            )
-            .accessibility_label(hint)
-            .render()
-            .flex(1.0)
+            let palette = ComponentPalette {
+                raised: Color::rgba(0, 0, 0, 31),
+                border: hairline(look, 51),
+                muted: look.dim,
+                ..look.menu_palette()
+            };
+            TextField::new(field.id.clone(), field.text.clone(), hint.clone(), palette)
+                .height(46.0)
+                .radius(8.0)
+                .accessibility_label(hint)
+                .render()
+                .font_size(14.0)
+                .padding(15.0)
+                .flex(1.0)
         }
         None if profile.example_button => {
             Button::new(ids::EXAMPLE, t("Botón de ejemplo"), look.accent_palette())
@@ -1384,23 +1421,39 @@ fn card_footer(profile: &Profile, look: &Look) -> Option<Element> {
     };
     Some(Element::column(vec![
         Element::row(vec![gap(INSET, 0.0), row, gap(INSET, 0.0)]),
-        gap(0.0, 12.0),
+        gap(0.0, 16.0),
     ]))
 }
 
 /// Badges a card's name row shows before «+N».
 const BADGES_SHOWN: usize = 6;
 
-/// The name of a card: the display name at 20 px, its note's icon
-/// while the pointer is on the card, and the BOT mark; then the handle, the
-/// pronouns, the server tag and the badges, in as many lines as they need.
-fn card_names(profile: &Profile, note: Option<&str>, look: &Look) -> Element {
+/// The name of a card: the display name at 20 px semibold, its note's icon
+/// (or, on the account's own, `copy` the handle) while the pointer is on the
+/// card, and the BOT mark; then the handle, the pronouns, the server tag and
+/// the badges in their box, in as many lines as they need.
+fn card_names(profile: &Profile, note: Option<&str>, copy: bool, look: &Look) -> Element {
+    names_sized(profile, note, copy, 20.0, look)
+}
+
+/// [`card_names`] with the name `size` px: 24 in the full profile.
+fn names_sized(
+    profile: &Profile,
+    note: Option<&str>,
+    copy: bool,
+    size: f32,
+    look: &Look,
+) -> Element {
     let mut top = vec![Element::truncated_text(profile.name.clone())
-        .font_family(FontFamily::SansBold)
-        .font_size(20.0)
+        .font_family(FontFamily::SansSemibold)
+        .font_size(size)
         .foreground(look.text)
         .shrink_to_fit()
         .centered_y()];
+    // The mark of an app right after its name, as Discord's.
+    if profile.bot {
+        top.push(tag("BOT", look).centered_y());
+    }
     if let (Some(action), Some(field)) = (note, &profile.note) {
         let hint = if field.text.is_empty() {
             t("Agregar nota (solo visible para ti)")
@@ -1417,10 +1470,18 @@ fn card_names(profile: &Profile, note: Option<&str>, look: &Look) -> Element {
                 .reveal_on_hover(format!("pp:card:{}:note", profile.handle)),
         );
     }
-    if profile.bot {
-        top.push(tag("BOT", look).centered_y());
+    if copy {
+        top.push(
+            IconButton::new(ids::COPY_NAME, Icon::Copy, look.menu_palette())
+                .variant(ButtonVariant::Ghost)
+                .tooltip(t("Copiar nombre de usuario"))
+                .ink(look.muted)
+                .render()
+                .centered_y()
+                .reveal_on_hover(format!("pp:card:{}:copy", profile.handle)),
+        );
     }
-    let mut second = vec![text(profile.handle.clone(), 14.0, look.muted).centered_y()];
+    let mut second = vec![text(profile.handle.clone(), 14.0, look.text).centered_y()];
     if let Some(pronouns) = &profile.pronouns {
         second.push(
             Element::panel(Element::spacer())
@@ -1429,28 +1490,33 @@ fn card_names(profile: &Profile, note: Option<&str>, look: &Look) -> Element {
                 .background(look.text)
                 .centered_y(),
         );
-        second.push(
-            Element::text(pronouns.clone())
-                .font_family(FontFamily::SansMedium)
-                .font_size(14.0)
-                .foreground(look.text)
-                .centered_y(),
-        );
+        second.push(text(pronouns.clone(), 14.0, look.text).centered_y());
     }
     if let Some(chip) = &profile.identity.marks.tag {
         second.push(card_tag(chip, look).centered_y());
     }
-    second.extend(crate::identity::badge_items(
-        &profile.identity.badges,
-        20.0,
-        BADGES_SHOWN,
-        look,
-    ));
+    if !profile.identity.badges.is_empty() {
+        // Discord's box: 22 tall, 8 px corners, a hairline around 18 px badges.
+        let badges =
+            crate::identity::badge_items(&profile.identity.badges, 18.0, BADGES_SHOWN, look);
+        second.push(
+            Element::panel(Element::row(vec![
+                gap(2.0, 0.0),
+                // Badges without a picture are their names: they may wrap.
+                Element::row(badges).gap(4.0).wrap().shrink_to_fit(),
+                gap(2.0, 0.0),
+            ]))
+            .padding(1.0)
+            .radius(8.0)
+            .background(raised(look, 20))
+            .border(hairline(look, 61), 1.0)
+            .centered_y(),
+        );
+    }
     Element::column(vec![
         Element::row(top).gap(6.0),
         Element::row(second).gap(6.0).wrap(),
     ])
-    .gap(2.0)
 }
 
 /// The server tag beside a name: its badge and letters on a raised pill,
@@ -1593,14 +1659,14 @@ fn mutual_part(id: String, faces: &[Face], words: String, size: f32, look: &Look
     .accessible(limn::Access::new(limn::Role::Button).name(words))
 }
 
-/// The parts of a card under its mutuals: what the person does, the bot's
-/// line and the bio (see [`bio`]), without the headings of the full profile.
+/// The parts of a card under its mutuals: the bio (see [`bio`]), the bot's
+/// line and what the person does, in Discord's order and without headings.
 fn card_about(profile: &Profile, width: f32, look: &Look) -> Vec<Element> {
-    let mut body = activity_parts(profile, width, look);
+    let mut body: Vec<Element> = bio(profile, true, width, look).into_iter().collect();
     if profile.bot {
         body.push(text(t("Cuenta automatizada (bot)."), 12.0, look.faint));
     }
-    body.extend(bio(profile, true, width, look));
+    body.extend(activity_parts(profile, width, look));
     body
 }
 
@@ -1659,8 +1725,9 @@ fn card_roles(profile: &Profile, look: &Look) -> Option<Element> {
     (!chips.is_empty()).then(|| Element::row(chips).gap(4.0).wrap())
 }
 
-/// A role of a card: a 24 px chip with its color dot, its picture or emoji and
-/// its name, and the «×» that takes it away when `remove` names the action.
+/// A role of a card: Discord's 24 px outlined chip with its 12 px color dot,
+/// its picture or emoji and its name, and the «×» that takes it away when
+/// `remove` names the action.
 fn card_role(
     name: &str,
     color: Color,
@@ -1668,7 +1735,7 @@ fn card_role(
     remove: Option<&str>,
     look: &Look,
 ) -> Element {
-    let mut inside = vec![gap(2.0, 0.0), parts::color_dot(color, 16.0).centered_y()];
+    let mut inside = vec![gap(2.0, 0.0), parts::color_dot(color, 12.0).centered_y()];
     if let Some(mark) = mark {
         inside.push(crate::identity::role_mark(mark, 14.0, look).centered_y());
     }
@@ -1686,8 +1753,7 @@ fn card_role(
     Element::panel(Element::row(inside).gap(4.0).centered_y())
         .size(None, Some(24.0))
         .radius(8.0)
-        .background(look.raised)
-        .border(look.border, 1.0)
+        .border(hairline(look, 51), 1.0)
 }
 
 /// A 24 px square button with an icon of 12 px: its tooltip is `hint`, and
@@ -1720,6 +1786,7 @@ fn restriction_badge(label: &str, look: &Look) -> Element {
 }
 
 /// A list of the full profile, as known: unknown is never shown as none.
+/// Each in it is a row of Discord's: a 40 px face and the name.
 fn mutual_list(mutual: &Mutual, look: &Look) -> Element {
     match mutual {
         Mutual::Unknown => text(t("No disponible en esta conexión."), 14.0, look.muted),
@@ -1729,159 +1796,297 @@ fn mutual_list(mutual: &Mutual, look: &Look) -> Element {
             faces
                 .iter()
                 .map(|known| {
-                    Element::panel(
-                        Element::row(vec![
-                            face(known, 32.0).centered_y(),
-                            line(known.name.clone(), 15.0, look.text)
-                                .shrink_to_fit()
-                                .centered_y(),
-                        ])
-                        .gap(12.0)
-                        .padding(6.0),
-                    )
-                    .radius(8.0)
-                    .background(look.raised)
+                    Element::row(vec![
+                        face(known, 40.0).centered_y(),
+                        strong_line(known.name.clone(), 16.0, look.text)
+                            .shrink_to_fit()
+                            .centered_y(),
+                    ])
+                    .gap(12.0)
+                    .padding(8.0)
                 })
                 .collect(),
-        )
-        .gap(6.0),
+        ),
     }
 }
 
-/// The label of a tab of the full profile, with its count once known.
+/// The label of a tab of the full profile: «Actividad», and the mutuals with
+/// their count once known, as Discord's «9 amigos en común».
 fn tab_label(tab: FullTab, full: &FullProfile) -> String {
-    let list = match tab {
-        FullTab::About => None,
-        FullTab::Servers => Some(&full.mutual_servers),
-        FullTab::Friends => Some(&full.mutual_friends),
+    let count = |list: &Mutual| match list {
+        Mutual::Known(faces) => Some(faces.len()),
+        _ => None,
     };
-    match list {
-        Some(Mutual::Known(faces)) => format!("{} · {}", tab.label(), faces.len()),
-        _ => tab.label().to_owned(),
+    match tab {
+        FullTab::Activity => t("Actividad").to_owned(),
+        FullTab::Friends => match count(&full.mutual_friends) {
+            Some(1) => t("1 amigo en común").to_owned(),
+            Some(n) => tr!("{n} amigos en común", n),
+            None => t("Amigos en común").to_owned(),
+        },
+        FullTab::Servers => match count(&full.mutual_servers) {
+            Some(1) => t("1 servidor en común").to_owned(),
+            Some(n) => tr!("{n} servidores en común", n),
+            None => t("Servidores en común").to_owned(),
+        },
     }
 }
 
-/// The full profile over `root`: a larger head with a way to write to them,
-/// who they are, and tabs: «Sobre mí» with the server-scoped part named
-/// after its server, then the servers and the friends in common.
-pub fn full_profile(root: Element, full: &FullProfile, window_width: f32, look: &Look) -> Element {
+/// The full profile's panel: as wide as Discord's (960) and as tall as the
+/// window, its card 400 wide, 48 in from the panel's top and sides and 32
+/// from the column of tabs beside it; a column narrower than 280 goes under
+/// the card.
+const FULL_PANEL: f32 = 960.0;
+const FULL_CARD: f32 = 400.0;
+const FULL_EDGE: f32 = 48.0;
+const FULL_GUTTER: f32 = 32.0;
+const FULL_TABS_MIN: f32 = 280.0;
+/// The card's head: a 140 px banner, the 120 px mark at (32, 80) in an 8 px
+/// ring with its 24 px status.
+const FULL_HEAD: HeadSize = HeadSize {
+    width: FULL_CARD,
+    banner: 140.0,
+    avatar: 120.0,
+    ring: 8.0,
+    left: 32.0,
+    top: 80.0,
+    dot: 24.0,
+    height: 208.0,
+};
+
+/// The full profile's card: the head, the name at 24 px, «Enviar mensaje»
+/// with the friendship's button and «…», then the bio and Discord's
+/// sections, at least `height` tall so it reaches the panel's foot.
+fn full_card(full: &FullProfile, height: f32, look: &Look) -> Element {
     let profile = &full.profile;
-    let mut beside = vec![match custom_status(profile) {
-        Some((custom, emoji)) => bubble(custom, emoji, false, None, look).flex(1.0),
-        None => Element::spacer().flex(1.0),
-    }];
+    let width = FULL_CARD - 2.0 * FULL_HEAD.left;
+    let mut buttons = Vec::new();
     if let Some(action) = &profile.message_action {
-        beside.push(
+        buttons.push(
             Button::new(action.clone(), t("Enviar mensaje"), look.accent_palette())
                 .icon(Icon::Chat)
                 .render(),
         );
     }
-    let tabs = FullTab::ALL
+    buttons.extend(person_buttons(
+        profile,
+        full_button,
+        PopoverPlacement::BottomStart,
+        true,
+        look,
+    ));
+    let mut body = Vec::new();
+    if !buttons.is_empty() {
+        body.push(Element::row(buttons).gap(8.0));
+    }
+    if let Some(notice) = &profile.notice {
+        body.push(card_notice(notice, look));
+    }
+    if let Some(restriction) = &profile.restriction {
+        body.push(restriction_badge(restriction, look));
+    }
+    body.extend(bio(profile, false, width, look));
+    if profile.bot {
+        body.push(text(t("Cuenta automatizada (bot)."), 12.0, look.faint));
+    }
+    if !profile.member_since.is_empty() {
+        body.push(section(
+            t("Miembro desde"),
+            member_since(&profile.member_since, look),
+            look,
+        ));
+    }
+    if let Some(since) = &full.friends_since {
+        body.push(section(
+            t("Amigos desde el"),
+            text(since.clone(), 14.0, look.text),
+            look,
+        ));
+    }
+    if let Some(roles) = full.server.as_ref().and_then(|_| card_roles(profile, look)) {
+        body.push(section(t("Roles"), roles, look));
+    }
+    if !full.connections.is_empty() {
+        body.push(section(
+            t("Conexiones"),
+            crate::identity::connections(&full.connections, look),
+            look,
+        ));
+    }
+    if let Some(note) = &profile.note {
+        body.push(note_section(note, look));
+    }
+    let content = Element::column(vec![
+        sized_head(profile, FULL_HEAD, look),
+        Element::row(vec![
+            gap(FULL_HEAD.left, 0.0),
+            Element::column(vec![
+                gap(0.0, 12.0),
+                names_sized(profile, None, false, 24.0, look),
+                gap(0.0, 24.0),
+                Element::column(body).gap(24.0),
+                gap(0.0, 32.0),
+            ])
+            .flex(1.0),
+            gap(FULL_HEAD.left, 0.0),
+        ]),
+    ]);
+    crate::identity::with_effect(
+        Element::panel(content)
+            .size(Some(FULL_CARD), None)
+            .min_size(FULL_CARD, height)
+            .background(ground(look))
+            .border(look.border, 1.0)
+            .corner_radii(CornerRadii::top(16.0))
+            .clip_children(),
+        FULL_CARD,
+        profile.identity.effect.as_ref(),
+        None,
+    )
+}
+
+/// The column beside the full profile's card: Discord's tabs, then what they
+/// do (their activities, else a word that there are none), or the friends
+/// or servers in common.
+fn full_tabs(full: &FullProfile, width: f32, look: &Look) -> Element {
+    let profile = &full.profile;
+    // shortcut: widths estimated from the characters, as the friends' tabs
+    // do; Discord's 30 between them, less when the column is narrow.
+    let tabs: Vec<Tab> = FullTab::ALL
         .into_iter()
         .map(|tab| {
             let label = tab_label(tab, full);
-            // shortcut: widths estimated from the characters, as the friends' tabs do.
-            let width = label.chars().count() as f32 * 7.5 + 12.0;
+            let width = label.chars().count() as f32 * 7.8 + 8.0;
             Tab::new(format!("{}{}", ids::FULL_TAB, tab.key()), label, width)
                 .active(tab == full.tab)
         })
         .collect();
-    let tabs = Tabs::new(tabs, look.menu_palette())
+    let taken: f32 = tabs.iter().map(|tab| tab.width).sum();
+    let spacing = ((width - taken - 4.0) / 2.0).clamp(8.0, 22.0);
+    let palette = ComponentPalette {
+        border: hairline(look, 41),
+        ..look.menu_palette()
+    };
+    let tabs = Tabs::new(tabs, palette)
         .variant(TabsVariant::Underlined)
-        .accent(look.accent)
+        .accent(look.text)
+        .font_size(15.0)
         .id("pp:full:tabs")
-        .height(32.0)
-        .gap(20.0)
+        .height(44.0)
+        .gap(spacing)
         .render();
     let shown = match full.tab {
-        FullTab::About => {
-            let mut parts = about_parts(
-                profile,
-                Modal::fit_width(window_width, FULL_WIDTH) - 2.0 * INSET,
-                look,
-            );
-            if let Some(server) = &full.server {
-                let mut scoped = Vec::new();
-                if let Some(nick) = &full.nick {
-                    scoped.push(text(tr!("Apodo: {nick}", nick), 14.0, look.text));
-                }
-                scoped.push(if profile.roles.is_empty() {
-                    text(t("Sin roles."), 14.0, look.muted)
-                } else {
-                    role_chips(&profile.roles, &profile.identity.role_marks, look)
-                });
-                parts.push(section(
-                    &tr!("En {server}", server),
-                    Element::column(scoped).gap(8.0),
-                    look,
-                ));
-            }
-            if !full.connections.is_empty() {
-                parts.push(section(
-                    t("Conexiones"),
-                    crate::identity::connections(&full.connections, look),
-                    look,
-                ));
-            }
-            // While the read is in flight nothing of the body is known yet, so
-            // it is its lines, never "no hay más datos".
-            if full.loading {
-                parts = vec![skeleton_lines(
-                    &format!("profile:loading:{}:about", profile.handle),
-                    look,
-                )];
-            } else if parts.is_empty() {
-                parts.push(text(
-                    t("No hay más datos de este perfil."),
-                    14.0,
-                    look.muted,
-                ));
-            }
-            if let Some(note) = &profile.note {
-                parts.push(note_section(note, look));
-            }
-            Element::column(parts).gap(16.0)
+        // While the read is in flight nothing is known yet: its lines, never
+        // «none».
+        FullTab::Activity if full.loading => {
+            skeleton_lines(&format!("profile:loading:{}:about", profile.handle), look)
         }
-        FullTab::Servers => mutual_list(&full.mutual_servers, look),
-        FullTab::Friends => mutual_list(&full.mutual_friends, look),
-    };
-    let content = Element::column(vec![
-        head_sized(
-            profile,
-            Some(Element::row(beside).gap(8.0)),
-            FULL_HEAD,
-            look,
-        ),
-        Element::column({
-            let mut top = vec![names(profile, false, None, 24.0, look)];
-            if !profile.identity.badges.is_empty() {
-                top.push(crate::identity::badges(&profile.identity.badges, look));
+        FullTab::Activity => {
+            let mut parts = Vec::new();
+            if !profile.identity.platforms.is_empty() && profile.presence {
+                parts.push(crate::identity::platforms(
+                    &profile.identity.platforms,
+                    look,
+                ));
             }
-            top.extend([tabs, shown]);
-            top
-        })
-        .gap(16.0)
-        .padding(INSET),
-    ]);
-    let content = crate::identity::with_effect(
-        content,
-        Modal::fit_width(window_width, FULL_WIDTH),
-        profile.identity.effect.as_ref(),
-        None,
+            let activities = activity_parts(profile, width, look);
+            if activities.is_empty() {
+                parts.push(text(t("Sin actividad por ahora."), 14.0, look.muted));
+            }
+            parts.extend(activities);
+            Element::column(parts).gap(8.0)
+        }
+        FullTab::Friends => mutual_list(&full.mutual_friends, look),
+        FullTab::Servers => mutual_list(&full.mutual_servers, look),
+    };
+    Element::column(vec![tabs, shown]).gap(16.0)
+}
+
+/// Someone's full profile over `root`, as Discord's: a panel as tall as the
+/// `window` on a 72 % scrim, their card on the left and the tabs beside it,
+/// the close button in its top right corner. Escape and a click outside
+/// close it.
+pub fn full_profile(root: Element, full: &FullProfile, window: Size, look: &Look) -> Element {
+    let panel = window.width.min(FULL_PANEL);
+    let beside = panel - 2.0 * FULL_EDGE - FULL_CARD - FULL_GUTTER;
+    let body = if beside >= FULL_TABS_MIN {
+        Element::row(vec![
+            gap(FULL_EDGE, 0.0),
+            ScrollArea::new(
+                "pp:full:card",
+                Element::column(vec![
+                    gap(0.0, FULL_EDGE),
+                    full_card(full, window.height - FULL_EDGE, look),
+                ]),
+            )
+            .appearance(look.scrollbar(false))
+            .render()
+            .size(Some(FULL_CARD), None),
+            gap(FULL_GUTTER, 0.0),
+            ScrollArea::new(
+                "pp:full:side",
+                Element::column(vec![
+                    gap(0.0, FULL_EDGE),
+                    full_tabs(full, beside, look),
+                    gap(0.0, FULL_EDGE),
+                ]),
+            )
+            .appearance(look.scrollbar(false))
+            .render()
+            .flex(1.0),
+            gap(FULL_EDGE, 0.0),
+        ])
+    } else {
+        // Too narrow for two columns: the tabs under the card, one scroll.
+        ScrollArea::new(
+            "pp:full:card",
+            Element::column(vec![
+                gap(0.0, FULL_EDGE),
+                Element::row(vec![
+                    Element::spacer().flex(1.0),
+                    Element::column(vec![
+                        full_card(full, 0.0, look),
+                        full_tabs(full, FULL_CARD, look),
+                    ])
+                    .gap(FULL_GUTTER)
+                    .size(Some(FULL_CARD), None),
+                    Element::spacer().flex(1.0),
+                ]),
+                gap(0.0, FULL_EDGE),
+            ]),
+        )
+        .appearance(look.scrollbar(false))
+        .render()
+    };
+    let close = DismissButton::new(format!("{}:close", ids::FULL_CLOSE), look.menu_palette())
+        .target_size(32.0)
+        .dispatch_as(ids::FULL_CLOSE)
+        .render();
+    let close = Element::panel(close)
+        .radius(8.0)
+        .background(look.raised)
+        .border(look.border, 1.0);
+    let surface = Element::stack(vec![
+        body,
+        Element::column(vec![
+            gap(0.0, 8.0),
+            Element::row(vec![Element::spacer().flex(1.0), close, gap(8.0, 0.0)]),
+        ]),
+    ])
+    .size(Some(panel), Some(window.height))
+    .background(Look::alpha(look.canvas, 255))
+    .border(look.border, 1.0)
+    .clip_children()
+    .accessible(
+        limn::Access::new(limn::Role::Dialog)
+            .id(format!("{}:dialog", ids::FULL_CLOSE))
+            .name(t("Perfil").to_owned()),
     );
-    Modal::new(
-        root,
-        true,
-        t("Perfil"),
-        "",
-        ids::FULL_CLOSE,
-        look.menu_palette(),
-    )
-    .width(Modal::fit_width(window_width, FULL_WIDTH))
-    .height(FULL_HEIGHT)
-    .body(content)
-    .render()
+    // The close button takes the focus, as the dialog it replaces gave it.
+    Element::popover(root, surface, ids::FULL_CLOSE, PopoverPlacement::Center)
+        .popover_initial_focus(format!("{}:close", ids::FULL_CLOSE))
+        .popover_scrim(Color::rgba(0, 0, 0, 184))
+        .popover_backdrop_dismiss(true)
 }
 
 /// The account's own popout.
@@ -1914,38 +2119,51 @@ pub struct SwitchItem {
     pub active: bool,
 }
 
-/// A row of the popout's groups: an icon, a label and what goes after it.
+/// A row of the popout's groups, as Discord's: 32 px, a 16 px icon, the label
+/// 14 px medium in the muted ink, and what goes after it.
 fn action_row(id: &str, glyph: Element, label: &str, after: Vec<Element>, look: &Look) -> Element {
     let mut parts = vec![
         Element::row(vec![crate::centered(glyph)])
-            .size(Some(20.0), Some(20.0))
+            .size(Some(16.0), Some(16.0))
             .centered_y(),
-        line(label, 16.0, look.text).shrink_to_fit().centered_y(),
+        line(label, 14.0, look.muted)
+            .font_family(FontFamily::SansMedium)
+            .shrink_to_fit()
+            .centered_y(),
     ];
     parts.extend(after.into_iter().map(Element::centered_y));
-    Element::clickable(id, Element::row(parts).gap(10.0).padding(8.0))
-        .size(None, Some(36.0))
-        .radius(6.0)
+    Element::clickable(id, Element::row(parts).gap(8.0).padding(8.0))
+        .size(None, Some(32.0))
+        .radius(8.0)
         .hover_background(look.hover)
         .accessible(limn::Access::new(limn::Role::MenuItem).name(label.to_owned()))
 }
 
-/// Rows on a lighter ground, a line between each two.
+/// An icon of a popout's rows: 16 px in the muted ink.
+fn row_icon(glyph: Icon, look: &Look) -> Element {
+    icon(glyph, look.muted).size(Some(16.0), Some(16.0))
+}
+
+/// Rows on Discord's card (#17181b), a hairline 8 under and over each
+/// between two, 4 in from the rows' sides.
 fn group(rows: Vec<Element>, look: &Look) -> Element {
     let mut children = Vec::new();
     for row in rows {
         if !children.is_empty() {
-            children.push(
+            children.push(Element::row(vec![
+                gap(4.0, 0.0),
                 Element::panel(Element::spacer())
                     .size(None, Some(1.0))
-                    .background(look.border),
-            );
+                    .background(hairline(look, 51))
+                    .flex(1.0),
+                gap(4.0, 0.0),
+            ]));
         }
         children.push(row);
     }
     Element::panel(Element::column(children).gap(8.0).padding(8.0))
         .radius(8.0)
-        .background(look.raised)
+        .background(raised(look, 16))
 }
 
 /// The surface of a menu beside a row.
@@ -2089,9 +2307,10 @@ fn status_menu(current: Status, look: &Look) -> Element {
     menu_surface(rows, STATUS_MENU_WIDTH, look)
 }
 
-/// The account's popout over its panel: its card, a bubble to set the
-/// custom status, «Editar perfil», the status with its menu, and copying
-/// its id.
+/// The account's popout over its panel, as Discord's: its card's head with a
+/// bubble to set the custom status, its name and bio, then a card of
+/// «Editar perfil» and the status with its menu, and one of switching
+/// accounts and copying its id.
 pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
     let profile = &popout.profile;
     let action = popout.custom_denied.is_none().then_some(ids::CUSTOM);
@@ -2106,22 +2325,12 @@ pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
         )),
         None => None,
     };
-    let mut body = vec![names(profile, true, None, 20.0, look)];
-    if let Some(about) = &profile.about {
-        body.push(section(
-            t("Sobre mí"),
-            crate::identity::with_pictures(
-                about,
-                &profile.identity.pictures,
-                WIDTH - 2.0 * INSET,
-                look,
-            ),
-            look,
-        ));
-    }
+    let mut body = vec![card_names(profile, None, true, look)];
+    // Its own bio whole: there is no full profile of one's own to lead to.
+    body.extend(bio(profile, false, WIDTH - 2.0 * INSET, look));
     let edit = action_row(
         ids::EDIT,
-        icon(Icon::Edit, look.muted),
+        row_icon(Icon::Edit, look),
         if popout.edit_denied.is_some() {
             t("Ver perfil")
         } else {
@@ -2136,7 +2345,7 @@ pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
     };
     let mut after = Vec::new();
     if profile.status == Status::Invisible {
-        let warning = icon(Icon::WarningTriangle, look.idle);
+        let warning = row_icon(Icon::WarningTriangle, look).foreground(look.idle);
         after.push(
             Tooltip::new(
                 Element::panel(warning).accessibility_label(t("Atención")),
@@ -2151,10 +2360,10 @@ pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
     if let Some(until) = &popout.until {
         after.push(line(until.clone(), 12.0, look.muted));
     }
-    after.push(icon(Icon::ChevronRight, look.muted));
+    after.push(row_icon(Icon::ChevronRight, look));
     let status = action_row(
         ids::STATUS_MENU,
-        status_mark(profile.status, look, 12.0, look.raised),
+        status_mark(profile.status, look, 12.0, raised(look, 16)),
         crate::look::status_label(profile.status),
         after,
         look,
@@ -2177,42 +2386,54 @@ pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
         actions.push(status);
     }
     body.push(group(actions, look));
+    let mut account = Vec::new();
     if let Some(accounts) = &popout.switch_accounts {
         let row = action_row(
             ids::SWITCH_ACCOUNT,
-            icon(Icon::Users, look.muted),
+            row_icon(Icon::Custom(crate::user_settings::PERSON), look),
             t("Cambiar de cuenta"),
             vec![
                 Element::spacer().flex(1.0),
-                icon(Icon::ChevronRight, look.muted),
+                row_icon(Icon::ChevronRight, look),
             ],
             look,
         );
         // The pointer on the row opens its accounts, as on the status row.
-        let row = Element::popover(
-            row,
-            account_menu(accounts, look),
-            ids::ACCOUNT_MENU_DISMISS,
-            PopoverPlacement::RightStart,
-        )
-        .popover_on_hover();
-        body.push(group(vec![row], look));
+        account.push(
+            Element::popover(
+                row,
+                account_menu(accounts, look),
+                ids::ACCOUNT_MENU_DISMISS,
+                PopoverPlacement::RightStart,
+            )
+            .popover_on_hover(),
+        );
     }
     if popout.copy_id {
-        body.push(group(
-            vec![action_row(
-                ids::COPY_ID,
-                icon(Icon::Copy, look.muted),
-                t("Copiar ID del usuario"),
-                Vec::new(),
-                look,
-            )],
+        account.push(action_row(
+            ids::COPY_ID,
+            row_icon(Icon::Copy, look),
+            t("Copiar ID del usuario"),
+            Vec::new(),
             look,
         ));
     }
+    if !account.is_empty() {
+        body.push(group(account, look));
+    }
+    // Discord's spacing: the name 12 under the head, 16 at the sides, 20 under
+    // the last card.
     Element::column(vec![
-        head(profile, bubble, look),
-        Element::column(body).gap(12.0).padding(INSET),
+        card_head(profile, bubble, look),
+        Element::column(vec![
+            gap(0.0, 12.0),
+            Element::row(vec![
+                gap(INSET, 0.0),
+                Element::column(body).gap(12.0).flex(1.0),
+                gap(INSET, 0.0),
+            ]),
+            gap(0.0, 20.0),
+        ]),
     ])
 }
 
@@ -3751,7 +3972,7 @@ mod tests {
             connections: Default::default(),
             profile: ada(),
             server: Some("Taller".into()),
-            nick: Some("Ada L.".into()),
+            friends_since: None,
             mutual_servers: servers,
             mutual_friends: friends,
             tab,
@@ -3759,7 +3980,7 @@ mod tests {
         };
         texts(
             &frame(
-                full_profile(Element::spacer(), &full, 900.0, &LOOK),
+                full_profile(Element::spacer(), &full, Size::new(900.0, 900.0), &LOOK),
                 Size::new(900.0, 900.0),
             )
             .1,
@@ -3768,13 +3989,13 @@ mod tests {
 
     #[test]
     fn the_full_profile_never_shows_unknown_mutuals_as_none() {
-        let about = full_texts(Mutual::Unknown, Mutual::Loading, FullTab::About);
+        let about = full_texts(Mutual::Unknown, Mutual::Loading, FullTab::Activity);
         for expected in [
-            "Sobre mí",
+            "Actividad",
             "Servidores en común",
             "Amigos en común",
-            "En Taller",
-            "Apodo: Ada L.",
+            "Jugando a Factorio",
+            "Roles",
             "Moderación",
         ] {
             assert!(about.iter().any(|t| t == expected), "{expected}: {about:?}");
@@ -3785,9 +4006,11 @@ mod tests {
             .any(|t| t == "No disponible en esta conexión."));
         assert!(!servers.iter().any(|t| t == "Ninguno en común."));
         assert!(
-            !servers.iter().any(|t| t == "En Taller"),
+            !servers.iter().any(|t| t == "Jugando a Factorio"),
             "one tab at a time"
         );
+        // The card beside the tabs stays: its roles are not a tab's.
+        assert!(servers.iter().any(|t| t == "Moderación"), "{servers:?}");
         let friends = full_texts(Mutual::Unknown, Mutual::Loading, FullTab::Friends);
         assert!(friends.iter().any(|t| t == "Cargando…"), "{friends:?}");
         // Known: the tabs count them, a known empty list says so.
@@ -3796,8 +4019,8 @@ mod tests {
             Mutual::Known(Vec::new()),
             FullTab::Friends,
         );
-        assert!(friends.iter().any(|t| t == "Servidores en común · 1"));
-        assert!(friends.iter().any(|t| t == "Amigos en común · 0"));
+        assert!(friends.iter().any(|t| t == "1 servidor en común"));
+        assert!(friends.iter().any(|t| t == "0 amigos en común"));
         assert!(
             friends.iter().any(|t| t == "Ninguno en común."),
             "{friends:?}"
@@ -3820,14 +4043,14 @@ mod tests {
             connections: Default::default(),
             profile: ada(),
             server: None,
-            nick: None,
+            friends_since: None,
             mutual_servers: Mutual::Unknown,
             mutual_friends: Mutual::Unknown,
-            tab: FullTab::About,
+            tab: FullTab::Activity,
             loading: false,
         };
         let (_, laid) = frame(
-            full_profile(Element::spacer(), &full, 900.0, &LOOK),
+            full_profile(Element::spacer(), &full, Size::new(900.0, 900.0), &LOOK),
             Size::new(900.0, 900.0),
         );
         let ids = controls(&laid);
@@ -3837,6 +4060,95 @@ mod tests {
             assert_eq!(FullTab::from_key(tab.key()), Some(tab));
         }
         assert!(ids.contains(&"profile:dm:10".to_owned()));
+    }
+
+    #[test]
+    fn the_full_profile_is_a_card_beside_its_tabs_with_discords_sections() {
+        let more = vec![
+            MenuEntry::Item(
+                format!("{}10", ids::FULL),
+                "Ver perfil completo".into(),
+                None,
+            ),
+            MenuEntry::Separator,
+            MenuEntry::Item("friend:10:block".into(), "Bloquear".into(), None),
+        ];
+        let full = FullProfile {
+            connections: Default::default(),
+            profile: Profile {
+                full_action: Some(format!("{}10", ids::FULL)),
+                more: Some(more),
+                open_menu: Some(CardMenu::More),
+                member_since: vec![
+                    Since {
+                        scope: "Cuenta".into(),
+                        face: None,
+                        date: "3 may 2019".into(),
+                    },
+                    Since {
+                        scope: "Taller".into(),
+                        face: Some(taller()),
+                        date: "4 mar 2025".into(),
+                    },
+                ],
+                ..ada()
+            },
+            server: Some("Taller".into()),
+            friends_since: Some("18 may 2024".into()),
+            mutual_servers: Mutual::Unknown,
+            mutual_friends: Mutual::Unknown,
+            tab: FullTab::Activity,
+            loading: false,
+        };
+        let at = |laid: &limn::Frame, wanted: &str| {
+            laid.commands
+                .iter()
+                .find_map(|command| match command {
+                    limn::DrawCommand::Text { text, position, .. } if text == wanted => {
+                        Some(*position)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{wanted} is painted"))
+        };
+        let window = Size::new(1280.0, 900.0);
+        let (_, laid) = frame(
+            full_profile(Element::spacer(), &full, window, &LOOK),
+            window,
+        );
+        let painted = texts(&laid);
+        for expected in [
+            "Miembro desde",
+            "Amigos desde el",
+            "18 may 2024",
+            "Bloquear",
+        ] {
+            assert!(
+                painted.iter().any(|t| t == expected),
+                "{expected}: {painted:?}"
+            );
+        }
+        // «…» is the card's, less the profile it is already in.
+        assert!(
+            !painted.iter().any(|t| t == "Ver perfil completo"),
+            "{painted:?}"
+        );
+        // Both dates on one line, the card's; the tabs beside it.
+        let (account, server) = (at(&laid, "3 may 2019"), at(&laid, "4 mar 2025"));
+        assert_eq!(account.y, server.y);
+        let (name, tab) = (at(&laid, "Ada"), at(&laid, "Actividad"));
+        assert!(
+            tab.x > name.x + FULL_CARD - 64.0 && tab.y < name.y,
+            "{name:?} {tab:?}"
+        );
+        // Too narrow for two columns: the tabs go under the card.
+        let narrow = Size::new(700.0, 900.0);
+        let (_, laid) = frame(
+            full_profile(Element::spacer(), &full, narrow, &LOOK),
+            narrow,
+        );
+        let (name, tab) = (at(&laid, "Ada"), at(&laid, "Actividad"));
+        assert!(tab.y > name.y, "{name:?} {tab:?}");
     }
 
     #[test]
@@ -4465,19 +4777,24 @@ mod tests {
                 ..bare.clone()
             },
             server: None,
-            nick: None,
+            friends_since: None,
             mutual_servers: Mutual::Loading,
             mutual_friends: Mutual::Loading,
-            tab: FullTab::About,
+            tab: FullTab::Activity,
             loading,
         };
         let (_, reading) = frame(
-            full_profile(Element::spacer(), &full(true), 900.0, &LOOK),
+            full_profile(
+                Element::spacer(),
+                &full(true),
+                Size::new(900.0, 900.0),
+                &LOOK,
+            ),
             Size::new(900.0, 900.0),
         );
         assert!(!texts(&reading)
             .iter()
-            .any(|text| text == "No hay más datos de este perfil."));
+            .any(|text| text == "Sin actividad por ahora."));
         let widths: Vec<f32> = reading
             .commands
             .iter()
@@ -4491,11 +4808,16 @@ mod tests {
         }
         // Once the read is over with nothing to show, it says so.
         let (_, settled) = frame(
-            full_profile(Element::spacer(), &full(false), 900.0, &LOOK),
+            full_profile(
+                Element::spacer(),
+                &full(false),
+                Size::new(900.0, 900.0),
+                &LOOK,
+            ),
             Size::new(900.0, 900.0),
         );
         assert!(texts(&settled)
             .iter()
-            .any(|text| text == "No hay más datos de este perfil."));
+            .any(|text| text == "Sin actividad por ahora."));
     }
 }
