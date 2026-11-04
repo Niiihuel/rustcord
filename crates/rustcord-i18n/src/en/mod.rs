@@ -70,6 +70,8 @@ mod streams;
 mod voice_rows;
 // The «Activo ahora» column of the friends page.
 mod active_now;
+// Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
+mod settings_look;
 
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
@@ -123,4 +125,6 @@ pub(crate) const ALL: &[(&str, Entries)] = &[
     ("voice_rows", voice_rows::ENTRIES),
     // The «Activo ahora» column of the friends page.
     ("active_now", active_now::ENTRIES),
+    // Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
+    ("settings_look", settings_look::ENTRIES),
 ];

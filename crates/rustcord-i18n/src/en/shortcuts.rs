@@ -22,7 +22,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Choose in lists and suggestions",
     ),
     ("Espacio", "Space"),
-    ("Estos no se cambian.", "These do not change."),
     ("Fijos", "Fixed"),
     ("Formato", "Formatting"),
     (

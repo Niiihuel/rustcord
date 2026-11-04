@@ -95,11 +95,11 @@ pub(super) const SECTIONS: &[Section] = &[
         title: es("Proxy"),
         rows: &[("proxy", es("proxy http https api rest red intermediario dirección sin proxy"))],
     },
-    // The graphics card, as in «Avanzados».
+    // The graphics card, in Discord's «Avanzado».
     Section {
         page: System,
         key: "graphics",
-        title: es("Avanzados"),
+        title: es("Avanzado"),
         rows: &[(
             "gpu",
             es("dibujar con gpu placa de video gráficos integrada dedicada aceleración por hardware"),
