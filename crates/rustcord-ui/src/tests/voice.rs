@@ -5,7 +5,6 @@
 //! them: its session runs on a runtime the host here does not have.
 
 use rustcord_components::voice::ids;
-use rustcord_components::Look;
 use rustcord_model::{CallPhase, CallQuality, Permissions, UserId, VoiceState};
 use rustcord_provider::{ConnectionState, Failure};
 
@@ -351,7 +350,9 @@ fn the_stage_lists_who_is_in_the_call_and_who_speaks_or_is_muted() {
         user: other,
         speaking: true,
     });
-    let look = Look::DARK;
+    // The look the stage is drawn in (black by default), whose green may
+    // be another theme's.
+    let look = host.ui.look();
     let frame = host.frame();
     let outlined = |rect: limn::Rect| {
         frame.commands.iter().any(|command| {
@@ -412,17 +413,19 @@ fn the_stage_follows_a_call_moved_by_an_administrator() {
 // Screen and camera are Linux's and Windows'.
 #[cfg(any(target_os = "linux", windows))]
 #[test]
-fn the_bar_mutes_deafens_and_hangs_up_and_the_video_says_it_stays_here() {
+fn the_bar_mutes_and_hangs_up_the_panel_deafens_and_the_video_says_it_stays_here() {
     let mut host = Host::new();
     let text = host.ui.channel().unwrap();
     let room = host.vz_join("Sala común");
     host.click(&format!("voice:{room}"));
     let me = host.vz_me();
 
+    // As Discord's, the bar has no deafening: the account panel has it.
+    assert!(!host.vz_shows("vz:deafen"));
     let from = host.sent.len();
     host.click(ids::MUTE);
-    host.click(ids::DEAFEN);
-    host.click(ids::DEAFEN);
+    host.click("me:deafen");
+    host.click("me:deafen");
     host.click(ids::MUTE);
     let set: Vec<(bool, bool)> = host.sent[from..]
         .iter()
@@ -436,11 +439,11 @@ fn the_bar_mutes_deafens_and_hangs_up_and_the_video_says_it_stays_here() {
         set,
         [(true, false), (true, true), (true, false), (false, false)]
     );
-    host.click(ids::DEAFEN);
+    host.click("me:deafen");
     host.vz_answer(from, 47);
     assert!(host.vz_shows(&format!("{}:deafened", ids::tile(me.0))));
     assert!(host
-        .vz_hint(ids::DEAFEN)
+        .vz_hint("me:deafen")
         .contains(&"Desactivar ensordecimiento".to_owned()));
 
     // The camera goes to the (simulated) call; the screen too, after
@@ -1728,20 +1731,19 @@ fn the_bars_arrows_open_the_device_menus_with_the_calls_level_live() {
     let shown = host.vz_texts();
     assert!(shown.iter().any(|it| it == "Dispositivo de entrada"));
     assert!(shown.iter().any(|it| it == "Nivel de entrada"), "in a call");
-    // A click outside closes it, and the meter it started.
-    host.click(ids::OUTPUT_OPTIONS);
+    // Its arrow again closes it, and the meter it started.
+    host.click(ids::INPUT_OPTIONS);
     assert!(host.ui.profiles.devices.is_none() && !host.ui.audio.testing);
-    host.click(ids::OUTPUT_OPTIONS);
+    // The sound has no arrow on the bar, as Discord's: the account panel's.
+    assert!(!host.vz_shows("vz:output-options"));
+    let output = rustcord_components::profile::ids::OUTPUT;
+    host.click(output);
     assert!(host
         .ui
         .profiles
         .devices
-        .is_some_and(|it| it.bar && it.output));
-    assert!(host
-        .vz_texts()
-        .iter()
-        .any(|it| it == "Dispositivo de salida"));
-    host.click(ids::OUTPUT_OPTIONS);
+        .is_some_and(|it| !it.bar && it.output));
+    host.click(output);
     assert!(host.ui.profiles.devices.is_none());
     // Muted, the microphone stays closed until asked.
     host.ui.muted = true;

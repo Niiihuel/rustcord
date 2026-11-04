@@ -26,9 +26,8 @@ pub const SIGNAL: &str = crate::glyphs::glyph!("signal");
 /// The actions these pieces report. Those that name a person are built with
 /// the functions here.
 pub mod ids {
-    /// The microphone and the sound of the account in its call.
+    /// The microphone of the account in its call.
     pub const MUTE: &str = "vz:mute";
-    pub const DEAFEN: &str = "vz:deafen";
     /// Hang up, from the panel or from the stage.
     pub const LEAVE: &str = "vz:leave";
     /// Join the channel the stage shows, or try again after a failure there.
@@ -140,10 +139,9 @@ pub mod ids {
     pub const PERSON_CALL: &str = "vz:person-call";
     pub const PERSON_CALL_CANCEL: &str = "vz:person-call:cancel";
     pub const PERSON_CALL_FORGET: &str = "vz:person-call:forget";
-    /// The arrows beside the bar's microphone and sound: the quick voice
-    /// panel of each, [`crate::quick_voice`].
+    /// The arrow beside the bar's microphone: its quick voice panel,
+    /// [`crate::quick_voice`].
     pub const INPUT_OPTIONS: &str = "vz:input-options";
-    pub const OUTPUT_OPTIONS: &str = "vz:output-options";
     /// The arrow beside the bar's camera: the camera's panel, [`crate::quick_voice::camera`].
     pub const CAMERA_OPTIONS: &str = "vz:camera-options";
 
@@ -280,9 +278,10 @@ pub mod ids {
         format!("vz:spotlight:{user}")
     }
 
-    /// The stage's bar, a hover region: while the pointer is on it, what
-    /// hides once the pointer rests stays.
+    /// The stage's bar and its header, hover regions: while the pointer is
+    /// on one, what hides once the pointer rests stays.
     pub const BAR: &str = "vz:bar";
+    pub const HEADER: &str = "vz:header";
 
     /// The controls over `user`'s stream, a hover region as [`BAR`] is.
     pub const STREAM_CONTROLS: &str = "vz:stream-controls:";
@@ -594,10 +593,12 @@ const OVER_INK: Color = Color::rgb(255, 255, 255);
 const PILL: Color = Color::rgba(0, 0, 0, 143);
 /// The ground of a stream nobody watches: Discord's stream preview, #1E1F22.
 const STREAM_GROUND: Color = Color::rgb(30, 31, 34);
-/// The round buttons over a picture, 32 across.
+/// The buttons over a picture, 32 across, rounded 8 and outlined in
+/// `#97979f` at 16 % as Discord's «Más» on a tile.
 const OVER_BUTTON: f32 = 32.0;
+const OVER_EDGE: Color = Color::rgba(0x97, 0x97, 0x9f, 41);
 
-/// A round icon button over a picture, named and hinted by `hint`.
+/// An icon button over a picture, named and hinted by `hint`.
 fn over_button(
     id: impl Into<String>,
     glyph: Icon,
@@ -633,43 +634,32 @@ fn over_button_at(
             inner_spacing: 6.0,
         })
         .width(OVER_BUTTON)
-        .round()
+        .radius(RadiusRole::Card)
         .ink(OVER_INK)
         .hover_ink(OVER_INK)
         .tooltip(hint)
         .accessibility_label(hint);
-    if enabled {
+    let button = if enabled {
         button.render()
     } else {
         button.disabled().render()
-    }
+    };
+    // The outline follows the wrapper's own radius, as the button's.
+    button.radius(RadiusRole::Card.px()).border(OVER_EDGE, 1.0)
 }
 
-/// A preview's title in a pill at its bottom left; a stream's is its
-/// streamer's name behind a screen, as the official client's.
-fn name_pill(view: &Preview) -> Element {
-    let mut name = vec![gap(10.0, 0.0)];
-    let mut said = view.title.as_str();
-    if let Some(stream) = &view.stream {
-        said = stream.name.as_str();
-        name.push(
-            icon(Icon::Screen, OVER_INK)
-                .size(Some(16.0), Some(16.0))
-                .centered_y(),
-        );
-        name.push(gap(6.0, 0.0));
-    }
-    name.push(
-        strong_line(said, 14.0, OVER_INK)
-            .centered_y()
-            .shrink_to_fit(),
-    );
-    name.push(gap(12.0, 0.0));
-    Element::panel(Element::row(name))
-        .size(None, Some(OVER_BUTTON))
-        .radius(OVER_BUTTON / 2.0)
-        .background(OVER)
-        .shrink_to_fit()
+/// A preview's title in a tile's name tag at its bottom left (see
+/// [`name_tag`]); a stream's is its streamer's name behind a screen, as the
+/// official client's. Nothing on a tile too small for a name.
+fn name_pill(view: &Preview, size: Size) -> Element {
+    let (said, marks) = match &view.stream {
+        Some(stream) => (
+            stream.name.as_str(),
+            vec![icon(Icon::Screen, OVER_INK).size(Some(16.0), Some(16.0))],
+        ),
+        None => (view.title.as_str(), Vec::new()),
+    };
+    name_tag(said, marks, size).unwrap_or_else(Element::spacer)
 }
 
 /// A small note over a picture, such as that it is simulated: it says, it
@@ -719,7 +709,7 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
             _ => centered(line(&view.waiting, 14.0, look.muted)),
         },
     };
-    let title = name_pill(view);
+    let title = name_pill(view, size);
     let over = match &view.stream {
         // In the strip, a stream watched says it is live at its top right.
         Some(_) if compact => Element::column(vec![
@@ -1044,7 +1034,7 @@ pub fn stream_window(view: &Preview, size: Size, idle: bool, look: &Look) -> Ele
         Element::column(vec![
             Element::row(vec![badge(&view.note), Element::spacer().flex(1.0)]),
             Element::spacer().flex(1.0),
-            Element::row(vec![name_pill(view), Element::spacer().flex(1.0)]),
+            Element::row(vec![name_pill(view, size), Element::spacer().flex(1.0)]),
         ])
         .padding(12.5)
         .animate_presence(format!("{}:over", view.surface))
@@ -1253,22 +1243,49 @@ const AREA_TOP: f32 = 16.0;
 /// Up to this many tiles all show; past it the rows scroll, with this many
 /// (partly) in view at most.
 const GRID_VISIBLE: usize = 25;
-/// The strip under a stream focused: 112 high as Discord's, its tiles 16:9,
-/// at most `STRIP_MAX` of them.
+/// The strip under a stream focused: its tiles 195×112 as Discord's, at most
+/// `STRIP_MAX` of them.
 const STRIP: f32 = 112.0;
+const STRIP_WIDTH: f32 = 195.0;
 const STRIP_MAX: usize = 12;
 /// The least a stream focused keeps; a shorter stage has no strip.
 const MIN_FOCUS: f32 = 180.0;
-/// The bar of the stage, as the official client's tray: its buttons
-/// 36 across, 8 apart in sections 4 in, outlined and rounded 12, 46 high;
-/// sections and hanging up (62 wide) 12 apart, and 12 under the tiles;
-/// 16 over the bottom and in from the sides, where its end keeps a
-/// stream's own.
-pub const BAR_HEIGHT: f32 = 46.0;
-const BAR_BOTTOM: f32 = 16.0;
-const BAR_BUTTON: f32 = 36.0;
+/// The bar of the stage, as Discord's: groups of 40 px buttons 8 apart,
+/// 4 inside a 1 px edge, rounded 12, so 50 high; groups and hanging up (66 wide)
+/// 12 apart, and 12 under the tiles; 20 over the bottom.
+pub const BAR_HEIGHT: f32 = 50.0;
+const BAR_BOTTOM: f32 = 20.0;
+const BAR_BUTTON: f32 = 40.0;
 const BAR_GAP: f32 = 12.0;
-const HANG_UP_WIDTH: f32 = 62.0;
+const HANG_UP_WIDTH: f32 = 66.0;
+/// A private call's bar overlaps its tiles' bottom by this much (Discord's).
+const BAR_OVERLAP: f32 = 6.0;
+/// The bar's colors, Discord's whatever the theme: its groups' fill and
+/// edge; a plain button's ink and hover; the red glow of a muted
+/// microphone; the green one of a camera or a screen on; the trays' ink.
+const GROUP_FILL: Color = Color::rgb(0x0a, 0x0a, 0x0c);
+const GROUP_EDGE: Color = Color::rgba(0x95, 0x95, 0xa2, 41);
+const PLAIN_INK: Color = Color::rgb(255, 255, 255);
+const PLAIN_HOVER: Color = Color::rgba(0x99, 0x99, 0x99, 20);
+const RED_GLOW: (Color, Color, Color) = (
+    Color::rgba(0xd6, 0x29, 0x3a, 31),
+    Color::rgba(0xd3, 0x2c, 0x38, 41),
+    Color::rgb(0xda, 0x3e, 0x44),
+);
+const GREEN_GLOW: (Color, Color, Color) = (
+    Color::rgba(0x00, 0x84, 0x42, 31),
+    Color::rgba(0x00, 0x86, 0x47, 61),
+    Color::rgb(0x73, 0xc4, 0x8b),
+);
+const TRAY_INK: Color = Color::rgb(0x96, 0x97, 0x9e);
+/// Hanging up: its fill, under the pointer, and pressed.
+const HANG_UP: [Color; 3] = [
+    Color::rgb(0xd2, 0x2d, 0x39),
+    Color::rgb(0xa9, 0x23, 0x2e),
+    Color::rgb(0x97, 0x1d, 0x28),
+];
+/// Hover fades on the bar, as Discord's 150 ms.
+const BAR_FADE_MS: u16 = 150;
 /// «Más opciones», 330 wide.
 const MORE_WIDTH: f32 = 330.0;
 
@@ -2246,7 +2263,8 @@ pub struct Grid {
 }
 
 /// The arrangement of `count` tiles of 16:9 in `area` that makes them
-/// largest, `TILE_GAP` apart, in whole pixels. Past `GRID_VISIBLE` the rows
+/// largest, `TILE_GAP` apart, in whole pixels: the width floored, the height
+/// rounded, as Discord's 520×293 and 412×232. Past `GRID_VISIBLE` the rows
 /// scroll, and the tiles are as large as keeps that many partly in view
 /// (Discord's rule).
 pub fn grid(count: usize, area: Size) -> Grid {
@@ -2265,7 +2283,7 @@ pub fn grid(count: usize, area: Size) -> Grid {
             .unwrap_or(width.floor());
         return Grid {
             columns: columns_at(tile) as usize,
-            tile: Size::new(tile, (tile * 9.0 / 16.0).floor()),
+            tile: Size::new(tile, (tile * 9.0 / 16.0).round()),
         };
     }
     let mut best = (1, 0.0_f32);
@@ -2281,7 +2299,7 @@ pub fn grid(count: usize, area: Size) -> Grid {
     let tile = best.1.floor();
     Grid {
         columns: best.0,
-        tile: Size::new(tile, (tile * 9.0 / 16.0).floor()),
+        tile: Size::new(tile, (tile * 9.0 / 16.0).round()),
     }
 }
 
@@ -2496,12 +2514,14 @@ fn watch_tile(
     shown.accessibility_label(tr!("Transmisión de {name}", name = person.name))
 }
 
-/// A person on the stage: their picture on their color, or their camera
-/// («Cámara simulada» over it when `simulated`), and their name in a pill at
-/// the bottom left with their marks. Under the pointer a «⋯» opens their menu
-/// (`menu`, while open). Their card floats beside the name while open, or
-/// beside the tile when it has no name. Outlined in green while they speak.
-/// Their stream is a tile of its own, see [`watch_tile`].
+/// A person on the stage: their round picture on their color, or their
+/// camera letterboxed on Discord's #1E1F22 («Cámara simulada» over it when
+/// `simulated`), and their name in a pill at the bottom left with their
+/// marks. Under the pointer a «⋯» opens their menu (`menu`, while open).
+/// Their card floats beside the name while open, or beside the tile when it
+/// has no name. Outlined in green while they speak. `idle`, the name and the
+/// «⋯» fade out. Their stream is a tile of its own, see [`watch_tile`].
+#[allow(clippy::too_many_arguments)]
 fn tile(
     person: &Participant,
     size: Size,
@@ -2509,6 +2529,7 @@ fn tile(
     card: Option<Element>,
     menu: Option<Vec<MenuEntry>>,
     simulated: bool,
+    idle: bool,
     look: &Look,
 ) -> Element {
     let face = face_size(size);
@@ -2539,10 +2560,10 @@ fn tile(
     } else {
         more.reveal_on_hover(format!("{}:more", ids::tile(person.user)))
     };
-    let (name, card) = match tile_name(person, size, look) {
+    let (name, card) = match tile_name(person, size, look).filter(|_| !idle) {
         Some(name) => (
             Some(crate::profile::card_popout(
-                name,
+                name.animate_presence(format!("{}:name", ids::tile(person.user))),
                 card,
                 ids::CARD_DISMISS,
                 PopoverPlacement::RightStart,
@@ -2554,7 +2575,9 @@ fn tile(
     };
     let mut bottom: Vec<Element> = name.into_iter().map(Element::shrink_to_fit).collect();
     bottom.push(Element::spacer().flex(1.0));
-    bottom.push(more);
+    if open || !idle {
+        bottom.push(more);
+    }
     let bottom = Element::row(bottom).padding(margin(size));
     // Simulated things say so at the top left.
     let mut left = Vec::new();
@@ -2576,7 +2599,7 @@ fn tile(
             ))
             .size(Some(size.width), Some(size.height))
             .radius(TILE_RADIUS)
-            .background(Color::rgb(0, 0, 0))
+            .background(STREAM_GROUND)
             .clip_children()
         }
         None => Element::panel(centered(crate::identity::decorated(
@@ -2588,7 +2611,7 @@ fn tile(
         )))
         .size(Some(size.width), Some(size.height))
         .radius(TILE_RADIUS)
-        .background(person.accent),
+        .background(ground(person)),
     };
     let mut layers = vec![picture, over];
     if person.speaking {
@@ -2608,9 +2631,23 @@ fn tile(
     )
 }
 
-/// The body of a private call in VOICE mode: Discord's MINIMUM height, under
-/// the stage's header.
-pub const VOICE_HEIGHT: f32 = 240.0;
+/// The ground of a tile without video: the color of the person's picture,
+/// as Discord's. Their initial is drawn on their own color, so its ground
+/// goes a quarter darker for the round avatar to read on it.
+fn ground(person: &Participant) -> Color {
+    if person.image.is_some() {
+        return person.accent;
+    }
+    let darker = |channel: u8| (f32::from(channel) * 0.75) as u8;
+    let Color { r, g, b, a } = person.accent;
+    Color::rgba(darker(r), darker(g), darker(b), a)
+}
+
+/// A conversation's call under its header, its own header over its top:
+/// Discord's 240 high in VOICE mode and about 360 with tiles (one is
+/// 412×232), both with its 48 px header, which ours may outgrow.
+pub const VOICE_HEIGHT: f32 = 192.0 + crate::sidebar::HEADER;
+pub const TILES_HEIGHT: f32 = 312.0 + crate::sidebar::HEADER;
 /// VOICE mode's avatars: 80 across, or 40 when the row would not fit them,
 /// with 8 px of room each side, so 16 between two.
 const AVATAR_LARGE: f32 = 80.0;
@@ -2776,9 +2813,8 @@ pub struct Stage {
     pub phase: Option<CallPhase>,
     /// Who is in the channel, the account first.
     pub people: Vec<Participant>,
-    /// The account's microphone and sound.
+    /// The account's microphone is muted.
     pub muted: bool,
-    pub deafened: bool,
     pub simulated: bool,
     /// Why the account cannot join, if it cannot.
     pub join_denied: Option<String>,
@@ -2805,8 +2841,9 @@ pub struct Stage {
     /// A direct or group conversation's call: what it adds. `None` for a
     /// voice channel.
     pub private: Option<crate::private_call::PrivateStage>,
-    /// The quick voice panel of the bar's sound (`true`) or microphone,
-    /// while open: [`crate::quick_voice::panel`].
+    /// The quick voice panel of the sound (`true`) or the microphone, while
+    /// open: [`crate::quick_voice::panel`]. Only the microphone's has an
+    /// arrow on the bar.
     pub quick: Option<(bool, Element)>,
     /// The camera's panel over the bar's camera arrow, while open.
     pub camera_panel: Option<Element>,
@@ -2814,6 +2851,9 @@ pub struct Stage {
     pub end: f32,
     /// The account may invite people to the channel: the bar offers it.
     pub invite: bool,
+    /// The pointer rested on the stage a while: its header, the bar and the
+    /// names on the tiles fade out, as Discord's (3 s).
+    pub idle: bool,
 }
 
 /// The stage of a voice channel: its header, and its tiles over the bar of
@@ -2981,12 +3021,11 @@ pub fn stage(view: Stage, look: &Look) -> Element {
     if view.end > 0.0 {
         header.push(Element::spacer().size(Some(view.end - 12.0), None));
     }
+    // The pointer on it keeps it, as on the bar.
     let header = Element::panel(Element::row(header).gap(10.0).padding(12.0))
         .size(None, Some(crate::sidebar::HEADER))
-        .background(look.canvas);
-    let rule = Element::panel(Element::spacer())
-        .size(None, Some(1.0))
-        .background(look.border);
+        .background(look.canvas)
+        .hover_region_id(ids::HEADER);
     let in_call = matches!(
         view.phase,
         Some(
@@ -2997,12 +3036,26 @@ pub fn stage(view: Stage, look: &Look) -> Element {
                 | CallPhase::Reconnecting { .. }
         )
     );
-    let body = if in_call {
-        call(&view, look)
+    if !in_call {
+        let rule = Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border);
+        return Element::column(vec![header, rule, invitation(&view, look).flex(1.0)])
+            .background(look.canvas);
+    }
+    // In the call, as Discord's: no rule under the header, which fades in
+    // place once the pointer rests, the tiles staying where they are.
+    let header = if view.idle {
+        Element::spacer().size(None, Some(crate::sidebar::HEADER))
     } else {
-        invitation(&view, look)
+        header.animate_presence(ids::HEADER)
     };
-    Element::column(vec![header, rule, body.flex(1.0)]).background(look.canvas)
+    let body = call(&view, look);
+    if overlaid(&view) {
+        let header = Element::column(vec![header, Element::spacer().flex(1.0)]);
+        return Element::stack(vec![body, header]).background(look.canvas);
+    }
+    Element::column(vec![header, body.flex(1.0)]).background(look.canvas)
 }
 
 /// The dot between the channel and the streamer in the header.
@@ -3214,11 +3267,25 @@ fn call(view: &Stage, look: &Look) -> Element {
     // The pill over the bar offers to hide the tiles, when there are some.
     let hideable = focus.is_some() && previews.len() + people.len() + streams + ringing.len() > 1;
     // The bar's room under the tiles; the pill over the strip or the bar
-    // takes none of its own.
-    let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP;
+    // takes none of its own. A conversation's call under its header has its
+    // own header over its top, and its bar overlaps the tiles' bottom.
+    let overlaid = overlaid(view);
+    let (above, below) = if overlaid {
+        (
+            crate::sidebar::HEADER + AREA_TOP,
+            BAR_BOTTOM + BAR_HEIGHT - BAR_OVERLAP,
+        )
+    } else {
+        (AREA_TOP, BAR_BOTTOM + BAR_HEIGHT + BAR_GAP)
+    };
+    let header = if overlaid {
+        0.0
+    } else {
+        crate::sidebar::HEADER
+    };
     let area = Size::new(
         view.size.width - 2.0 * AREA_SIDE,
-        view.size.height - crate::sidebar::HEADER - 1.0 - AREA_TOP - below,
+        view.size.height - header - above - below,
     );
     let person = |person: &Participant, size: Size| {
         let card = view
@@ -3238,6 +3305,7 @@ fn call(view: &Stage, look: &Look) -> Element {
             card,
             menu,
             view.simulated,
+            view.idle,
             look,
         )
     };
@@ -3266,13 +3334,17 @@ fn call(view: &Stage, look: &Look) -> Element {
                 .map(|person| (*person, false))
                 .chain(ringing.iter().map(|person| (person, true)))
                 .collect();
-            Element::panel(Element::column(vec![
+            // On the stage's black, centred in all of it when the header
+            // lies over it (the bar 20 over its bottom), else over the bar.
+            let mut column = vec![
                 Element::spacer().flex(1.0),
                 avatar_row(&row, view.size.width, look),
                 Element::spacer().flex(1.0),
-                gap(0.0, below),
-            ]))
-            .background(look.raised)
+            ];
+            if !overlaid {
+                column.push(gap(0.0, below));
+            }
+            Element::column(column)
         }
         (false, Some(index)) => {
             let count = previews.len() - 1 + people.len() + streams + ringing.len();
@@ -3288,9 +3360,9 @@ fn call(view: &Stage, look: &Look) -> Element {
             let room = Size::new(area.width, area.height - strip - TILE_GAP.min(strip));
             let width = room.width.min(room.height * 16.0 / 9.0);
             let main = Size::new(width, width * 9.0 / 16.0);
-            let fits = ((area.width + TILE_GAP) / (strip * 16.0 / 9.0 + TILE_GAP)).floor() as usize;
+            let fits = ((area.width + TILE_GAP) / (STRIP_WIDTH + TILE_GAP)).floor() as usize;
             let fits = fits.min(STRIP_MAX);
-            let small = Size::new(strip * 16.0 / 9.0, strip);
+            let small = Size::new(STRIP_WIDTH, strip);
             let mut rest: Vec<Element> = previews
                 .iter()
                 .enumerate()
@@ -3305,7 +3377,7 @@ fn call(view: &Stage, look: &Look) -> Element {
             );
             rest.truncate(fits.max(1));
             let mut column = vec![
-                gap(0.0, AREA_TOP),
+                gap(0.0, above),
                 Element::spacer().flex(1.0),
                 Element::row(vec![
                     Element::spacer().flex(1.0),
@@ -3369,23 +3441,25 @@ fn call(view: &Stage, look: &Look) -> Element {
                 ])
                 .flex(1.0)
             };
-            Element::column(vec![gap(0.0, AREA_TOP), body, gap(0.0, below)])
+            Element::column(vec![gap(0.0, above), body, gap(0.0, below)])
         }
     };
-    // With a stream focused the bar fades with what is over it once the
-    // pointer rests, as the official client's; the grid never hides.
-    let focused = view
-        .watching
-        .iter()
-        .filter(|shown| shown.focused)
-        .find_map(|shown| shown.stream.as_ref());
-    let (bar, pill) = match focused {
-        Some(stream) if stream.idle => (Element::spacer(), None),
-        Some(_) => (
+    // The bar fades (and drops) once the pointer rests on the stage, as the
+    // official client's; with a stream focused, with what is over it.
+    let idle = view.idle
+        || view
+            .watching
+            .iter()
+            .filter(|shown| shown.focused)
+            .find_map(|shown| shown.stream.as_ref())
+            .is_some_and(|stream| stream.idle);
+    let (bar, pill) = if idle {
+        (Element::spacer(), None)
+    } else {
+        (
             bar(view, look).animate_presence(ids::BAR),
             hideable.then(|| tiles_pill(view.tiles_hidden, look)),
-        ),
-        None => (bar(view, look), None),
+        )
     };
     let mut layers = vec![
         tiles,
@@ -3395,11 +3469,11 @@ fn call(view: &Stage, look: &Look) -> Element {
             gap(0.0, BAR_BOTTOM),
         ]),
     ];
-    // Centred, half over the strip's top edge while the strip shows; else
-    // just above the bar.
+    // Centred, 8 under the strip's top edge while the strip shows, as
+    // measured on Discord's; else just above the bar.
     if let Some(pill) = pill {
         let lift = if strip_height > 0.0 {
-            strip_height - TILES_PILL_HEIGHT / 2.0
+            strip_height - 8.0 - TILES_PILL_HEIGHT
         } else {
             0.0
         };
@@ -3417,9 +3491,13 @@ fn call(view: &Stage, look: &Look) -> Element {
     Element::stack(layers)
 }
 
-const TILES_PILL_HEIGHT: f32 = 24.0;
+/// The toggle over the strip, Discord's: 60×32, round, #2C2D32, a step
+/// lighter under the pointer.
+const TILES_PILL_WIDTH: f32 = 60.0;
+const TILES_PILL_HEIGHT: f32 = 32.0;
+const TILES_PILL: Color = Color::rgb(0x2c, 0x2d, 0x32);
 
-/// The pill over the strip's top edge or the bar, as the official client's: a
+/// The toggle over the strip's top or the bar, as the official client's: a
 /// chevron and the people. Up shows the strip, down hides it; its label says
 /// what it does.
 fn tiles_pill(hidden: bool, look: &Look) -> Element {
@@ -3430,124 +3508,125 @@ fn tiles_pill(hidden: bool, look: &Look) -> Element {
     };
     let pill = Element::clickable(
         ids::TILES,
-        Element::panel(Element::row(vec![
-            gap(4.0, 0.0),
+        centered(Element::row(vec![
             icon(chevron, OVER_INK)
-                .size(Some(12.0), Some(12.0))
-                .centered_y(),
-            gap(4.0, 0.0),
-            icon(Icon::Users, OVER_INK)
                 .size(Some(16.0), Some(16.0))
                 .centered_y(),
-            gap(4.0, 0.0),
-        ]))
-        .size(None, Some(TILES_PILL_HEIGHT))
-        .shrink_to_fit()
-        .radius(TILES_PILL_HEIGHT / 2.0)
-        .background(look.menu)
-        .hover_background(PILL_HOVER),
+            icon(Icon::Users, OVER_INK)
+                .large_icon(24.0)
+                .size(Some(24.0), Some(24.0))
+                .centered_y(),
+        ])),
     )
+    .size(Some(TILES_PILL_WIDTH), Some(TILES_PILL_HEIGHT))
+    .round()
+    .background(TILES_PILL)
+    .hover_background(lighter(TILES_PILL, 12))
     .accessibility_label(hint);
     Tooltip::new(pill, ids::TILES, hint, look.palette()).render()
 }
 
-/// The strip's pill a step darker under the pointer.
-const PILL_HOVER: Color = Color::rgb(35, 36, 40);
+/// A conversation's call under its header: the stage's header lies over its
+/// top, as Discord's conversation header over its call.
+fn overlaid(view: &Stage) -> bool {
+    view.private
+        .as_ref()
+        .is_some_and(|private| !private.expanded)
+}
 
-/// The bar under the tiles: the microphone, the sound and the camera; the
-/// screen and «Más opciones»; hanging up.
+/// A button of the bar, `width` by 40 with its glyph `glyph` px across,
+/// rounded at `corners`: its fill, the fill under the pointer and its ink
+/// are `tone`'s (Discord's plain button, or its red or green glow). Drawn
+/// off in the faint ink, its hint still saying why, when not `enabled`.
+#[allow(clippy::too_many_arguments)]
+fn bar_button(
+    id: &str,
+    glyph: Icon,
+    (width, size): (f32, f32),
+    corners: CornerRadii,
+    (fill, hover, ink): (Color, Color, Color),
+    (title, description): (&str, Option<String>),
+    enabled: bool,
+    look: &Look,
+) -> Element {
+    let face = |ink: Color| {
+        centered(
+            icon(glyph, ink)
+                .large_icon(size)
+                .size(Some(size), Some(size)),
+        )
+    };
+    let button = if enabled {
+        Element::clickable(id, face(ink))
+            .hover_background(hover)
+            .pressed_background(hover)
+            .transition_ms(BAR_FADE_MS)
+            .accessible(Access::new(Role::Button).name(title))
+    } else {
+        Element::panel(face(look.faint))
+            .accessible(Access::new(Role::Button).id(id).name(title).disabled(true))
+    }
+    .background(fill)
+    .size(Some(width), Some(BAR_BUTTON))
+    .corner_radii(corners);
+    let hint = Tooltip::new(button, id, title, look.menu_palette());
+    match description {
+        Some(text) => hint.description(text),
+        None => hint,
+    }
+    .render()
+}
+
+/// Rounded 8 at the corners `left` and `right` (a button and its arrow
+/// meet square).
+fn corners(left: bool, right: bool) -> CornerRadii {
+    let at = |round: bool| if round { 8.0 } else { 0.0 };
+    CornerRadii {
+        top_left: at(left),
+        top_right: at(right),
+        bottom_right: at(right),
+        bottom_left: at(left),
+    }
+}
+
+/// The bar under the tiles, as Discord's: the microphone and the camera,
+/// each with the arrow of its panel; the screen and «Más opciones»; hanging
+/// up. The invitation at the left end, a stream focused's controls at the
+/// right. Deafening is the account panel's, not the bar's.
 fn bar(view: &Stage, look: &Look) -> Element {
-    let sizing = ButtonSizing {
-        height: BAR_BUTTON,
-        font_size: 14.0,
-        icon_size: 20.0,
-        horizontal_padding: 8.0,
-        inner_spacing: 6.0,
-    };
+    let plain = (Color::TRANSPARENT, PLAIN_HOVER, PLAIN_INK);
+    let glow = |on: bool, lit| if on { lit } else { plain };
     // The ghost icons at the bar's ends: the invitation, the stream's controls.
-    let ghost = |id: String, glyph: Icon, hint: &str| {
-        IconButton::new(id, glyph, look.palette())
-            .variant(ButtonVariant::Ghost)
-            .sizing(sizing)
-            .width(BAR_BUTTON)
-            .tooltip(hint)
-            .render()
-            .centered_y()
-    };
-    let toggle = |id: &str, on: Icon, off: Icon, off_now: bool, hint: (&str, &str)| {
-        let (fill, ink) = if off_now {
-            (Look::alpha(look.danger, 34), look.danger)
-        } else {
-            (look.menu, look.text)
-        };
-        IconButton::new(
-            id,
-            if off_now { off } else { on },
-            filled(fill, lighter(fill, 16), look),
+    let tray = |id: String, glyph: Icon, hint: &str| {
+        bar_button(
+            &id,
+            glyph,
+            (BAR_BUTTON, 24.0),
+            corners(true, true),
+            (Color::TRANSPARENT, PLAIN_HOVER, TRAY_INK),
+            (hint, None),
+            true,
+            look,
         )
-        .variant(ButtonVariant::Raised)
-        .sizing(sizing)
-        .radius(RadiusRole::Card)
-        .ink(ink)
-        .hover_ink(ink)
-        .tooltip(if off_now { hint.1 } else { hint.0 })
-        .render()
+        .centered_y()
     };
-    let lit = Look::alpha(look.online, 40);
-    let [camera, screen] = video_buttons(
-        &view.video,
-        BAR_BUTTON,
-        (look.menu, lighter(look.menu, 16)),
-        (lit, lighter(lit, 16)),
-        None,
-        look,
-    );
-    let screen = match view.video.picker {
-        Some(chosen) => go_live(screen, chosen, &view.video, view.size, look),
-        None => screen,
-    };
-    let group = |buttons: Vec<Element>| {
-        Element::panel(Element::row(buttons).gap(8.0).padding(4.0))
-            .size(None, Some(BAR_HEIGHT))
-            .radius(12.0)
-            .background(look.menu)
-            .border(look.border, 1.0)
-    };
-    let microphone = toggle(
-        ids::MUTE,
-        Icon::Microphone,
-        Icon::MicrophoneMuted,
-        view.muted,
-        (t("Silenciar"), t("Desactivar silencio")),
-    );
-    let sound = toggle(
-        ids::DEAFEN,
-        Icon::Headphones,
-        Icon::Custom(crate::HEADPHONES_OFF),
-        view.deafened,
-        (t("Ensordecer"), t("Desactivar ensordecimiento")),
-    );
-    // Each with the arrow of its quick panel, which opens over the bar.
-    let options = |button: Element, id: &str, hint: &str, panel: Option<&Element>| {
-        let open = panel.is_some();
-        let arrow = Element::clickable(
+    // Each with the arrow of its quick panel, 1 px after it, which opens
+    // over the bar.
+    let options = |button: Element, id: &str, hint: &str, tone, panel: Option<&Element>| {
+        let arrow = bar_button(
             id,
-            centered(
-                Element::icon(if open {
-                    Icon::ChevronUp
-                } else {
-                    Icon::ChevronDown
-                })
-                .foreground(look.muted)
-                .size(Some(12.0), Some(12.0)),
-            ),
-        )
-        .size(Some(crate::quick_voice::ARROW_WIDTH), Some(BAR_BUTTON))
-        .radius(6.0)
-        .hover_background(look.raised)
-        .hover_foreground(look.text)
-        .accessible(limn::Access::new(limn::Role::Button).name(hint));
-        let arrow = Tooltip::new(arrow, id, hint, look.menu_palette()).render();
+            if panel.is_some() {
+                Icon::ChevronUp
+            } else {
+                Icon::ChevronDown
+            },
+            (crate::quick_voice::ARROW_WIDTH, 16.0),
+            corners(false, true),
+            tone,
+            (hint, None),
+            true,
+            look,
+        );
         let arrow = match panel {
             Some(panel) => Element::popover(
                 arrow,
@@ -3560,38 +3639,121 @@ fn bar(view: &Stage, look: &Look) -> Element {
         };
         Element::row(vec![button, arrow]).gap(1.0)
     };
-    let quick = |output: bool| {
-        view.quick
-            .as_ref()
-            .filter(|(it, _)| *it == output)
-            .map(|(_, panel)| panel)
-    };
+    let quick = view
+        .quick
+        .as_ref()
+        .filter(|(output, _)| !output)
+        .map(|(_, panel)| panel);
+    let tone = glow(view.muted, RED_GLOW);
+    let microphone = bar_button(
+        ids::MUTE,
+        if view.muted {
+            Icon::MicrophoneMuted
+        } else {
+            Icon::Microphone
+        },
+        (BAR_BUTTON, 20.0),
+        corners(true, false),
+        tone,
+        (
+            if view.muted {
+                t("Desactivar silencio")
+            } else {
+                t("Silenciar")
+            },
+            None,
+        ),
+        true,
+        look,
+    );
     let microphone = options(
         microphone,
         ids::INPUT_OPTIONS,
         t("Opciones de entrada"),
-        quick(false),
+        tone,
+        quick,
     );
-    let sound = options(
-        sound,
-        ids::OUTPUT_OPTIONS,
-        t("Opciones de salida"),
-        quick(true),
+    // The camera and the screen: green while on, off with why when the
+    // system has none; their hints say where what they show goes.
+    let video = &view.video;
+    let video_hint = |id: &str, on: bool, titles: (&'static str, &'static str)| match &video.denied
+    {
+        Some(reason) => (titles.1, Some(t(reason).to_owned())),
+        None => {
+            let note = match (id, &video.screen_note, &video.camera_note) {
+                (ids::SCREEN, Some(note), _) | (ids::CAMERA, _, Some(note)) => note,
+                _ => &video.note,
+            };
+            (if on { titles.0 } else { titles.1 }, Some(note.clone()))
+        }
+    };
+    let tone = glow(video.camera, GREEN_GLOW);
+    let camera = bar_button(
+        ids::CAMERA,
+        if video.camera {
+            Icon::Video
+        } else {
+            Icon::VideoOff
+        },
+        (BAR_BUTTON, 20.0),
+        corners(true, false),
+        tone,
+        video_hint(
+            ids::CAMERA,
+            video.camera,
+            (t("Apagar la cámara"), t("Encender la cámara")),
+        ),
+        video.denied.is_none(),
+        look,
     );
     let camera = options(
         camera,
         ids::CAMERA_OPTIONS,
         t("Opciones de cámara"),
+        tone,
         view.camera_panel.as_ref(),
     );
-    let more = IconButton::new(ids::MORE, Icon::More, filled(look.menu, look.raised, look))
-        .variant(ButtonVariant::Raised)
-        .sizing(sizing)
-        .radius(RadiusRole::Card)
-        .ink(look.text)
-        .active(view.more_open)
-        .tooltip(t("Más opciones"))
-        .render();
+    let screen = bar_button(
+        ids::SCREEN,
+        Icon::Screen,
+        (BAR_BUTTON, 20.0),
+        corners(true, true),
+        glow(video.screen, GREEN_GLOW),
+        video_hint(
+            ids::SCREEN,
+            video.screen,
+            (t("Dejar de compartir"), t("Compartir pantalla")),
+        ),
+        video.denied.is_none(),
+        look,
+    );
+    let screen = match video.picker {
+        Some(chosen) => go_live(screen, chosen, video, view.size, look),
+        None => screen,
+    };
+    // Discord's 4 of padding inside its 1 px edge, which limn draws inside
+    // the box.
+    let group = |buttons: Vec<Element>| {
+        Element::panel(Element::row(buttons).gap(8.0).padding(5.0))
+            .size(None, Some(BAR_HEIGHT))
+            .radius(12.0)
+            .background(GROUP_FILL)
+            .border(GROUP_EDGE, 1.0)
+    };
+    let more = bar_button(
+        ids::MORE,
+        Icon::More,
+        (BAR_BUTTON, 20.0),
+        corners(true, true),
+        if view.more_open {
+            (PLAIN_HOVER, PLAIN_HOVER, PLAIN_INK)
+        } else {
+            plain
+        },
+        (t("Más opciones"), None),
+        true,
+        look,
+    );
     let more = DropdownMenu::new(
         more,
         vec![DropdownMenuEntry::Item(
@@ -3622,22 +3784,25 @@ fn bar(view: &Stage, look: &Look) -> Element {
         ),
         None => (ids::LEAVE.to_owned(), Icon::HangUp, t("Desconectar")),
     };
-    let hang_up = IconButton::new(
-        id,
-        glyph,
-        filled(look.danger, lighter(look.danger, 18), look),
+    let [fill, hover, pressed] = HANG_UP;
+    let hang_up = Element::clickable(
+        id.clone(),
+        centered(
+            // Discord's phone is about 20 px across: this glyph at 18.
+            icon(glyph, Color::rgb(255, 255, 255))
+                .large_icon(18.0)
+                .size(Some(18.0), Some(18.0)),
+        ),
     )
-    .variant(ButtonVariant::Raised)
-    .sizing(ButtonSizing {
-        height: BAR_HEIGHT,
-        ..sizing
-    })
-    .width(HANG_UP_WIDTH)
-    .radius(RadiusRole::Panel)
-    .ink(Color::rgb(255, 255, 255))
-    .hover_ink(Color::rgb(255, 255, 255))
-    .tooltip(hint)
-    .render();
+    .size(Some(HANG_UP_WIDTH), Some(BAR_HEIGHT))
+    .radius(12.0)
+    .background(fill)
+    .hover_background(hover)
+    .pressed_background(pressed)
+    .transition_ms(BAR_FADE_MS)
+    .border(GROUP_EDGE, 1.0)
+    .accessible(Access::new(Role::Button).name(hint));
+    let hang_up = Tooltip::new(hang_up, id, hint, look.menu_palette()).render();
     // The invitation at the left, as the official client's call bar; the
     // stream's controls take the right end. Both ends are the same width, so
     // the groups stay centered whatever is at them. The pointer on the
@@ -3648,7 +3813,7 @@ fn bar(view: &Stage, look: &Look) -> Element {
         } else {
             t("Invitar")
         };
-        ghost(ids::INVITE.to_owned(), Icon::Invite, hint).hover_region_id(ids::BAR)
+        tray(ids::INVITE.to_owned(), Icon::Invite, hint).hover_region_id(ids::BAR)
     });
     let left = Element::row(invite.into_iter().collect()).size(Some(BAR_SIDE), Some(BAR_HEIGHT));
     // The stream focused: its sound, its own window and full screen, at the
@@ -3660,22 +3825,22 @@ fn bar(view: &Stage, look: &Look) -> Element {
             } else {
                 (Icon::Volume, t("Silenciar"))
             };
-            let mut buttons = vec![ghost(ids::local_mute(stream.sound), glyph, hint)];
+            let mut buttons = vec![tray(ids::local_mute(stream.sound), glyph, hint)];
             if !stream.windowed {
-                buttons.push(ghost(
+                buttons.push(tray(
                     ids::window(stream.owner),
                     Icon::Custom(POP_OUT),
                     t("Abrir en otra ventana"),
                 ));
             }
             buttons.push(if stream.fullscreen {
-                ghost(
+                tray(
                     ids::FULLSCREEN_EXIT.to_owned(),
                     Icon::Collapse,
                     t("Salir de pantalla completa"),
                 )
             } else {
-                ghost(
+                tray(
                     ids::fullscreen(stream.owner),
                     Icon::Fullscreen,
                     t("Pantalla completa"),
@@ -3684,7 +3849,7 @@ fn bar(view: &Stage, look: &Look) -> Element {
             Element::row(vec![
                 Element::spacer().flex(1.0),
                 Element::row(buttons)
-                    .gap(4.0)
+                    .gap(8.0)
                     .centered_y()
                     .hover_region_id(ids::BAR),
             ])
@@ -3698,7 +3863,7 @@ fn bar(view: &Stage, look: &Look) -> Element {
         left,
         Element::spacer().flex(1.0),
         Element::row(vec![
-            group(vec![microphone, sound, camera]),
+            group(vec![microphone, camera]),
             group(vec![screen, more]),
             hang_up,
         ])
@@ -4570,6 +4735,7 @@ mod tests {
                     None,
                     None,
                     false,
+                    false,
                     &Look::DARK,
                 ),
                 Size::new(320.0, 180.0),
@@ -4797,7 +4963,6 @@ mod tests {
             phase: Some(CallPhase::Waiting),
             people: vec![person(1, false, false, false)],
             muted: false,
-            deafened: false,
             simulated,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -4815,6 +4980,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         for (simulated, said) in [
             (false, "Nadie más en la llamada"),
@@ -4876,7 +5042,10 @@ mod tests {
         assert_eq!(two.tile, Size::new(546.0, 307.0), "{two:?}");
         let four = grid(4, Size::new(946.0, 622.5));
         assert_eq!(four.columns, 2);
-        assert_eq!(four.tile, Size::new(469.0, 263.0), "{four:?}");
+        assert_eq!(four.tile, Size::new(469.0, 264.0), "{four:?}");
+        // Discord's two side by side in its 1064 wide stage: 520×293.
+        let pair = grid(2, Size::new(1048.0, 578.0));
+        assert_eq!((pair.columns, pair.tile), (2, Size::new(520.0, 293.0)));
         assert_eq!(grid(0, Size::new(100.0, 100.0)).columns, 1);
     }
 
@@ -4904,7 +5073,7 @@ mod tests {
         let layout = grid(30, area);
         // 158 wide: five across, and five rows partly in view at most.
         assert_eq!(layout.columns, 5);
-        assert_eq!(layout.tile, Size::new(158.0, 88.0));
+        assert_eq!(layout.tile, Size::new(158.0, 89.0));
         let rows = 30usize.div_ceil(layout.columns) as f32;
         let content = rows * layout.tile.height + (rows - 1.0) * TILE_GAP;
         assert!(content > area.height, "{content} in {area:?}");
@@ -4921,7 +5090,6 @@ mod tests {
                 .map(|user| person(user, false, false, false))
                 .collect(),
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -4939,6 +5107,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         let scroll = laid
@@ -4948,7 +5117,8 @@ mod tests {
             .expect("the rows scroll");
         assert!(matches!(scroll.kind, limn::HitKind::Scroll));
         let below = BAR_BOTTOM + BAR_HEIGHT + BAR_GAP;
-        let high = size.height - crate::sidebar::HEADER - 1.0 - AREA_TOP - below;
+        // No rule under the header in a call, as Discord's.
+        let high = size.height - crate::sidebar::HEADER - AREA_TOP - below;
         assert!((scroll.rect.height - high).abs() < 0.5, "{:?}", scroll.rect);
         // Only the tiles in view are laid out as controls, at most 25 of them.
         let tiles = controls(&laid)
@@ -4969,7 +5139,7 @@ mod tests {
         let watch = Ok(());
         let face = |width: f32| {
             let size = Size::new(width, width * 9.0 / 16.0);
-            let element = tile(&streamer, size, 800.0, None, None, false, &look);
+            let element = tile(&streamer, size, 800.0, None, None, false, false, &look);
             texts(&frame(element, size).1)
         };
         let offer = |width: f32| {
@@ -5005,7 +5175,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false), streaming(2)],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5023,6 +5192,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         // Three tiles: the person, their stream after them, and the first one.
@@ -5061,7 +5231,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, true, true, false), person(2, false, false, true)],
             muted: true,
-            deafened: true,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5079,6 +5248,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         // The camera's arrow opens its panel over the bar.
         let open = Stage {
@@ -5089,9 +5259,11 @@ mod tests {
         assert!(texts(&opened).contains(&"Panel de la cámara".to_owned()));
         let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
         let ids = controls(&laid);
-        for id in [ids::MUTE, ids::DEAFEN, ids::MORE, ids::LEAVE] {
+        for id in [ids::MUTE, ids::MORE, ids::LEAVE] {
             assert!(ids.contains(&id.to_owned()), "{id} in {ids:?}");
         }
+        // Deafening is the account panel's, as Discord's bar has it.
+        assert!(!ids.iter().any(|id| id == "vz:deafen"), "{ids:?}");
         for id in [ids::CAMERA, ids::SCREEN, ids::CAMERA_OPTIONS] {
             assert!(ids.contains(&id.to_owned()), "{id} in {ids:?}");
         }
@@ -5118,7 +5290,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false)],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5136,6 +5307,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         }
     }
 
@@ -5293,7 +5465,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false)],
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5316,6 +5487,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
             previews: vec![
                 Preview {
                     surface: ids::SCREEN_SURFACE.into(),
@@ -5414,7 +5586,6 @@ mod tests {
             phase: None,
             people: Vec::new(),
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5432,6 +5603,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let (_, laid) = frame(stage(view, &Look::ONYX), Size::new(980.0, 762.0));
         let shown = texts(&laid);
@@ -5447,7 +5619,6 @@ mod tests {
             phase: None,
             people,
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5465,6 +5636,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         // The tiles' rectangles, grouped by row: how many sit in each.
         let rows = |count: u64| -> Vec<usize> {
@@ -5562,7 +5734,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![me.clone(), person(2, false, false, false)],
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5580,6 +5751,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let look = Look::ONYX;
         let (_, laid) = frame(stage(view, &look), Size::new(980.0, 762.0));
@@ -5605,7 +5777,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false), streamer.clone()],
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5623,6 +5794,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let look = Look::ONYX;
         let (_, laid) = frame(
@@ -5826,7 +5998,6 @@ mod tests {
                 streaming(4),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5844,6 +6015,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let surfaces = |laid: &limn::Frame| -> Vec<(String, limn::Rect)> {
             laid.commands
@@ -5962,7 +6134,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -5980,6 +6151,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let (_, laid) = frame(stage(view, &look), size);
         let at = |id: &str| {
@@ -5989,19 +6161,26 @@ mod tests {
                 .unwrap_or_else(|| panic!("{id}"))
                 .rect
         };
-        let (mute, deafen, leave) = (at(ids::MUTE), at(ids::DEAFEN), at(ids::LEAVE));
+        let (mute, camera, leave) = (at(ids::MUTE), at(ids::CAMERA), at(ids::LEAVE));
         assert_eq!((mute.width, mute.height), (BAR_BUTTON, BAR_BUTTON));
-        // 8 between a button's arrow and the next button, 12 between sections.
+        // Each arrow 20 wide, 1 after its button; 8 between it and the next
+        // button, 5 (edge and padding) inside a group, 12 between groups.
         let arrow = at(ids::INPUT_OPTIONS);
-        assert_eq!(arrow.x, mute.x + mute.width + 1.0);
-        assert_eq!(deafen.x, arrow.x + arrow.width + 8.0);
+        assert_eq!((arrow.x, arrow.width), (mute.x + mute.width + 1.0, 20.0));
+        assert_eq!(camera.x, arrow.x + arrow.width + 8.0);
+        let (camera_arrow, screen) = (at(ids::CAMERA_OPTIONS), at(ids::SCREEN));
+        assert_eq!(
+            screen.x,
+            camera_arrow.x + camera_arrow.width + 5.0 + BAR_GAP + 5.0
+        );
+        assert_eq!(mute.y, leave.y + 5.0, "in the middle of the 50 high bar");
         assert_eq!((leave.width, leave.height), (HANG_UP_WIDTH, BAR_HEIGHT));
         assert_eq!(leave.y + leave.height, size.height - BAR_BOTTOM);
         // The tiles end 12 over the bar.
         let tile = at(&ids::tile(1));
         assert!(tile.y + tile.height <= leave.y - BAR_GAP + 0.5);
         // Centered.
-        let left = at(ids::MUTE).x - 4.0;
+        let left = at(ids::MUTE).x - 5.0;
         let right = leave.x + leave.width;
         assert!(((left + right) / 2.0 - size.width / 2.0).abs() < 1.0);
     }
@@ -6058,6 +6237,7 @@ mod tests {
                 None,
                 None,
                 false,
+                false,
                 &look,
             ),
             size,
@@ -6107,7 +6287,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false), filmed.clone()],
             muted: false,
-            deafened: false,
             simulated,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -6125,6 +6304,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let look = Look::ONYX;
         let surfaces = |laid: &limn::Frame| -> Vec<(String, limn::Rect)> {
@@ -6155,7 +6335,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false)],
             muted: false,
-            deafened: false,
             simulated: true,
             join_denied: None,
             chat,
@@ -6173,6 +6352,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         for open in [false, true] {
             let (_, laid) = frame(stage(view(Ok(open)), &Look::ONYX), Size::new(600.0, 600.0));
@@ -6937,7 +7117,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -6955,6 +7134,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let look = Look::ONYX;
         let size = Size::new(980.0, 762.0);
@@ -6966,11 +7146,13 @@ mod tests {
         // Its own ID: the call bar's red button keeps `stop_watching`.
         assert!(controls(&ended).contains(&ids::close_stream(2)));
         assert!(said.contains(&"Cerrar transmisión".to_owned()));
-        // No picture, and «Cerrar transmisión» is not danger.
+        // No picture, and «Cerrar transmisión» is not danger (the bar's red
+        // button, under it, is).
+        let bar_top = size.height - BAR_BOTTOM - BAR_HEIGHT;
         assert!(!ended.commands.iter().any(|command| matches!(
             command,
-            limn::DrawCommand::FillRect { color, .. } | limn::DrawCommand::FillCornerRect { color, .. }
-                if *color == look.danger_fill
+            limn::DrawCommand::FillRect { color, rect, .. } | limn::DrawCommand::FillCornerRect { color, rect, .. }
+                if *color == look.danger_fill && rect.y < bar_top
         )));
         // Focused, the tiles of the others sit under it, and the pill hides
         // them: the stage takes their room.
@@ -7198,7 +7380,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -7216,6 +7397,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let look = Look::ONYX;
         let size = Size::new(980.0, 762.0);
@@ -7267,7 +7449,6 @@ mod tests {
             phase: Some(CallPhase::Connected),
             people: vec![person(1, false, false, false)],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -7285,6 +7466,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         // Focused with its rate: the header says «720p 30 FPS», and «720p»
         // until the rate is known; a live stream writes nothing over its picture.
@@ -7356,7 +7538,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -7374,6 +7555,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         // With a game: the header names it; the picture's pill names the streamer.
         let (_, laid) = frame(
@@ -7412,7 +7594,8 @@ mod tests {
         let size = Size::new(980.0, 762.0);
         let quality_grey = Color::rgb(0x4E, 0x50, 0x58);
         let live_red = Color::rgb(0xD2, 0x2D, 0x39);
-        // The segments have their own corners, so they are drawn with them.
+        // The segments have their own corners, so they are drawn with them;
+        // in the header, over the bar's red button.
         let painted = |laid: &limn::Frame, color: Color| -> Vec<limn::Rect> {
             laid.commands
                 .iter()
@@ -7422,7 +7605,7 @@ mod tests {
                     }
                     | limn::DrawCommand::FillCornerRect {
                         rect, color: ink, ..
-                    } if *ink == color => Some(*rect),
+                    } if *ink == color && rect.y < crate::sidebar::HEADER => Some(*rect),
                     _ => None,
                 })
                 .collect()
@@ -7463,7 +7646,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -7481,6 +7663,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         // With the quality known, two touching segments: the quality, then «EN VIVO».
         let (_, laid) = frame(
@@ -7519,7 +7702,6 @@ mod tests {
                 phase: Some(CallPhase::Connected),
                 people: vec![person(1, false, false, false)],
                 muted: false,
-                deafened: false,
                 simulated: false,
                 join_denied: None,
                 chat: Err("Sin chat".into()),
@@ -7537,6 +7719,7 @@ mod tests {
                 camera_panel: None,
                 end: 0.0,
                 invite,
+                idle: false,
             };
             frame(stage(view, &look), Size::new(width, 762.0)).1
         };
@@ -7596,7 +7779,6 @@ mod tests {
                 person(2, false, false, false),
             ],
             muted: false,
-            deafened: false,
             simulated: false,
             join_denied: None,
             chat: Err("Sin chat".into()),
@@ -7614,6 +7796,7 @@ mod tests {
             camera_panel: None,
             end: 0.0,
             invite: false,
+            idle: false,
         };
         let mute = |laid: &limn::Frame| {
             laid.regions
@@ -7692,7 +7875,6 @@ mod tests {
                     person(2, false, false, false),
                 ],
                 muted: false,
-                deafened: false,
                 simulated: false,
                 join_denied: None,
                 chat: Err("Sin chat".into()),
@@ -7710,6 +7892,7 @@ mod tests {
                 camera_panel: None,
                 end: 0.0,
                 invite: false,
+                idle: false,
             };
             frame(stage(view, &look), size).1
         };
@@ -7921,7 +8104,7 @@ mod tests {
             let (_, laid) = frame(stage(view, &Look::ONYX), size);
             laid
         };
-        // Shown: the pill is centred on the strip's top edge, half over it.
+        // Shown: the pill sits 8 under the strip's top edge, as Discord's.
         let shown = at(false);
         let region = |laid: &limn::Frame, id: &str| {
             laid.regions
@@ -7932,10 +8115,8 @@ mod tests {
         };
         let pill = region(&shown, ids::TILES).expect("the pill is laid out");
         let strip = region(&shown, &ids::tile(1)).expect("the strip shows the other person");
-        assert!(
-            (pill.y + pill.height / 2.0 - strip.y).abs() <= 1.0,
-            "{pill:?} {strip:?}"
-        );
+        assert!((pill.y - strip.y - 8.0).abs() <= 1.0, "{pill:?} {strip:?}");
+        assert_eq!((pill.width, pill.height), (60.0, 32.0));
         let named = |laid: &limn::Frame| {
             laid.access
                 .iter()
@@ -8260,5 +8441,136 @@ mod tests {
             "Bruno",
             "rung, not in the call"
         );
+    }
+
+    /// Where `id`'s control is in `laid`, if it is.
+    fn found(laid: &limn::Frame, id: &str) -> Option<limn::Rect> {
+        laid.regions
+            .iter()
+            .rev()
+            .find(|region| region.id == id)
+            .map(|region| region.rect)
+    }
+
+    /// Whether a fill of `color` covers the top left of `rect`.
+    fn filled_at(laid: &limn::Frame, rect: limn::Rect, color: Color) -> bool {
+        laid.commands.iter().any(|command| match command {
+            limn::DrawCommand::FillRect {
+                rect: at,
+                color: ink,
+                ..
+            }
+            | limn::DrawCommand::FillCornerRect {
+                rect: at,
+                color: ink,
+                ..
+            } => *ink == color && at.x == rect.x && at.y == rect.y,
+            _ => false,
+        })
+    }
+
+    #[test]
+    fn at_rest_the_stage_keeps_its_tiles_and_fades_its_header_bar_and_names() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let view = |idle| Stage {
+            people: vec![
+                person(1, false, false, false),
+                person(2, false, false, false),
+            ],
+            idle,
+            ..picker_stage(VideoControls::default())
+        };
+        let (_, awake) = frame(stage(view(false), &look), size);
+        let (_, rest) = frame(stage(view(true), &look), size);
+        for id in [ids::MUTE, ids::LEAVE, ids::CAMERA] {
+            assert!(
+                found(&awake, id).is_some() && found(&rest, id).is_none(),
+                "{id}"
+            );
+        }
+        assert!(texts(&awake).contains(&"General".to_owned()));
+        let said = texts(&rest);
+        assert!(!said.contains(&"General".to_owned()) && !said.contains(&"Persona 1".to_owned()));
+        assert_eq!(found(&awake, &ids::tile(1)), found(&rest, &ids::tile(1)));
+    }
+
+    #[test]
+    fn the_bar_glows_red_for_a_muted_microphone_and_green_for_a_camera_on() {
+        let look = Look::ONYX;
+        let size = Size::new(980.0, 762.0);
+        let view = |muted, camera| Stage {
+            muted,
+            ..picker_stage(VideoControls {
+                camera,
+                ..VideoControls::default()
+            })
+        };
+        let (_, plain) = frame(stage(view(false, false), &look), size);
+        let (_, lit) = frame(stage(view(true, true), &look), size);
+        for (id, glow) in [(ids::MUTE, RED_GLOW.0), (ids::CAMERA, GREEN_GLOW.0)] {
+            assert!(!filled_at(&plain, rect_of(&plain, id), glow), "{id}");
+            assert!(filled_at(&lit, rect_of(&lit, id), glow), "{id}");
+        }
+        // Their arrows glow with them.
+        let arrow = rect_of(&lit, ids::INPUT_OPTIONS);
+        assert!(filled_at(&lit, arrow, RED_GLOW.0));
+        let leave = rect_of(&lit, ids::LEAVE);
+        assert!(filled_at(&lit, leave, HANG_UP[0]));
+    }
+
+    #[test]
+    fn a_tile_without_a_picture_sits_on_its_color_a_quarter_darker() {
+        let plain = person(1, false, false, false);
+        assert_eq!(ground(&plain), Color::rgb(67, 90, 150));
+        let picture = limn::RasterImage::new(
+            "4".repeat(64),
+            limn::RasterImageFormat::Png,
+            3,
+            std::sync::Arc::from("AAAA"),
+            "x",
+        )
+        .unwrap();
+        let pictured = Participant {
+            image: Some(picture),
+            ..plain
+        };
+        assert_eq!(ground(&pictured), pictured.accent);
+    }
+
+    #[test]
+    fn a_conversation_s_call_fits_faces_or_a_412_by_232_tile_under_its_header() {
+        let look = Look::ONYX;
+        let call = |voice_mode: bool, height: f32| {
+            let size = Size::new(980.0, height);
+            let view = Stage {
+                people: vec![Participant {
+                    camera: (!voice_mode).then_some((1280, 720)),
+                    ..person(1, false, false, false)
+                }],
+                size,
+                private: Some(crate::private_call::PrivateStage {
+                    voice_mode,
+                    ..Default::default()
+                }),
+                ..picker_stage(VideoControls::default())
+            };
+            frame(stage(view, &look), size).1
+        };
+        // Faces: centred in the whole 240, the bar 20 over its bottom.
+        let faces = call(true, VOICE_HEIGHT);
+        let face = rect_of(&faces, &ids::avatar(1));
+        assert_eq!(face.y + face.height / 2.0, VOICE_HEIGHT / 2.0);
+        let leave = rect_of(&faces, ids::LEAVE);
+        assert_eq!(leave.y + leave.height, VOICE_HEIGHT - BAR_BOTTOM);
+        assert!(face.y + face.height <= leave.y, "{face:?} {leave:?}");
+        // Tiles: one is 412×232 under the header, the bar over its bottom.
+        let tiles = call(false, TILES_HEIGHT);
+        let tile = rect_of(&tiles, &ids::tile(1));
+        assert_eq!((tile.width, tile.height), (412.0, 232.0));
+        assert!(tile.y >= crate::sidebar::HEADER);
+        let leave = rect_of(&tiles, ids::LEAVE);
+        assert_eq!(leave.y + leave.height, TILES_HEIGHT - BAR_BOTTOM);
+        assert_eq!(tile.y + tile.height - leave.y, BAR_OVERLAP);
     }
 }

@@ -516,7 +516,7 @@ pub(crate) fn update(
     }
     Some(match id {
         ids::MUTE | ids::MENU_MUTE => crate::clicked(ui, store, "me:mute", now),
-        ids::DEAFEN | ids::MENU_DEAFEN => crate::clicked(ui, store, "me:deafen", now),
+        ids::MENU_DEAFEN => crate::clicked(ui, store, "me:deafen", now),
         ids::LEAVE => leave(ui, store),
         ids::SCREEN => video::toggle(ui, store, true, picker, now),
         ids::CAMERA => video::toggle(ui, store, false, false, now),
@@ -1066,7 +1066,6 @@ pub(crate) fn stage_of(
             phase,
             people,
             muted: ui.muted,
-            deafened: ui.deafened,
             simulated: simulated(store),
             join_denied: store
                 .abilities(channel)
@@ -1096,6 +1095,8 @@ pub(crate) fn stage_of(
             camera_panel: crate::quick_voice::camera_view(ui, store, look),
             end,
             invite,
+            // A conversation's call under its header stays put.
+            idle: ui.voice.stage == Some(channel) && video::idle(ui, store, now),
         },
         look,
     ))
