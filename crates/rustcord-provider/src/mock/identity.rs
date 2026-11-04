@@ -453,6 +453,8 @@ pub(super) fn connections(user: UserId) -> Vec<rustcord_model::Connection> {
             link: Some(format!("https://simulacion.invalid/{service}/{name}")),
         };
     match user.0 {
+        // The account's own, for the settings' «Conexiones».
+        1 => vec![account("github", "GitHub", "invitado-simulado", true)],
         10 => vec![
             account("github", "GitHub", "ada-simulada", true),
             account("domain", t("Dominio"), "ada.simulacion.invalid", false),

@@ -519,6 +519,31 @@ fn copying_ids_is_offered_in_developer_mode_only() {
 }
 
 #[test]
+fn connections_list_what_the_profile_shows_with_nothing_no_provider_can_do() {
+    let mut host = Host::new();
+    host.us_open();
+    let from = host.sent.len();
+    host.us_press("us:page=connection");
+    assert!(
+        host.sent[from..]
+            .iter()
+            .any(|command| matches!(command, Command::LoadProfile { server: None, .. })),
+        "the account's profile is read"
+    );
+    assert!(!painted_has(&mut host, "1 conexión"), "not before it is");
+    host.answer_profile();
+    for text in ["Conexiones", "1 conexión", "invitado-simulado", "GitHub"] {
+        assert!(painted_has(&mut host, text), "{text}");
+    }
+    // Discord's adding, hiding and removing have no provider behind them.
+    let buttons = host.us_buttons();
+    assert!(
+        !buttons.iter().any(|id| id.contains("connection:")),
+        "{buttons:?}"
+    );
+}
+
+#[test]
 fn a_threshold_of_one_s_own_is_kept_and_decides_who_speaks() {
     let mut host = Host::new();
     host.us_open();

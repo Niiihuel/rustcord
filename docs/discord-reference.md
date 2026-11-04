@@ -237,6 +237,21 @@ Measured on 2026-11-04 in the web client (build stable 663810, es-419,
   sonidos» (volume slider, «Sonidos de entrada» with its selects);
   «Avanzado» (the fold «Mostrar ajustes de diagnóstico», «Restablecer
   todos los ajustes de voz y video» with «Reiniciar»).
+- «Privacidad de la actividad»: «Qué actividad comparto» (switches
+  «Compartir mi actividad», «Compartir cuando me conecte», «Compartir
+  cuando empiece a transmitir»), «Dónde comparto mi actividad» (three
+  radios, a server search, «Orden de servidores» and «Activar todo», a
+  switch per server, «Ajustes relacionados» → Datos y privacidad), «Unirse
+  a la actividad» (two switches and a closing note on each server's own).
+- «Aplicaciones conectadas»: «Conexiones» (its note, «Añadir una nueva
+  conexión» over a grid of 48 px logo buttons, «N conexiones», then a card
+  each: radius 8, `#121213` with a `#2c2c2f` hairline, 16 of padding, a 32
+  px logo, the name 16 semibold over the service 12, a × at the right and
+  «Mostrar en el perfil» switches under them; cards 24 apart), a line, and
+  «Aplicaciones autorizadas» (its note, a search, a card per app with
+  «Permisos» and «Desautorizar»).
+- «Desarrollador»: no heading; «Modo desarrollador» and «Modo de prueba de
+  la aplicación», each a switch.
 
 ## Threads popout (text channel)
 

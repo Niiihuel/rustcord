@@ -803,20 +803,21 @@ pub(crate) fn settings_clicked(
                 minimized,
             }]);
         }
-        // Only on, by the person's click: turning it off is the account's.
-        "activity-sharing-on" => {
+        // Discord's switch, by the person's click either way; once read, and
+        // one change at a time.
+        "activity-sharing" => {
             let able = store
                 .provider
                 .as_ref()
                 .is_some_and(|info| info.capabilities.activity_sharing);
-            if !able
-                || store.activity_sharing() != Some(false)
-                || store.activity_sharing_asked().is_some()
-            {
+            let Some(on) = store
+                .activity_sharing()
+                .filter(|_| able && store.activity_sharing_asked().is_none())
+            else {
                 return Some(Vec::new());
-            }
-            store.ask_activity_sharing(true);
-            return Some(vec![Intent::Command(Command::SetActivitySharing(true))]);
+            };
+            store.ask_activity_sharing(!on);
+            return Some(vec![Intent::Command(Command::SetActivitySharing(!on))]);
         }
         "select:proxy" => {
             let open = ui.settings_state.select == Some("proxy");

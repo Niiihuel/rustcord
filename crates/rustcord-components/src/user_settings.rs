@@ -1392,6 +1392,29 @@ pub fn danger_button(id: &str, label: &str, look: &Look) -> Element {
         .min_size(100.0, 0.0)
 }
 
+/// An account elsewhere, as Discord's connections list them: a card with
+/// the service's 32 px logo and the name there over the service's.
+pub fn connection(service: &str, name: &str, label: &str, look: &Look) -> Element {
+    Element::panel(
+        Element::row(vec![
+            crate::identity::service_glyph(service, 32.0).centered_y(),
+            Element::column(vec![
+                line(name, 16.0, look.text).font_family(FontFamily::SansSemibold),
+                line(label, 12.0, look.muted),
+            ])
+            .gap(2.0)
+            .flex(1.0)
+            .centered_y(),
+        ])
+        .gap(16.0)
+        .padding(16.0),
+    )
+    .background(look.raised)
+    .border(look.border, 1.0)
+    .radius(8.0)
+    .accessible(limn::Access::new(limn::Role::Group).name(format!("{name}, {label}")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1877,5 +1900,23 @@ mod tests {
             .unwrap()
             .rect;
         assert_eq!((switch.width, switch.height), (48.0, 24.0), "{switch:?}");
+    }
+
+    #[test]
+    fn a_connection_is_a_card_of_its_logo_its_name_and_its_service() {
+        let look = Look::DARK;
+        let (_, laid) = frame(
+            connection("github", "ada", "GitHub", &look),
+            Size::new(696.0, 120.0),
+        );
+        let painted = texts(&laid);
+        assert!(painted.contains(&"ada".to_owned()), "{painted:?}");
+        assert!(painted.contains(&"GitHub".to_owned()), "{painted:?}");
+        assert!(controls(&laid).is_empty(), "nothing to click");
+        let logo = laid.commands.iter().any(|command| {
+            matches!(command, limn::DrawCommand::FillRect { rect, .. }
+                if rect.width == 32.0 && rect.height == 32.0)
+        });
+        assert!(logo, "the logo's 32 px square");
     }
 }

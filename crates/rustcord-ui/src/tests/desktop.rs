@@ -620,13 +620,18 @@ fn starting_in_the_tray_follows_the_session_s_start_and_is_asked_of_the_host() {
 }
 
 #[test]
-fn the_account_s_hidden_activity_is_said_and_turned_on_only_by_a_click() {
+fn the_account_s_hidden_activity_is_said_and_its_switch_turns_it_either_way() {
     use rustcord_model::ActivityVisibility;
     let mut host = Host::new();
     host.ui.prefs.game_activity = true;
-    host.event(Event::ActivitySharing(false));
     host.ui.settings = Some(crate::SettingsPage::Activity);
     host.desktop_click("us:jump=activity");
+    assert!(
+        host.desktop_click("us:activity-sharing").is_empty(),
+        "not before the account's setting is read"
+    );
+    assert!(painted_text(&mut host).contains("Leyendo el ajuste de tu cuenta…"));
+    host.event(Event::ActivitySharing(false));
     let painted = painted_text(&mut host);
     assert!(
         painted.contains(
@@ -634,20 +639,28 @@ fn the_account_s_hidden_activity_is_said_and_turned_on_only_by_a_click() {
         ),
         "{painted}"
     );
-    assert!(painted.contains("Activar en la cuenta"));
     let from = host.sent.len();
     assert_eq!(
-        host.desktop_click("us:activity-sharing-on"),
+        host.desktop_click("us:activity-sharing"),
         [Intent::Command(Command::SetActivitySharing(true))]
     );
     assert!(
-        host.desktop_click("us:activity-sharing-on").is_empty(),
+        host.desktop_click("us:activity-sharing").is_empty(),
         "once while it is asked"
     );
     assert!(painted_text(&mut host).contains("Activando…"));
     host.answer_account(from);
     assert_eq!(host.store.activity_sharing(), Some(true));
-    assert!(painted_text(&mut host).contains("Tu cuenta muestra tu actividad."));
+    assert!(!painted_text(&mut host).contains("Tu cuenta oculta tu actividad"));
+    // Off again by the same switch.
+    assert_eq!(
+        host.desktop_click("us:activity-sharing"),
+        [Intent::Command(Command::SetActivitySharing(false))]
+    );
+    assert!(painted_text(&mut host).contains("Desactivando…"));
+    // The switch shows what the service kept: here, still on.
+    host.event(Event::ActivitySharing(true));
+    assert!(!painted_text(&mut host).contains("Desactivando…"));
     // What the sessions say of the game published, simulated here.
     let game = LocalActivity {
         application: Some(1_001),

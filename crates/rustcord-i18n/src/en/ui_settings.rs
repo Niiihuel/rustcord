@@ -317,14 +317,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Cut the connection or make a send fail to see how Rustcord responds.",
     ),
     ("Modo desarrollador", "Developer mode"),
-    (
-        "El modo desarrollador muestra elementos del menú contextual que resultan útiles para personas que programan aplicaciones.",
-        "Developer mode exposes context menu items helpful for people writing apps.",
-    ),
-    (
-        "Agrega «Copiar ID» a los menús de mensajes, canales, categorías, servidores, roles y miembros.",
-        "Adds “Copy ID” to the menus of messages, channels, categories, servers, roles and members.",
-    ),
     ("Métricas de rendimiento", "Performance metrics"),
     (
         "Tiempos de cada cuadro, memoria y CPU, sobre la ventana. También con F12.",

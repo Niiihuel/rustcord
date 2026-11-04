@@ -434,6 +434,17 @@ const SECTIONS: &[Section] = &[
             es("formato de hora 12 horas 24 horas reloj a. m. p. m. tiempo"),
         )],
     },
+    // Discord's «Aplicaciones conectadas»: the accounts elsewhere first;
+    // Rustcord's provider and proxy follow.
+    Section {
+        page: Connection,
+        key: "connections",
+        title: es("Conexiones"),
+        rows: &[(
+            "connected-accounts",
+            es("cuentas de otras plataformas conectadas perfil servicios"),
+        )],
+    },
     Section {
         page: Connection,
         key: "provider",
@@ -701,6 +712,7 @@ fn note(key: &str) -> Option<&'static str> {
     Some(match key {
         "shortcuts" => es("Los atajos de teclado son combinaciones personalizadas que te permiten realizar acciones específicas en Rustcord sin necesidad de hacer clic en los menús."),
         "friend-requests" => es("Controla quién puede enviarte solicitudes de amistad y cómo aparecen."),
+        "connections" => es("Estas son cuentas de otras plataformas. Aquí están las que muestra tu perfil."),
         _ => return None,
     })
 }
@@ -722,6 +734,10 @@ fn available(section: &Section, ui: &Ui, store: &Store) -> bool {
         "provider-notes" => ui.providers.options.iter().any(|o| o.unavailable.is_some()),
         "account-accounts" => super::can_sign_out(store),
         "ignore-block" => restricted::available(store),
+        "connections" => store
+            .provider
+            .as_ref()
+            .is_some_and(|info| info.capabilities.profiles),
         key => desktop::available(key, store),
     }
 }
@@ -973,6 +989,10 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
                 folded(ctx, keys)
             };
             (!rows.is_empty()).then(|| {
+                // Discord's «Desarrollador» starts with its rows: the page's name is its heading.
+                if section.key == "developer" {
+                    return parts::rows(rows).anchor(anchor(section.key));
+                }
                 parts::section(
                     &anchor(section.key),
                     t(section.title),
@@ -1718,6 +1738,7 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
                 Element::column(crate::providers::cards(ui, store, width, look)).gap(8.0),
             )
         }
+        "connected-accounts" => connected_accounts(ctx)?,
         "unavailable-providers" => crate::providers::unavailable_notes(ui, look)?,
         "capabilities" => capabilities(ctx)?,
         "related-developer" => {
@@ -1733,11 +1754,7 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "developer" => toggle(
             "us:developer",
             t("Modo desarrollador"),
-            Some(&format!(
-                "{} {}",
-                t("El modo desarrollador muestra elementos del menú contextual que resultan útiles para personas que programan aplicaciones."),
-                t("Agrega «Copiar ID» a los menús de mensajes, canales, categorías, servidores, roles y miembros."),
-            )),
+            Some(t("El modo desarrollador muestra elementos del menú contextual útiles para quienes programan aplicaciones.")),
             prefs.developer,
         ),
         "metrics" => toggle(
@@ -2480,6 +2497,34 @@ fn capabilities(ctx: &Ctx) -> Option<Element> {
     ]))
 }
 
+/// The accounts elsewhere the account's profile shows, as Discord lists its
+/// connections: how many, then a card each, once the profile is read.
+/// Adding, hiding and removing them are not offered: no provider can.
+fn connected_accounts(ctx: &Ctx) -> Option<Element> {
+    let look = ctx.look;
+    let me = ctx.store.me()?;
+    let accounts = ctx.store.profile(me, None)?.connections.as_ref()?;
+    if accounts.is_empty() {
+        return Some(text(
+            t("Tu perfil no muestra conexiones."),
+            14.0,
+            look.muted,
+        ));
+    }
+    let count = match accounts.len() {
+        1 => t("1 conexión").to_owned(),
+        n => tr!("{n} conexiones", n),
+    };
+    let cards = accounts
+        .iter()
+        .map(|account| parts::connection(&account.service, &account.name, &account.label, look))
+        .collect();
+    Some(Element::column(vec![
+        parts::subtitle(&count, look),
+        Element::column(cards).gap(24.0),
+    ]))
+}
+
 /// The quick switcher over `root` while it is open.
 pub fn switcher(ui: &Ui, store: &Store, root: Element, look: &Look, window: Size) -> Element {
     let Some(state) = &ui.switcher else {
@@ -2641,6 +2686,14 @@ mod tests {
         assert_eq!(
             section_keys(SettingsPage::Developer),
             ["developer", "provider-notes", "simulation"]
+        );
+    }
+
+    #[test]
+    fn connections_show_discord_s_accounts_then_rustcord_s_provider_and_proxy() {
+        assert_eq!(
+            section_keys(SettingsPage::Connection),
+            ["connections", "provider", "proxy"]
         );
     }
 
