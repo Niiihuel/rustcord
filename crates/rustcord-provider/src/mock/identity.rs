@@ -293,10 +293,58 @@ pub(super) fn badges(user: UserId) -> Vec<rustcord_model::Badge> {
         10 => vec![
             badge("pionera", "Pionera del taller"),
             badge("mejora", "Mejora del servidor desde 2024"),
+            badge("variedad", "Variedad de juegos"),
+            badge("tiempo", "Tiempo de juego"),
+            badge("transmision", "Transmitiendo"),
+            badge("antiguedad", "Antigüedad de la cuenta"),
+            badge("valentia", "Valentía"),
+            badge("alias", "Alias original"),
         ],
         17 => vec![badge("fabrica", "Constructora de fábricas")],
         _ => Vec::new(),
     }
+}
+
+/// The games a made-up person shows: Ada five, as many as fill her card's
+/// row and one more.
+pub(super) fn games(user: UserId) -> Vec<rustcord_model::ProfileGame> {
+    let names: &[&str] = match user.0 {
+        10 => &[
+            "Factorio",
+            "Celeste",
+            "Hollow Knight",
+            "Stardew Valley",
+            "Terraria",
+        ],
+        17 => &["Factorio"],
+        _ => &[],
+    };
+    names
+        .iter()
+        .zip(900_100..)
+        .map(|(name, id)| rustcord_model::ProfileGame {
+            id,
+            name: format!("{name} {}", t("(simulado)")),
+            icon: Some(picture(&format!("juegos/{id}"))),
+        })
+        .collect()
+}
+
+/// What a made-up person wishes for: Ada three items of a shop.
+pub(super) fn wishlist(user: UserId) -> Vec<rustcord_model::WishlistItem> {
+    let names: &[&str] = match user.0 {
+        10 => &["Ondas ambientales", "Placa de nombre", "Marco de hojas"],
+        _ => &[],
+    };
+    names
+        .iter()
+        .zip(900_200..)
+        .map(|(name, id)| rustcord_model::WishlistItem {
+            id,
+            name: format!("{name} {}", t("(simulado)")),
+            picture: Some(picture(&format!("deseados/{id}"))),
+        })
+        .collect()
 }
 
 /// Two server emoji, simulated: one that moves and one that does not.

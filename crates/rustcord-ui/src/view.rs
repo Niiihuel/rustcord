@@ -590,9 +590,20 @@ fn conversation(
     let room = members && context.window.width >= members_from(ui, ui.prefs.members_narrow);
     let can_show_members = server.is_some() && room && crate::has_member_list(store);
     let show_members = can_show_members && ui.members_open;
+    // A direct conversation's profile beside it, in its own width.
+    let side_room = members
+        && conversation.kind == ChannelKind::Direct
+        && context.window.width
+            >= members_from(ui, ui.prefs.members_narrow) - ui.prefs.members_width
+                + rustcord_components::profile::SIDE_WIDTH;
+    let side = side_room
+        .then(|| profile::side_panel(ui, store, look))
+        .flatten();
     let content_width = width
         - if show_members {
             ui.prefs.members_width
+        } else if side.is_some() {
+            rustcord_components::profile::SIDE_WIDTH
         } else {
             0.0
         };
@@ -617,6 +628,10 @@ fn conversation(
         tools.extend(channel_list::header_more(ui, store, channel, look));
     } else {
         tools.extend(crate::threads::header_tool(store, channel, look));
+    }
+    // Last, where a server's member list has its toggle.
+    if side_room {
+        tools.push(chrome::profile_toggle(!ui.profiles.side_hidden, look));
     }
     // A thread names what it hangs from before its own name.
     let parent = conversation
@@ -786,6 +801,7 @@ fn conversation(
     if let (true, Some(server)) = (show_members, server) {
         row.push(member_list(ui, store, server, look));
     }
+    row.extend(side.map(|side| region(side, MEMBERS, t("Perfil de usuario"))));
     let mut column = vec![header, separator(look)];
     // Private calls: the conversation's call, under its header.
     if let Some(call) = crate::private_calls::call_view(ui, store, context, look, width) {

@@ -302,7 +302,7 @@ fn palette(name: &str) -> Option<(Rgb, Rgb)> {
 /// A collectible's picture by its product (`sku_id`), as the official
 /// client builds it: `static`, or `animated` where it
 /// does not play video (Linux).
-fn collectible(sku: u64, format: &str) -> RemoteImage {
+pub(crate) fn collectible(sku: u64, format: &str) -> RemoteImage {
     shaped(
         format!("https://cdn.discordapp.com/media/v1/collectibles-shop/{sku}/{format}"),
         ImageKind::AttachmentPreview,

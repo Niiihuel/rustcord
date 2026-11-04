@@ -43,6 +43,8 @@ use crate::{settings, Intent, SettingsPage, Ui, ViewContext};
 pub(crate) const STATUS_TIMER: &str = "status_timer";
 pub(crate) const CUSTOM_UNTIL: &str = "custom_status_until";
 pub(crate) const SPEAKER: &str = "speaker";
+/// The setting that keeps the profile beside direct conversations hidden.
+pub(crate) const SIDE_HIDDEN: &str = "dm_profile_hidden";
 /// A card whose profile is still being read shows nothing for this long
 /// after it opens, then its skeleton: a quick answer never flashes one
 /// (Discord's 250 ms).
@@ -96,6 +98,9 @@ pub struct Profiles {
     /// conversation it stands against, and the card. The person scrolling
     /// the first, outside the card, closes it.
     pub scroll_close: Option<(limn::Rect, limn::Rect)>,
+    /// The profile beside a direct conversation is hidden, as the person
+    /// chose with its header button; Discord shows it by default.
+    pub side_hidden: bool,
 }
 
 /// A status chosen until `until`, and the one to set back then.
@@ -462,7 +467,73 @@ pub fn card_of(
         message: message_field(ui, store, user),
         edit_profile: store.me() == Some(user) && edit_denied(store).is_none(),
         example_button: false,
+        games: loaded
+            .and_then(|loaded| loaded.games.as_ref())
+            .into_iter()
+            .flatten()
+            .map(|game| parts::GameIcon {
+                name: game.name.clone(),
+                icon: ui.picture(game.icon.as_ref()),
+            })
+            .collect(),
+        wishlist: loaded
+            .and_then(|loaded| loaded.wishlist.as_ref())
+            .into_iter()
+            .flatten()
+            .map(|wish| parts::WishTile {
+                name: wish.name.clone(),
+                picture: ui.picture(wish.picture.as_ref()),
+            })
+            .collect(),
     })
+}
+
+/// The person of the direct conversation open, while the profile beside it
+/// is not hidden.
+pub(crate) fn side_user(ui: &Ui, store: &Store) -> Option<UserId> {
+    let channel = store.channel(ui.channel()?)?;
+    match channel.recipients[..] {
+        [user]
+            if channel.kind == rustcord_model::ChannelKind::Direct && !ui.profiles.side_hidden =>
+        {
+            Some(user)
+        }
+        _ => None,
+    }
+}
+
+/// Ask for the profile shown beside the direct conversation open, if any.
+pub(crate) fn request_side(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
+    match side_user(ui, store) {
+        Some(user) => request_profile(ui, store, user, None),
+        None => Vec::new(),
+    }
+}
+
+/// The profile beside the direct conversation open, `parts::SIDE_WIDTH`
+/// wide; `None` while hidden or elsewhere.
+pub(crate) fn side_panel(ui: &Ui, store: &Store, look: &Look) -> Option<Element> {
+    let card = card_of(ui, store, None, side_user(ui, store)?, look)?;
+    Some(parts::side_panel(&card, look))
+}
+
+/// The pictures the profiles show beyond a face and its marks: the games
+/// and wishlist of `user`'s profile in `server`.
+pub(crate) fn wanted(
+    store: &Store,
+    user: UserId,
+    server: Option<ServerId>,
+    add: &mut dyn FnMut(Option<&rustcord_model::RemoteImage>),
+) {
+    let Some(loaded) = store.profile(user, server) else {
+        return;
+    };
+    for game in loaded.games.iter().flatten() {
+        add(game.icon.as_ref());
+    }
+    for wish in loaded.wishlist.iter().flatten() {
+        add(wish.picture.as_ref());
+    }
 }
 
 /// The field under `user`'s card, when the account may write to them: its
@@ -962,6 +1033,7 @@ pub(crate) fn kept(ui: &Ui) -> Vec<(&'static str, Option<String>)> {
             ui.profiles.custom_until.map(|until| until.0.to_string()),
         ),
         (SPEAKER, ui.audio.output.clone()),
+        (SIDE_HIDDEN, Some(ui.profiles.side_hidden.to_string())),
     ]
 }
 
@@ -971,6 +1043,7 @@ pub(crate) fn restore(ui: &mut Ui, setting: &impl Fn(&str) -> Option<String>) {
     ui.profiles.custom_until = setting(CUSTOM_UNTIL)
         .and_then(|value| value.parse().ok())
         .map(Timestamp);
+    ui.profiles.side_hidden = setting(SIDE_HIDDEN).as_deref() == Some("true");
 }
 
 /// Carry out the timers that are due at `wall`: set back a status chosen
@@ -1421,9 +1494,20 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         ui.profiles.full_tab = tab;
         return Some(Vec::new());
     }
+    if id == ids::SIDE_TOGGLE {
+        ui.profiles.side_hidden = !ui.profiles.side_hidden;
+        let mut intents = vec![Intent::SaveSetting {
+            key: SIDE_HIDDEN.into(),
+            value: Some(ui.profiles.side_hidden.to_string()),
+        }];
+        intents.extend(request_side(ui, store));
+        return Some(intents);
+    }
     if let Some(user) = number(ids::FULL)
         .or_else(|| number(ids::FULL_BIO))
         .or_else(|| number(ids::FULL_NOTE))
+        .or_else(|| number(ids::FULL_GAMES))
+        .or_else(|| number(ids::FULL_WISHLIST))
     {
         let (user, server) = (UserId(user), ui.server);
         close_floating(ui);

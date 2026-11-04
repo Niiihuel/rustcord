@@ -119,9 +119,11 @@ impl World {
                 mutual_friends,
                 server_about,
                 server_banner,
-                // Badges and accounts elsewhere, simulated.
+                // Badges, accounts elsewhere, games and a wishlist, simulated.
                 badges: Some(super::identity::badges(user)),
                 connections: Some(super::identity::connections(user)),
+                games: Some(super::identity::games(user)),
+                wishlist: Some(super::identity::wishlist(user)),
                 effect: super::identity::effect(user).filter(|_| effect),
                 about,
                 pictures: pictures.unwrap_or_default(),

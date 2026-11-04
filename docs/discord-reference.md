@@ -52,6 +52,60 @@ re-measure when Discord changes.
   appears from nothing (no unread), it also slides in from −4 to 0 in x
   while fading 0 → 1, over the same 0.2 s.
 
+## Rail folders
+
+Measured on the account's two folders (neither has a color of its own); a
+custom color was seen by setting `--custom-folder-color` on the page only,
+never in the folder's settings. Timing token
+`--custom-folder-item-animation-duration` = 150 ms.
+
+- Size: a folder is `--guildbar-folder-size` 48 × 48 about the 40 marks'
+  middle (x = 16, 4 round a mark), 10 from its neighbours as any mark.
+- Head: a 48 square clipped by the squircle mask and an inner radius 12.
+  Inside, a 48 × 96 strip: the glyph's square over the closed face.
+  Closed it is moved up 48 (`translate3d(0,-48px,0)`), the face showing;
+  open it is at 0, the glyph showing. `transform 150ms ease-out`
+  (full motion only): opening, the glyph comes down from above while the
+  face leaves downward; closing, the reverse. Per frame, opening:
+  −48, −39.5, −31.7, −24.6, −18.1, −12.4, −7.5, 0; closing: 0, −8.5,
+  −16.3, −23.4, −29.9, −35.6, −40.5, −44.4, −47, −48.
+- Closed face: 48 × 48, radius 16, padding 4. Fill without a color
+  `--background-mod-subtle` (`#121213` on the black rail); with one,
+  that color at 40 % (`color-mix(…, transparent 60%)`). Up to the first four
+  servers, 19 × 19 (`(48 − 8 − 2) / 2`), 2 apart, two by two; each rounded
+  13 at the corner toward the folder's corner and 4 at the other three
+  (1st top-left, 2nd top-right, 3rd bottom-left, 4th bottom-right). One
+  without a picture: black `#000` with its acronym in `--text-default`,
+  regular 400, 12 px (10 px for three letters), line height 20.
+- Open head: the folder glyph 18 px (its path 15 × 15) in the middle of a
+  40 × 40 square of radius 12 at 4, 4; in the folder's color, or
+  `--background-brand` `#5865f2` without one.
+- Open column (`folderGroupBackground`): x = 16, 48 wide, from the head's
+  top to 4 under the last server; radius 16; 1 px `--border-muted`
+  (`#9595a2` at 16 %) ring; fill `--background-mod-subtle` without a color,
+  the color at 15 % with one. On black: fill `#121213`, ring `#272729`. It
+  exists only while open: at once (no fade) when it opens, growing with the
+  list, and gone at once when it closes (the servers shrink away with no
+  column behind them).
+- Open list: the first server 6 under the head (10 − 4, so the glyph's
+  square and the server are 10 apart), servers 10 apart, 4 under the last:
+  50 per server. Its height goes 0 ↔ 50·n linearly over about 150 ms
+  (+11.1 px a 16.7 ms frame for two servers), overflow hidden: servers are
+  clipped, never faded or scaled; the rail below follows every frame.
+- Hover: closed, only the pill (as a server's: 0 → 20, from −4, fading
+  in, 0.2 s ease-out); the face does not change. Open, no pill; the
+  glyph's 40 square takes `--background-mod-subtle` (`#212123` over the
+  grey column), `background-color 150ms ease-out`.
+- Pill: closed with the chosen server inside, 40 (chosen); with unread
+  servers, 8; under the pointer, 20; centered on the 48. Opening, the
+  head's pill shrinks to 8 and fades (0.2 s) and the chosen server inside
+  shows its own.
+- Badges: a closed folder's count of mentions was not seen (no folder had
+  any); by its structure it is a server's `lowerBadge`, at the 48 square's
+  bottom-right corner.
+- Captures: `scratchpad/discord/folders/` (closed, open, open under the
+  pointer, a custom color, frames of opening and closing).
+
 ## Animated icons (Lottie, reimplemented as motion)
 
 Discord's panel and call-bar icons are Lottie animations played on hover.
@@ -190,6 +244,49 @@ Measured motion (20 px icons):
   en común») 16/20 semibold with a 2 px underline on the chosen one, and
   activity cards (`#17181b`, radius 8).
 
+## DM profile panel
+
+Measured on a direct conversation's right column (and the popout opened from
+it, which matches «Profile popout»), 1440×757:
+
+- Header button «Ocultar/Mostrar perfil de usuario», the last icon before the
+  search box (a person in a circle with a status dot), 32 square.
+- The column is 320 wide, black, padding 8. Inside, a card 304 wide, fill
+  `#101013`, radius 8, a 1 px ring white at 8 %, padding 2; its inside is
+  300 wide (radius 6): a scroll, then a 72 high footer (padding 16) with
+  «Ver perfil completo», 40 high, radius 8, fill `#94949c` at 12 %, border
+  `#9595a2` at 16 %, text 16/20 medium `#dcdcdf`.
+- Head 144: banner 105 (its color), avatar 80 at (16, 57), round 32 buttons
+  8 from the top and the right, 8 apart (black at 56 %, border white 8 %).
+- Body 16 in, 268 wide, 8 under the head, sections 20 apart:
+  - Name 20/24 semibold `#d4d5d8`; username row 24 high (14/18 `#dcdcdf`,
+    4 px dot, pronouns); badges box 22 high, radius 8, padding 1×3, badges
+    20 px 2 apart, then «+N» 14/18. Mutuals 8 below: «N amigos en común»
+    with three 16 px faces 13 apart, a 4 px dot, «N servidores en común»
+    without icons (12/16 `#96979e`, rows 24 high, wrapping, gap 2×6).
+  - Bio 14/18 `#dcdcdf`.
+  - «Miembro desde» 12/16 semibold `#dcdcdf`, 8 above the date 14/18
+    `#d4d5d8` (no logo in a DM).
+  - Cards 8 apart, each fill `#17181b`, radius 8, padding 8: the current
+    activities («Transmitiendo» with «EN VIVO», previews, a 32 high button),
+    then «Colección de juegos» 40 high (title 14/18 medium `#dcdcdf`; up to
+    four 24 px icons, radius 4 on `#97979f` at 24 %, 4 apart, on the right;
+    with more, the fourth at half opacity under black 60 % with «+N» 12/16
+    medium `#e0e0e3`; hover fill `#9595a2` at 12 %; it opens the full
+    profile), then «Lista de deseados» (title 14/18 medium, «Ver todo» 12/16
+    on the right; three 78 px squares, radius 8, `#97979f` at 12 %, spread
+    across; hover shows a «Regalar» button).
+- The popout has the same «Colección de juegos» card with a 12/16 title,
+  after the bio and before the roles, and no wishlist.
+- Data (unofficial web client, seen 2026-11-04): `GET /users/{id}/profile`
+  (`type=sidebar` for this panel) brings `badges`, `widgets` (`data.type`
+  `favorite_games` / `played_games`, each with `games[].game_id`) and
+  `wishlist_settings` (`{wishlist id: {visibility}}`); then
+  `GET /games?game_ids=…` gives each game's `name` and `icon_hash`
+  (`app-icons/{id}/{hash}.png`), and `GET /wishlists/{id}?source=user_profile`
+  its `wishlist_items` (`sku_id`, `sku_name`, `collectibles_item` with
+  `thumbnailPreviewSrc`).
+
 ## Voice and account panel
 
 Measured in a call (capture `scratchpad/shots/panel-voice.png`):
@@ -221,6 +318,60 @@ Measured in a call (capture `scratchpad/shots/panel-voice.png`):
 - Glyphs: Discord's static icons (`assets/glyphs`): signal, noise
   (waveform), hang-up, video-off, screen-share (screen with an arrow),
   microphone(-muted), headphones(-off), settings, chevron-down.
+
+## Microphone menu
+
+The caret beside the microphone («Opciones de entrada»), in the account
+panel or the call bar. Measured out of a call on the account panel's caret
+(`#audio-device-context`), the meter on the voice page's «Prueba de
+micrófono» (the same component, sampled per frame) and, for the meter in
+the menu, on the owner's capture of it in a call (`images/7.png`, 1.75
+device px per CSS px; crops in `scratchpad/shots/meter/`).
+
+- Surface: 222 wide (the border included), fill `#121214`, radius 8,
+  border 1 px `#9696a0` at 20 %, shadow `0 12 24` black 24 %, padding 8:
+  rows 204 wide, their content 188. 250 high out of a call (52 + 52 + 17
+  + 58 + 17 + 36, padding and border).
+- «Dispositivo de entrada», «Perfil de entrada»: rows 52, padding 8, label
+  14/18 medium `#dcdcdf`, under it the value 12/16 regular `#81828a`
+  (`--text-muted`, not the `#96979e` of other menus' hints): the device's
+  whole name, wrapping (three lines, 84 high, in the capture), and the
+  profile's name («Personalizar» for the custom one). A chevron on the
+  right; the row opens its list beside the menu on hover.
+- The lists: the menu's surface, 5 px over its edge, rows 36 (padding 8,
+  14/18 medium) ending in a 20 px radio (chosen: blurple fill, white dot).
+  Devices lead with a 20 px microphone glyph (label at 36); profiles have
+  none («Aislamiento de voz», «Estudio», «Personalizar»). As wide as the
+  longest name (239 and 188 here).
+- Separators: 1 px with 8 above and below (17).
+- «Volumen de entrada»: row 58: the label, 8 below it the slider's 16 px
+  knob box, 8 to the row's end. Track 188 × 4 `#383940`, radius 4; fill
+  `#5865f2` (6 high, a 1 px ring white at 10 %); knob 16 white, border 1 px
+  `#96969f` at 24 %, shadow `0 1 4` black 14 %. No value beside it; the
+  input runs to 100 %.
+- «Nivel de entrada», only in a call: row 66: the label, then the meter,
+  its pills 10 below the label and 14 above the row's end.
+  - 24 pills in 188: 4 wide, 16 high, fully rounded, one every 8 (gap 4),
+    from the content's left edge to its right. The voice page's is 504
+    wide (63 pills) and 28 high (pills 24): a pill is the meter's height
+    less 2 above and below.
+  - Drawn as a track `--gradient-progress-pill-background` (`#36373e`)
+    that slides right by the level, in whole pills (`translateX` in steps
+    of 8), uncovering `linear-gradient(to right, var(--yellow-260),
+    var(--green-360))` (`#ffbf4a` → `#3d9e60`) over the whole width; an SVG
+    notch pattern in the surface's color cuts both into pills. A lit pill
+    takes its place on that full-width ramp, not on the level's: captured
+    `#fbbf4b`, `#f3bd4c`, `#ebbc4d` … `#8aab58` for the 15th of 24. Unlit
+    `#36373e`, between them the menu's `#121214`. At silence the gradient
+    goes (`background: none`) and every pill is grey.
+  - It follows the level every animation frame (~16 ms) with no
+    transition: a beep of the fake input jumped to 47 then 49 of 63
+    pills and fell back by 13, 12, 12, 9 and 3 pills a frame (the other
+    beeps alike, 70 to 100 ms down): the signal's own fall, no peak hold
+    or smoothing seen. The level-to-pills scale (dB) was not observable.
+- «Ajustes de voz»: row 36, a 20 px gear `#96979e`, 8, the label 14/18
+  medium `#dcdcdf` (at 36). Only this row has an icon; the others keep
+  their labels at the row's padding.
 
 ## Friends and Active Now
 

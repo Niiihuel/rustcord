@@ -1902,3 +1902,55 @@ fn pf_the_per_server_tab_shows_the_nickname_once_a_server_is_chosen() {
     let painted = host.pf_painted();
     assert!(!painted.contains("Apodo") && painted.contains("Nombre para mostrar"));
 }
+
+#[test]
+fn pf_a_direct_conversation_shows_its_persons_profile_beside_it_until_hidden() {
+    let mut host = Host::new();
+    let ada = UserId(10);
+    let direct = host
+        .store
+        .directs()
+        .into_iter()
+        .find(|channel| {
+            channel.kind == rustcord_model::ChannelKind::Direct && channel.recipients == [ada]
+        })
+        .map(|channel| channel.id)
+        .expect("a conversation with Ada");
+    host.click("home");
+    host.click(&format!("channel:{direct}"));
+    // Opening it asks for her profile, as Discord's panel does.
+    host.answer_profile();
+    let shown = host.painted();
+    for expected in [
+        "Colección de juegos",
+        "+1",
+        "Lista de deseados",
+        "Ver todo",
+        "Miembro desde",
+        "Ver perfil completo",
+    ] {
+        assert!(shown.iter().any(|t| t == expected), "{expected}: {shown:?}");
+    }
+    // Her games' icons and the wishlist's pictures go through the image
+    // pipeline, as faces do.
+    let wanted = crate::wanted_images(&host.ui, &host.store, &host.tree);
+    assert!(wanted.iter().any(|image| image.url.contains("/juegos/")));
+    assert!(wanted.iter().any(|image| image.url.contains("/deseados/")));
+    // «Ver perfil completo» and the card of her games open the full profile.
+    host.click(&format!("{}{ada}", ids::FULL_GAMES));
+    assert_eq!(host.ui.profiles.full, Some((ada, None)));
+    host.ui.profiles.full = None;
+    // The header's button hides it, and the choice is kept.
+    let before = host.sent.len();
+    host.click(ids::SIDE_TOGGLE);
+    assert!(host.ui.profiles.side_hidden);
+    assert!(!host.painted().iter().any(|t| t == "Colección de juegos"));
+    assert!(crate::profile::kept(&host.ui)
+        .contains(&(crate::profile::SIDE_HIDDEN, Some("true".to_owned()))));
+    assert_eq!(host.sent.len(), before, "nothing to ask while hidden");
+    host.click(ids::SIDE_TOGGLE);
+    assert!(host.painted().iter().any(|t| t == "Colección de juegos"));
+    // A server's channel has no such panel.
+    host.open_channel("general");
+    assert!(!host.painted().iter().any(|t| t == "Colección de juegos"));
+}

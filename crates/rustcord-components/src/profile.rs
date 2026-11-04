@@ -29,6 +29,9 @@ use crate::{centered, emoji, gap, icon, line, strong_line, text, time, Look};
 
 /// The actions these pieces report. Those that name a message, a status or
 /// a device are built with the helpers or the prefixes here.
+mod side;
+pub use side::{side_panel, SIDE_WIDTH};
+
 pub mod ids {
     /// The account's popout, opened from its panel.
     pub const DISMISS: &str = "pp:dismiss";
@@ -106,6 +109,15 @@ pub mod ids {
     pub const FULL_BIO: &str = "pp:full-bio:";
     /// The note's icon of a card: the full profile, where the note is.
     pub const FULL_NOTE: &str = "pp:full-note:";
+    /// A card's «Colección de juegos» and the panel's «Ver todo» of the
+    /// wishlist: the full profile, from them.
+    pub const FULL_GAMES: &str = "pp:full-games:";
+    pub const FULL_WISHLIST: &str = "pp:full-wishlist:";
+    /// Shows or hides the profile beside a direct conversation.
+    pub const SIDE_TOGGLE: &str = "pp:side:toggle";
+    /// The body of the profile beside a direct conversation, scrolling
+    /// above its button: followed by the person's handle.
+    pub const SIDE_BODY: &str = "pp:side:body:";
     /// The body of a card, scrolling between its head and its buttons;
     /// see [`card_body`].
     pub const CARD_BODY: &str = "pp:card:body:";
@@ -463,6 +475,25 @@ pub struct Profile {
     pub edit_profile: bool,
     /// The preview of the profile's editor offers an example button instead.
     pub example_button: bool,
+    /// The games of their collection, all of them: a card shows four.
+    pub games: Vec<GameIcon>,
+    /// What they wish for: the profile beside a conversation shows three.
+    pub wishlist: Vec<WishTile>,
+}
+
+/// A game of someone's collection, as its card shows it: its icon, and its
+/// name for a reader.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GameIcon {
+    pub name: String,
+    pub icon: Option<limn::RasterImage>,
+}
+
+/// Something someone wishes for, as their profile shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct WishTile {
+    pub name: String,
+    pub picture: Option<limn::RasterImage>,
 }
 
 /// The friendship with someone, as the round button on a card's banner says
@@ -799,10 +830,21 @@ const CARD_HEAD: HeadSize = HeadSize {
 /// decoration 1.2 times the mark, the status dot, and `bubble` beside it.
 /// A two-line bubble makes the head taller, as Discord's does.
 fn card_head(profile: &Profile, bubble: Option<Element>, look: &Look) -> Element {
-    let mut layers = bubbled_head(profile, CARD_HEAD, bubble, look);
+    sized_card_head(profile, CARD_HEAD, 12.0, bubble, look)
+}
+
+/// [`card_head`] of `size`, its round buttons `right` from its right edge.
+fn sized_card_head(
+    profile: &Profile,
+    size: HeadSize,
+    right: f32,
+    bubble: Option<Element>,
+    look: &Look,
+) -> Element {
+    let mut layers = bubbled_head(profile, size, bubble, look);
     // Over everything, so the buttons take their clicks.
-    layers.extend(banner_buttons(profile, look));
-    Element::stack(layers).size(Some(WIDTH), None)
+    layers.extend(banner_buttons(profile, right, look));
+    Element::stack(layers).size(Some(size.width), None)
 }
 
 /// The layers of a head of `size` with `bubble` beside its mark and the two
@@ -1210,9 +1252,10 @@ fn person_buttons(
     buttons
 }
 
-/// The round buttons over a card's banner, at its top right: the friendship's
-/// and «…», each with its menu. Nothing when neither shows.
-fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
+/// The round buttons over a card's banner, 8 from its top and `right` from
+/// its right: the friendship's and «…», each with its menu. Nothing when
+/// neither shows.
+fn banner_buttons(profile: &Profile, right: f32, look: &Look) -> Option<Element> {
     let buttons = person_buttons(
         profile,
         banner_button,
@@ -1228,7 +1271,7 @@ fn banner_buttons(profile: &Profile, look: &Look) -> Option<Element> {
         Element::row(vec![
             Element::spacer().flex(1.0),
             Element::row(buttons).gap(8.0),
-            gap(12.0, 0.0),
+            gap(right, 0.0),
         ]),
     ]))
 }
@@ -1360,6 +1403,7 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     }
     body.extend(card_mutuals(profile, look));
     body.extend(card_about(profile, width, look));
+    body.extend(game_card(profile, 12.0, raised(look, 16), look));
     body.extend(card_roles(profile, look));
     // Without a full profile to open (the account's own), the field stays.
     if let Some(note) = profile.note.as_ref().filter(|_| note.is_none()) {
@@ -1508,14 +1552,15 @@ fn names_sized(
         second.push(card_tag(chip, look).centered_y());
     }
     if !profile.identity.badges.is_empty() {
-        // Discord's box: 22 tall, 8 px corners, a hairline around 18 px badges.
+        // Discord's box: 22 tall, 8 px corners, a hairline around 20 px
+        // badges 2 apart.
         let badges =
-            crate::identity::badge_items(&profile.identity.badges, 18.0, BADGES_SHOWN, look);
+            crate::identity::badge_items(&profile.identity.badges, 20.0, BADGES_SHOWN, look);
         second.push(
             Element::panel(Element::row(vec![
                 gap(2.0, 0.0),
                 // Badges without a picture are their names: they may wrap.
-                Element::row(badges).gap(4.0).wrap().shrink_to_fit(),
+                Element::row(badges).gap(2.0).wrap().shrink_to_fit(),
                 gap(2.0, 0.0),
             ]))
             .padding(1.0)
@@ -1636,9 +1681,10 @@ fn card_mutuals(profile: &Profile, look: &Look) -> Option<Element> {
             1 => t("1 servidor en común").to_owned(),
             n => tr!("{n} servidores en común", n),
         };
+        // Discord names the servers without their icons.
         parts.push(mutual_part(
             format!("{base}:servers"),
-            faces,
+            &[],
             words,
             size,
             look,
@@ -1659,16 +1705,17 @@ fn mutual_part(id: String, faces: &[Face], words: String, size: f32, look: &Look
         .map(|(index, known)| at(index as f32 * STEP, 0.0, face(known, FACE)))
         .collect();
     let width = FACE + shown.len().saturating_sub(1) as f32 * STEP;
-    let pictures = Element::stack(shown).size(Some(width), Some(FACE));
-    Element::clickable(
-        id,
-        Element::row(vec![
-            pictures.centered_y(),
-            text(words.clone(), size, look.muted).centered_y(),
-        ])
-        .gap(6.0),
-    )
-    .accessible(limn::Access::new(limn::Role::Button).name(words))
+    let mut parts = Vec::new();
+    if !shown.is_empty() {
+        parts.push(
+            Element::stack(shown)
+                .size(Some(width), Some(FACE))
+                .centered_y(),
+        );
+    }
+    parts.push(text(words.clone(), size, look.muted).centered_y());
+    Element::clickable(id, Element::row(parts).gap(6.0))
+        .accessible(limn::Access::new(limn::Role::Button).name(words))
 }
 
 /// The parts of a card under its mutuals: the bio (see [`bio`]), the bot's
@@ -1680,6 +1727,74 @@ fn card_about(profile: &Profile, width: f32, look: &Look) -> Vec<Element> {
     }
     body.extend(activity_parts(profile, width, look));
     body
+}
+
+/// Games a card's collection shows, the last dimmed under «+N» when there
+/// are more.
+const GAMES_SHOWN: usize = 4;
+
+/// «Colección de juegos», as Discord's card: its title (`size` px: 12 in a
+/// popout, 14 beside a conversation) and up to four 24 px icons on the
+/// right, on `fill`; it opens the full profile. Nothing without games.
+fn game_card(profile: &Profile, size: f32, fill: Color, look: &Look) -> Option<Element> {
+    if profile.games.is_empty() {
+        return None;
+    }
+    const ICON: f32 = 24.0;
+    let more = profile.games.len().saturating_sub(GAMES_SHOWN);
+    let icons: Vec<Element> = profile
+        .games
+        .iter()
+        .take(GAMES_SHOWN)
+        .enumerate()
+        .map(|(index, game)| {
+            // A grey square under each, the picture's ground while it loads.
+            let mut layers = vec![Element::panel(Element::spacer())
+                .size(Some(ICON), Some(ICON))
+                .radius(4.0)
+                .background(hairline(look, 61))];
+            if let Some(image) = &game.icon {
+                layers.push(
+                    Element::raster_image(image.clone().cover())
+                        .size(Some(ICON), Some(ICON))
+                        .radius(4.0),
+                );
+            }
+            if more > 0 && index == GAMES_SHOWN - 1 {
+                // Discord's half-faded icon under black at 60 %.
+                layers.push(
+                    Element::panel(centered(
+                        line(format!("+{more}"), 12.0, Color::rgb(224, 224, 227))
+                            .font_family(FontFamily::SansMedium),
+                    ))
+                    .size(Some(ICON), Some(ICON))
+                    .radius(4.0)
+                    .background(Color::rgba(0, 0, 0, 204)),
+                );
+            }
+            Element::stack(layers)
+                .size(Some(ICON), Some(ICON))
+                .accessible(limn::Access::default().description(game.name.clone()))
+        })
+        .collect();
+    let title = t("Colección de juegos");
+    let card = Element::panel(Element::row(vec![
+        line(title, size, look.text)
+            .font_family(FontFamily::SansMedium)
+            .centered_y(),
+        Element::spacer().flex(1.0),
+        Element::row(icons).gap(4.0).centered_y(),
+    ]))
+    .padding(8.0)
+    .radius(8.0)
+    .background(fill);
+    Some(match &profile.full_action {
+        Some(action) => Element::clickable(action.replacen(ids::FULL, ids::FULL_GAMES, 1), card)
+            .radius(8.0)
+            .hover_background(look.hover)
+            .accessible(limn::Access::new(limn::Role::Button).name(title.to_owned())),
+        None => card,
+    })
 }
 
 /// The roles of a card, as chips in as many lines as they need. Each the
@@ -3557,6 +3672,8 @@ mod tests {
             role_menu: None,
             edit_profile: false,
             example_button: false,
+            games: Vec::new(),
+            wishlist: Vec::new(),
         }
     }
 
@@ -3734,6 +3851,8 @@ mod tests {
             message: None,
             edit_profile: true,
             example_button: false,
+            games: Vec::new(),
+            wishlist: Vec::new(),
             full_action: None,
             ..ada()
         };
@@ -4843,5 +4962,131 @@ mod tests {
         assert!(texts(&settled)
             .iter()
             .any(|text| text == "Sin actividad por ahora."));
+    }
+
+    fn games(count: usize) -> Vec<GameIcon> {
+        (0..count)
+            .map(|n| GameIcon {
+                name: format!("Juego {n}"),
+                icon: None,
+            })
+            .collect()
+    }
+
+    fn rect_of(laid: &limn::Frame, id: &str) -> limn::Rect {
+        laid.regions
+            .iter()
+            .find(|region| region.id == id)
+            .unwrap_or_else(|| panic!("{id} is laid out"))
+            .rect
+    }
+
+    fn font_of(laid: &limn::Frame, wanted: &str) -> Option<f32> {
+        laid.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::Text {
+                text, font_size, ..
+            } if text == wanted => Some(*font_size),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn a_card_shows_four_games_the_last_under_the_rest_s_count_and_no_wishlist() {
+        let profile = Profile {
+            full_action: Some(format!("{}10", ids::FULL)),
+            games: games(6),
+            wishlist: vec![WishTile {
+                name: "Ondas".into(),
+                picture: None,
+            }],
+            ..ada()
+        };
+        let (_, laid) = frame(card(&profile, &LOOK), Size::new(WIDTH, 900.0));
+        let painted = texts(&laid);
+        assert!(painted.contains(&"+2".to_owned()), "{painted:?}");
+        assert_eq!(font_of(&laid, "Colección de juegos"), Some(12.0));
+        assert!(!painted.iter().any(|t| t == "Lista de deseados"));
+        // Discord's 40 px card across the body, which opens the full profile.
+        let games = rect_of(&laid, &format!("{}10", ids::FULL_GAMES));
+        assert_eq!((games.width, games.height), (WIDTH - 2.0 * INSET, 40.0));
+        // Without games there is no card.
+        let (_, none) = frame(card(&ada(), &LOOK), Size::new(WIDTH, 900.0));
+        assert!(!texts(&none).iter().any(|t| t == "Colección de juegos"));
+    }
+
+    #[test]
+    fn the_profile_beside_a_conversation_is_discords_panel() {
+        let profile = Profile {
+            full_action: Some(format!("{}10", ids::FULL)),
+            activity: None,
+            member_since: vec![Since {
+                scope: "Cuenta".into(),
+                face: None,
+                date: "7 ene 2020".into(),
+            }],
+            mutual_friends: Mutual::Known(vec![taller(), taller(), taller()]),
+            mutual_servers: Mutual::Known(vec![taller(), taller()]),
+            games: games(5),
+            wishlist: (0..4)
+                .map(|n| WishTile {
+                    name: format!("Deseo {n}"),
+                    picture: None,
+                })
+                .collect(),
+            ..ada()
+        };
+        let height = 675.0;
+        let (_, laid) = frame(side_panel(&profile, &LOOK), Size::new(SIDE_WIDTH, height));
+        let painted = texts(&laid);
+        for expected in [
+            "Ada",
+            "3 amigos en común",
+            "2 servidores en común",
+            "Escribo programas.",
+            "Miembro desde",
+            "7 ene 2020",
+            "Colección de juegos",
+            "+1",
+            "Lista de deseados",
+            "Ver todo",
+            "Ver perfil completo",
+        ] {
+            assert!(
+                painted.iter().any(|t| t == expected),
+                "{expected}: {painted:?}"
+            );
+        }
+        assert_eq!(font_of(&laid, "Colección de juegos"), Some(14.0));
+        // Inside: 8 of margin and a 2 px edge, then the body 16 in, 268 wide.
+        let inner = 8.0 + 2.0;
+        let games = rect_of(&laid, &format!("{}10", ids::FULL_GAMES));
+        assert_eq!(
+            (games.x, games.width, games.height),
+            (inner + INSET, WIDTH - 2.0 * INSET, 40.0)
+        );
+        // The button under the scroll: 40 tall, 16 from the card's bottom.
+        let full = rect_of(&laid, &format!("{}10", ids::FULL));
+        assert_eq!(
+            (full.x, full.y, full.width, full.height),
+            (inner + INSET, height - inner - 16.0 - 40.0, 268.0, 40.0)
+        );
+        assert!(games.y + games.height < full.y, "{games:?} {full:?}");
+        // Three of the four wishes, 78 px squares spread across the card.
+        let tiles: Vec<limn::Rect> = laid
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::FillRect { rect, .. }
+                    if rect.width == 78.0 && rect.height == 78.0 =>
+                {
+                    Some(*rect)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(tiles.len(), 3, "{tiles:?}");
+        assert_eq!(tiles[0].x, inner + INSET + 8.0);
+        assert_eq!(tiles[2].x + 78.0, inner + WIDTH - INSET - 8.0);
+        assert!(controls(&laid).contains(&format!("{}10", ids::FULL_WISHLIST)));
     }
 }

@@ -322,7 +322,7 @@ fn marks_follow_the_member_and_their_roles_and_badges_open_their_links() {
     }
     let card =
         crate::profile::card_of(&host.ui, &host.store, Some(server), ada, &Look::DARK).unwrap();
-    assert_eq!(card.identity.badges.len(), 2);
+    assert_eq!(card.identity.badges.len(), 8);
     assert!(card.identity.badges[0].link);
     let intents = update(
         &mut host.ui,

@@ -32,6 +32,26 @@ pub struct HeaderNav {
     pub end: f32,
 }
 
+/// The header's button that shows or hides the profile beside a direct
+/// conversation, lit while it shows, as the member list's.
+pub fn profile_toggle(open: bool, look: &Look) -> Element {
+    IconButton::new(
+        crate::profile::ids::SIDE_TOGGLE,
+        Icon::Custom(crate::glyphs::USER_PROFILE),
+        look.palette(),
+    )
+    .variant(ButtonVariant::Ghost)
+    .tooltip(if open {
+        t("Ocultar perfil de usuario")
+    } else {
+        t("Mostrar perfil de usuario")
+    })
+    .tooltip_placement(TooltipPlacement::Below)
+    .ink(if open { look.text } else { look.dim })
+    .hover_ink(look.text)
+    .render()
+}
+
 /// IDs of the header's arrows.
 pub const BACK: &str = "nav:back";
 pub const FORWARD: &str = "nav:forward";

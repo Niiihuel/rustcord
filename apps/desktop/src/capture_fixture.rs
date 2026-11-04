@@ -1145,7 +1145,8 @@ pub fn simulated(
             } else {
                 0
             }
-        } else if distance < 60.0 {
+        } else if distance < 60.0 || path.starts_with("juegos/") {
+            // A game's icon fills its square.
             255
         } else {
             0
