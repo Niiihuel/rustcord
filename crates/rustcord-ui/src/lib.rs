@@ -1468,8 +1468,6 @@ pub fn update(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant) -
     // A color picker's field and hue bar write the color as its hex field.
     if let Some((typed, shown)) = color_picker::translate(ui, action) {
         let mut intents = answer_action(ui, store, &typed, now);
-        // The avatar's color is not a draft: it is asked for on letting go.
-        intents.extend(settings::picker_released(ui, store, action));
         intents.push(shown);
         return intents;
     }

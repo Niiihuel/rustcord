@@ -245,6 +245,84 @@ fn messaging_privacy_is_shown_and_changed_from_the_settings() {
 }
 
 #[test]
+fn direct_messages_are_set_for_all_servers_or_the_one_chosen_in_discord_s_list() {
+    let mut host = Host::new();
+    host.ac_load();
+    host.click("me:settings");
+    host.ac_choose("us:page=messaging");
+    host.ac_choose("us:jump=messaging");
+    assert!(host
+        .ac_controls()
+        .contains(&"us:select:dm-server".to_owned()));
+    assert!(host
+        .ac_controls()
+        .contains(&"us:privacy:server-dms".to_owned()));
+    let club = host.ac_server("Club de Fotografía");
+    host.ac_choose("us:select:dm-server");
+    assert_eq!(host.ui.settings_state.select, Some("dm-server"));
+    host.ac_choose(&format!("us:dm-server={club}"));
+    assert_eq!(host.ui.settings_state.dm_server, Some(club));
+    assert_eq!(host.ui.settings_state.select, None, "the list closes");
+    // Its own switches, as the server's menu has them.
+    let toggle = format!("us:privacy:dms-in:{club}");
+    let controls = host.ac_controls();
+    assert!(controls.contains(&toggle));
+    assert!(!controls.contains(&"us:privacy:server-dms".to_owned()));
+    let on = host.store.messaging_privacy().unwrap().dms_in(club);
+    let from = host.sent.len();
+    host.ac_choose(&toggle);
+    assert_eq!(
+        host.sent.last(),
+        Some(&Command::SetMessagingPrivacy(PrivacyChange::ServerDmsIn(
+            club, !on
+        )))
+    );
+    host.answer_account(from);
+    assert_eq!(host.store.messaging_privacy().unwrap().dms_in(club), !on);
+    host.ac_choose("us:dm-server=all");
+    assert_eq!(host.ui.settings_state.dm_server, None);
+}
+
+#[test]
+fn the_explicit_filters_stand_beside_their_category_where_discord_s_fit() {
+    let mut host = Host::new();
+    host.ac_load();
+    host.click("me:settings");
+    host.ac_choose("us:page=messaging");
+    let at = |frame: &limn::Frame| {
+        let category = frame
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                limn::DrawCommand::Text { position, text, .. }
+                    if text == "Archivo multimedia sexual para adultos" =>
+                {
+                    Some(*position)
+                }
+                _ => None,
+            })
+            .expect("the category is painted");
+        let filter = frame
+            .regions
+            .iter()
+            .find(|region| region.id == "us:select:explicit-friends")
+            .expect("the first filter is laid out")
+            .rect;
+        (category, filter)
+    };
+    // A 1440 wide window has Discord's column: the filters at the right.
+    let (category, filter) = at(&host.us_layout(Size::new(1440.0, 900.0)));
+    assert!(filter.x > category.x + 300.0, "{category:?} {filter:?}");
+    assert!(
+        (filter.y - category.y).abs() < 12.0,
+        "{category:?} {filter:?}"
+    );
+    // A narrow one puts them under it.
+    let (category, filter) = at(&host.us_layout(Size::new(800.0, 900.0)));
+    assert!(filter.y > category.y + 20.0, "{category:?} {filter:?}");
+}
+
+#[test]
 fn a_servers_privacy_is_changed_from_its_menu() {
     let mut host = Host::new();
     host.ac_load();

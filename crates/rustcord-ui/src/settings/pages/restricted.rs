@@ -1,12 +1,13 @@
 //! «Ignorar y bloquear» (Discord's «Ignore & Block»): the people the account
-//! blocks and the ones it ignores, each with the control that undoes it. The
-//! section shows only while someone is blocked or ignored.
+//! blocks and the ones it ignores, each list a card as Discord's, each
+//! person with the control that undoes it. The section shows only while
+//! someone is blocked or ignored.
 
 use limn::Element;
 
 use rustcord_components::friends::ids;
 use rustcord_components::user_settings as parts;
-use rustcord_i18n::t;
+use rustcord_i18n::{t, tr};
 use rustcord_model::{Relationship, RelationshipKind};
 use rustcord_state::{Permit, Store};
 
@@ -56,21 +57,36 @@ pub(super) fn available(store: &Store) -> bool {
 /// The setting `key` of the section: each list, while it has someone.
 pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
     let (blocked, ignored) = lists(ctx.store);
-    let (title, people, undo) = match key {
-        "blocked-users" => (t("Cuentas bloqueadas"), blocked, Undo::Unblock),
-        "ignored-users" => (t("Cuentas ignoradas"), ignored, Undo::Unignore),
+    let (title, people, undo, glyph) = match key {
+        "blocked-users" => (
+            t("Cuentas bloqueadas"),
+            blocked,
+            Undo::Unblock,
+            limn::Icon::Custom(parts::BLOCK),
+        ),
+        "ignored-users" => (
+            t("Cuentas ignoradas"),
+            ignored,
+            Undo::Unignore,
+            limn::Icon::BellSlash,
+        ),
         _ => return None,
     };
     (!people.is_empty()).then(|| {
-        Element::column(vec![
-            parts::subtitle(title, ctx.look),
-            parts::rows(
-                people
-                    .into_iter()
-                    .map(|known| person(ctx, known, undo))
-                    .collect(),
-            ),
-        ])
+        let count = match people.len() {
+            1 => t("1 cuenta").to_owned(),
+            count => tr!("{count} cuentas", count = count),
+        };
+        parts::people_card(
+            glyph,
+            title,
+            &count,
+            people
+                .into_iter()
+                .map(|known| person(ctx, known, undo))
+                .collect(),
+            ctx.look,
+        )
     })
 }
 

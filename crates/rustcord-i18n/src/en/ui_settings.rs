@@ -70,10 +70,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Desarrollador", "Developer"),
     ("Pruebas de la simulación", "Simulation tests"),
-    ("nombre para mostrar apodo cómo te ven", "display name nickname how others see you"),
     ("nombre de usuario handle arroba", "username handle at tag"),
-    ("color del avatar inicial foto imagen", "avatar color initial photo picture image"),
-    ("editar perfil pronombres biografía sobre mí", "edit profile pronouns bio about me"),
     (
         "permitir mensajes directos de miembros de servidores privacidad",
         "allow direct messages dms from server members privacy",
@@ -84,10 +81,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("filtro de spam mensajes directos carpeta", "spam filter direct messages dms folder"),
     (
-        "contenido explícito imágenes difuminar bloquear sensible",
-        "explicit content images media blur block sensitive",
-    ),
-    (
         "quién puede mandarte solicitudes de amistad amigos de amigos",
         "who can send you friend requests friends of friends",
     ),
@@ -96,16 +89,8 @@ pub(super) const ENTRIES: super::Entries = &[
         "delete what is saved on this computer cache drafts snapshot clear data",
     ),
     (
-        "activar las notificaciones de escritorio sistema avisos",
-        "enable desktop notifications system alerts",
-    ),
-    (
         "mostrar el contenido del mensaje privacidad ocultar texto",
         "show message content privacy hide text",
-    ),
-    (
-        "sonido de mensajes nuevo mensaje menciones privados tono",
-        "message sound new message mentions direct messages dms tone",
     ),
     (
         "marcar servidores con mensajes sin leer insignia riel no leídos",
@@ -213,17 +198,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sin cuenta", "No account"),
     ("Invitado", "Guest"),
     ("Nombre de usuario", "Username"),
-    (
-        "No se puede cambiar.",
-        "Can't be changed.",
-    ),
-    ("Color del avatar", "Avatar color"),
-    (
-        "Tu inicial se muestra sobre este color.",
-        "Your initial is shown on this color.",
-    ),
     ("Perfil", "Profile"),
-    ("Pronombres, biografía y cómo te ven los demás.", "Pronouns, bio and how others see you."),
     ("Editar perfil", "Edit profile"),
     ("Agregar una cuenta", "Add an account"),
     ("Cambiar de cuenta", "Switch accounts"),
@@ -239,20 +214,12 @@ pub(super) const ENTRIES: super::Entries = &[
         "Your sign-in data isn't kept in the message cache.",
     ),
     ("Activar las notificaciones de escritorio", "Enable desktop notifications"),
-    (
-        "Avisos del sistema para menciones y mensajes directos.",
-        "System notices for mentions and direct messages.",
-    ),
     ("Mostrar el contenido del mensaje", "Show message content"),
     (
         "Apagado, la notificación dice quién escribió y «Nuevo mensaje», sin el texto.",
         "When off, the notification says who wrote and “New message”, without the text.",
     ),
     ("Sonidos", "Sounds"),
-    (
-        "Un tono breve con cada mención o mensaje directo que avisaría.",
-        "A short tone with each mention or direct message that would alert you.",
-    ),
     ("Marcar servidores con mensajes sin leer", "Mark servers with unread messages"),
     (
         "Una marca junto al servidor mientras tenga mensajes sin leer.",
@@ -381,10 +348,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Once the time is up, the message is left with an uncertain outcome.",
     ),
     ("Silenciar", "Mute"),
-    (
-        "Cómo te ven los demás. Vacío, se muestra tu nombre de usuario.",
-        "How others see you. When empty, your username shows.",
-    ),
     ("Nombre para mostrar", "Display name"),
     ("Guardar", "Save"),
     ("Editar", "Edit"),
@@ -696,4 +659,18 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Volumen del micrófono", "Microphone Volume"),
     ("notificaciones sonidos nuevos mensajes llamadas entrantes avisos", "notifications sounds new messages incoming calls alerts"),
     ("Activa o desactiva los sonidos para los nuevos mensajes y llamadas entrantes.", "Enable/disable sounds for new messages and incoming calls."),
+    ("1 cuenta", "1 account"),
+    ("{count} cuentas", "{count} accounts"),
+    ("Activar/desactivar los sonidos que se reproducen cuando estás en una llamada, como, por ejemplo, silenciar, desactivar silencio, ensordecer y más.", "Toggle the sounds that play while you're in a call, such as mute, unmute, deafen and more."),
+    ("Controla cómo se comparte tu actividad de juegos y aplicaciones: qué es visible y quién puede verla.", "Control how your game and app activity is shared: what is visible and who can see it."),
+    ("Mostrar/ocultar archivos multimedia en el chat", "Show/hide media in chat"),
+    ("Si estás buscando notificaciones por canal o por servidor, haz clic derecho en el ícono del servidor que deseas y selecciona Ajustes de notificaciones.", "If you're looking for per-channel or per-server notifications, right-click the server icon you want and select Notification Settings."),
+    ("activar las notificaciones de escritorio sistema avisos por canal por servidor", "enable desktop notifications system alerts per channel per server"),
+    ("ajustes relacionados apariencia mostrar ocultar archivos multimedia en el chat", "related settings appearance show hide media in chat"),
+    ("ajustes relacionados privacidad de la actividad juegos aplicaciones quién puede verla", "related settings activity privacy games apps who can see it"),
+    ("ajustes relacionados voz y video sonidos de la llamada silenciar ensordecer", "related settings voice and video call sounds mute deafen"),
+    ("filtros de contenido delicado explícito imágenes difuminar bloquear sensible archivo multimedia sexual para adultos", "sensitive content filters explicit images blur block sensitive adult sexual media"),
+    ("sonido de mensajes nuevo mensaje menciones privados tono vista previa", "message sound new message mentions direct tone preview"),
+    ("sonido llamada entrante timbre sonar privado vista previa", "sound incoming call ring ringing direct preview"),
+    ("todos los servidores elegir un servidor mensajes directos", "all servers choose a server direct messages"),
 ];

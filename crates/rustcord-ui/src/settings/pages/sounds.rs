@@ -121,7 +121,14 @@ pub(super) const MORE: &[&str] = &[
 /// The setting `key` of the section; `None` for the rest.
 pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
     if let Some(sound) = key.strip_prefix("sound:") {
-        return CallSound::from_key(sound).map(|sound| event(ctx, sound));
+        return CallSound::from_key(sound).map(|sound| {
+            event(
+                ctx,
+                sound,
+                sound.label(),
+                &format!("us:sound={}", sound.key()),
+            )
+        });
     }
     match key {
         "sound-volume" => Some(volume(ctx)),
@@ -138,17 +145,17 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
     }
 }
 
-/// One event: its name, the link that plays it, and its switch.
-fn event(ctx: &Ctx, sound: CallSound) -> Element {
+/// One event: its name, the link that plays it, and its switch, `switch`.
+pub(super) fn event(ctx: &Ctx, sound: CallSound, label: &str, switch: &str) -> Element {
     let (ui, look) = (ctx.ui, ctx.look);
     let on = ui.prefs.sound_on(sound);
     let mut copy = vec![
-        text(sound.label(), 16.0, look.text).font_family(limn::FontFamily::SansMedium),
+        text(label, 16.0, look.text).font_family(limn::FontFamily::SansMedium),
         Element::row(vec![
             parts::link(
                 &format!("us:sound-test={}", sound.key()),
                 t("Vista previa del sonido"),
-                &tr!("Probar «{sound}»", sound = sound.label()),
+                &tr!("Probar «{sound}»", sound = label),
                 look,
             ),
             Element::spacer().flex(1.0),
@@ -169,8 +176,8 @@ fn event(ctx: &Ctx, sound: CallSound) -> Element {
     parts::listed(
         Element::row(vec![
             Element::column(copy).gap(4.0).flex(1.0).centered_y(),
-            parts::switch(format!("us:sound={}", sound.key()), on, look)
-                .accessibility_label(sound.label())
+            parts::switch(switch, on, look)
+                .accessibility_label(label)
                 .render()
                 .centered_y(),
         ])

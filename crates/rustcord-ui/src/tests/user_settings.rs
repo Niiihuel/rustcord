@@ -2,11 +2,10 @@
 //! and sections, and what each preference changes in the window and keeps
 //! for the next run.
 
-use rustcord_model::{Rgb, UserId};
-use rustcord_provider::ProfileEdit;
+use rustcord_model::UserId;
 
 use super::*;
-use crate::settings::{jump_margin, ACCENT_HEX, NAME, SEARCH};
+use crate::settings::{jump_margin, SEARCH};
 
 #[test]
 fn forgetting_clears_unqueued_drafts_and_waits_for_the_host_confirmation() {
@@ -93,7 +92,7 @@ impl Host {
     }
 
     /// Lay the window out at `size`.
-    fn us_layout(&mut self, size: Size) -> Frame {
+    pub(super) fn us_layout(&mut self, size: Size) -> Frame {
         self.tree.set_root(view(
             &self.ui,
             &self.store,
@@ -363,105 +362,6 @@ fn escape_closes_what_floats_first_then_the_settings() {
     host.us_open();
     host.click("us:close");
     assert!(host.ui.settings.is_none());
-}
-
-#[test]
-fn the_display_name_and_the_avatar_color_are_asked_of_the_provider() {
-    let mut host = Host::new();
-    host.us_open();
-    assert!(host.us_buttons().contains(&"profile:edit".to_owned()));
-    host.click("us:name:edit");
-    host.frame();
-    assert_eq!(
-        host.tree.input_value(NAME),
-        host.store.me_user().map(|me| me.shown_name())
-    );
-    host.us_write(NAME, "Nueva");
-    host.click("us:name:save");
-    let edit = ProfileEdit {
-        display_name: Some(Some("Nueva".into())),
-        ..ProfileEdit::default()
-    };
-    assert_eq!(host.sent.last(), Some(&Command::EditProfile(edit.clone())));
-    assert!(host.ui.settings_state.name.is_none());
-    for event in host.provider.manage(Command::EditProfile(edit)) {
-        host.event(event);
-    }
-    assert_eq!(host.store.me_user().unwrap().shown_name(), "Nueva");
-    assert!(painted_has(&mut host, "Nueva"));
-    host.click("us:accent:1abc9c");
-    assert_eq!(
-        host.sent.last(),
-        Some(&Command::EditProfile(ProfileEdit {
-            accent: Some(Rgb(0x1a_bc_9c)),
-            ..ProfileEdit::default()
-        }))
-    );
-    // A color of one's own, in hex, goes on Enter.
-    host.click("us:accent:custom");
-    host.us_write(ACCENT_HEX, "#ff8800");
-    host.us_act(UiAction::Submitted {
-        id: ACCENT_HEX.into(),
-        value: "#ff8800".into(),
-    });
-    assert_eq!(
-        host.sent.last(),
-        Some(&Command::EditProfile(ProfileEdit {
-            accent: Some(Rgb(0xff_88_00)),
-            ..ProfileEdit::default()
-        }))
-    );
-}
-
-#[test]
-fn letting_go_of_the_avatar_color_picker_asks_for_the_color_it_shows() {
-    let mut host = Host::new();
-    host.us_open();
-    host.click("us:accent:custom");
-    let part = |host: &mut Host, id: &str| {
-        host.frame()
-            .regions
-            .iter()
-            .find(|region| region.id == id)
-            .unwrap_or_else(|| panic!("{id} is in the picker"))
-            .rect
-    };
-    let asked = |host: &Host| {
-        let typed = host.ui.settings_state.accent_hex.as_deref().unwrap();
-        Command::EditProfile(ProfileEdit {
-            accent: rustcord_components::server_settings::parse_hex(typed),
-            ..ProfileEdit::default()
-        })
-    };
-    let sent = host.sent.len();
-    let area = part(&mut host, "us:accent:area");
-    let corner = Point::new(area.x + area.width - 1.0, area.y + 1.0);
-    host.send(UiEvent::PointerDown(Point::new(
-        area.x + area.width / 2.0,
-        area.y + area.height / 2.0,
-    )));
-    host.send(UiEvent::PointerMove(corner));
-    assert_eq!(
-        host.sent.len(),
-        sent,
-        "while it moves the color is only drawn"
-    );
-    host.send(UiEvent::PointerUp(corner));
-    assert_eq!(host.sent.len(), sent + 1);
-    assert_eq!(host.sent.last(), Some(&asked(&host)));
-    assert!(
-        host.ui.settings_state.accent_hex.is_some(),
-        "the picker stays open"
-    );
-    let first = asked(&host);
-    // The hue bar too: at its middle, another hue.
-    let hue = part(&mut host, "us:accent:hue");
-    let middle = Point::new(hue.x + hue.width * 0.5, hue.y + hue.height / 2.0);
-    host.send(UiEvent::PointerDown(middle));
-    host.send(UiEvent::PointerUp(middle));
-    assert_eq!(host.sent.len(), sent + 2);
-    assert_eq!(host.sent.last(), Some(&asked(&host)));
-    assert_ne!(asked(&host), first);
 }
 
 #[test]
@@ -1372,13 +1272,14 @@ fn the_menu_has_the_new_pages_and_old_keys_still_open_theirs() {
     let mut host = Host::new();
     host.us_open();
     let buttons = host.us_buttons();
-    for key in ["messaging", "connection", "voice", "system"] {
+    for key in ["messaging", "voice", "system"] {
         assert!(buttons.contains(&format!("us:page={key}")), "{key}");
     }
-    // The sidebar scrolls: its last group lies under the fold of the test window.
+    // The sidebar scrolls: its last groups lie under the fold of the test
+    // window, Rustcord's own pages at the end of theirs.
     host.tree.scroll_to_end("us:nav");
     let buttons = host.us_buttons();
-    for key in ["games", "activity", "developer"] {
+    for key in ["activity", "games", "connection", "developer"] {
         assert!(buttons.contains(&format!("us:page={key}")), "{key}");
     }
     assert!(!buttons.contains(&"us:page=keybinds".to_owned()));
@@ -1484,6 +1385,8 @@ fn the_blocked_and_ignored_lists_show_who_is_and_undo_it_with_the_existing_actio
     host.frame();
     let painted = host.painted();
     assert!(painted.iter().any(|text| text == "Cuentas bloqueadas"));
+    // Discord's card: the list's name over how many it holds.
+    assert!(painted.iter().any(|text| text == "1 cuenta"));
     assert!(!painted.iter().any(|text| text == "Cuentas ignoradas"));
     // «Desbloquear» sends the unblock; the provider's answer ends the block.
     let sent = host.sent.len();
@@ -1519,4 +1422,80 @@ fn the_blocked_and_ignored_lists_show_who_is_and_undo_it_with_the_existing_actio
         host.sent[sent..],
         [Command::UnignoreUser { user: UserId(15) }]
     );
+}
+
+#[test]
+fn the_profiles_open_from_the_account_s_card_and_are_listed_only_when_searched() {
+    let mut host = Host::new();
+    host.us_open();
+    let profiles = "us:page=profiles".to_owned();
+    assert!(
+        !host.us_buttons().contains(&profiles),
+        "Discord's sidebar has no line for them"
+    );
+    host.us_write(SEARCH, "biografía");
+    assert!(host.us_buttons().contains(&profiles));
+    host.click("us:search:clear");
+    host.click("profile:edit");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Profiles));
+    let frame = host.frame();
+    assert!(
+        frame
+            .access
+            .iter()
+            .any(|node| node.id == "profile:edit" && node.selected == Some(true)),
+        "the card is the open page's line"
+    );
+}
+
+#[test]
+fn account_info_shows_the_username_as_discord_s_and_leaves_the_profile_to_its_page() {
+    let mut host = Host::new();
+    host.us_open();
+    let name = host.store.me_user().unwrap().name.clone();
+    let painted = host.painted();
+    assert!(painted.iter().any(|text| text == "Nombre de usuario"));
+    assert!(painted.contains(&name), "{painted:?}");
+    // The display name and the color are edited in «Perfiles», as in Discord.
+    assert!(!host
+        .us_buttons()
+        .iter()
+        .any(|id| id.starts_with("us:name") || id.starts_with("us:accent")));
+}
+
+#[test]
+fn notification_sounds_are_discord_s_rows_with_previews_and_lead_to_the_call_s() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=notifications");
+    host.us_press("us:jump=sounds");
+    host.frame();
+    let buttons = host.us_buttons();
+    for id in [
+        "us:sound-test=message",
+        "us:sound-test=ring",
+        "us:page=voice",
+    ] {
+        assert!(buttons.contains(&id.to_owned()), "{id}");
+    }
+    assert!(host.ui.prefs.sound_on(crate::CallSound::Ring));
+    host.us_press("us:sound=ring");
+    assert!(!host.ui.prefs.sound_on(crate::CallSound::Ring));
+    host.us_press("us:page=voice");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Voice));
+}
+
+#[test]
+fn data_and_privacy_ends_with_discord_s_card_to_the_activity_s_privacy() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=privacy");
+    host.tree.scroll_to_end("us:content:privacy");
+    host.frame();
+    assert!(host
+        .painted()
+        .concat()
+        .contains("Controla cómo se comparte tu actividad de juegos y aplicaciones"));
+    host.us_press("us:page=activity");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Activity));
 }

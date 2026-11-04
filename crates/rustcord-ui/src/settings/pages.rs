@@ -8,11 +8,9 @@
 
 use limn::{
     AlertDialog, Button, ButtonVariant, Color, Component, DropdownOption, Element, Icon, Kbd,
-    ListRow, Modal, PopoverPlacement, ScrollArea, SearchField, Select, Size, Slider, TextField,
-    TextSpan,
+    ListRow, Modal, PopoverPlacement, ScrollArea, SearchField, Select, Size, Slider, TextSpan,
 };
 use rustcord_components::quick_voice as quick;
-use rustcord_components::server_settings::{swatches, swatches_width, Swatches};
 use rustcord_components::user_settings::{
     self as parts, Account, Geometry, Nav, NavAction, NavAnchor, NavPage, Preview,
 };
@@ -24,8 +22,7 @@ use rustcord_provider::{ProviderKind, VoiceSupport};
 use rustcord_state::Store;
 
 use super::{
-    anchor, destinations, profile_locked, SettingsPage, ACCENT, GROUP_GAPS, NAME, SEARCH,
-    SWITCHER_QUERY, TEXT_SIZES, ZOOMS,
+    anchor, destinations, SettingsPage, GROUP_GAPS, SEARCH, SWITCHER_QUERY, TEXT_SIZES, ZOOMS,
 };
 use crate::{CallSound, GlobalKeys, Ui, ViewContext};
 
@@ -60,17 +57,13 @@ struct Section {
 }
 
 const SECTIONS: &[Section] = &[
-    // Discord's account info first, with the username first; Rustcord's rows follow.
+    // Discord's account info: the username (its email and phone are not
+    // known here). The display name and the color are the profiles'.
     Section {
         page: Account,
         key: "account-info",
         title: es("Información de cuenta"),
-        rows: &[
-            ("handle", es("nombre de usuario handle arroba")),
-            ("display-name", es("nombre para mostrar apodo cómo te ven")),
-            ("accent", es("color del avatar inicial foto imagen")),
-            ("profile", es("editar perfil pronombres biografía sobre mí")),
-        ],
+        rows: &[("handle", es("nombre de usuario handle arroba"))],
     },
     Section {
         page: Account,
@@ -108,15 +101,23 @@ const SECTIONS: &[Section] = &[
             ),
         ],
     },
-    // Messaging permissions, as Discord's order (the account's synced settings).
+    // Messaging permissions, as Discord's order (the account's synced
+    // settings). Its age-restricted access and its connected games' chat are
+    // not here: no provider offers them.
     Section {
         page: Messaging,
         key: "content-filters",
         title: es("Filtros de contenido"),
-        rows: &[(
-            "explicit-content",
-            es("contenido explícito imágenes difuminar bloquear sensible"),
-        )],
+        rows: &[
+            (
+                "explicit-content",
+                es("filtros de contenido delicado explícito imágenes difuminar bloquear sensible archivo multimedia sexual para adultos"),
+            ),
+            (
+                "related-media",
+                es("ajustes relacionados apariencia mostrar ocultar archivos multimedia en el chat"),
+            ),
+        ],
     },
     Section {
         page: Messaging,
@@ -129,6 +130,10 @@ const SECTIONS: &[Section] = &[
         key: "messaging",
         title: es("Permisos de mensajes directos (MD)"),
         rows: &[
+            (
+                "dm-server",
+                es("todos los servidores elegir un servidor mensajes directos"),
+            ),
             (
                 "server-dms",
                 es("permitir mensajes directos de miembros de servidores privacidad"),
@@ -167,27 +172,43 @@ const SECTIONS: &[Section] = &[
             es("código de privacidad cifrado de extremo a extremo dave verificar llamada seguridad"),
         )],
     },
+    // Discord's notifications, without its «Notificarme cuando...», email
+    // and advanced settings, which no provider offers.
     Section {
         page: Notifications,
         key: "overview",
         title: es("Vista general"),
         rows: &[
-            ("desktop", es("activar las notificaciones de escritorio sistema avisos")),
+            (
+                "desktop",
+                es("activar las notificaciones de escritorio sistema avisos por canal por servidor"),
+            ),
             (
                 "notification-content",
                 es("mostrar el contenido del mensaje privacidad ocultar texto"),
             ),
         ],
     },
-    // Discord's Sounds category, with the message sound as its first row.
+    // Discord's Sounds category: each sound with its preview, then the
+    // card to the call's sounds.
     Section {
         page: Notifications,
         key: "sounds",
         title: es("Sonidos"),
-        rows: &[(
-            "message-sound",
-            es("sonido de mensajes nuevo mensaje menciones privados tono"),
-        )],
+        rows: &[
+            (
+                "message-sound",
+                es("sonido de mensajes nuevo mensaje menciones privados tono vista previa"),
+            ),
+            (
+                "ring-sound",
+                es("sonido llamada entrante timbre sonar privado vista previa"),
+            ),
+            (
+                "related-voice",
+                es("ajustes relacionados voz y video sonidos de la llamada silenciar ensordecer"),
+            ),
+        ],
     },
     Section {
         page: Notifications,
@@ -537,7 +558,10 @@ enum Entry {
 }
 
 /// The pages in the sidebar's order, in groups as Discord's settings have
-/// them: a heading (hidden ones are only read out), then its lines.
+/// them: a heading (hidden ones are only read out), then its lines. Its
+/// «Facturación» has no page here; Rustcord's own pages close their group:
+/// the registered games after the activity, the connection before the
+/// developer's page.
 const GROUPS: &[(&str, bool, &[Entry])] = &[
     (
         es("General"),
@@ -548,7 +572,6 @@ const GROUPS: &[(&str, bool, &[Entry])] = &[
             Entry::Page(Privacy),
             Entry::Page(Messaging),
             Entry::Page(Notifications),
-            Entry::Page(Connection),
         ],
     ),
     (
@@ -565,9 +588,17 @@ const GROUPS: &[(&str, bool, &[Entry])] = &[
     (
         es("Juegos y aplicaciones"),
         true,
-        &[Entry::Page(Games), Entry::Page(Activity)],
+        &[Entry::Page(Activity), Entry::Page(Games)],
     ),
-    (es("Otro"), false, &[Entry::Page(Developer), Entry::LogOut]),
+    (
+        es("Otro"),
+        false,
+        &[
+            Entry::Page(Connection),
+            Entry::Page(Developer),
+            Entry::LogOut,
+        ],
+    ),
 ];
 
 fn icon_of(page: SettingsPage) -> Icon {
@@ -769,6 +800,7 @@ pub fn modal(ui: &Ui, store: &Store, root: Element, look: &Look, context: &ViewC
         ),
         accent: me.map_or(look.faint, |me| look.ink(me.accent)),
         edit: Some("profile:edit".into()),
+        selected: page == Profiles && searching(ui).is_none(),
     };
     let provider = store
         .provider
@@ -848,7 +880,14 @@ fn navigation(ctx: &Ctx, open: SettingsPage) -> Vec<Nav> {
                     Entry::LogOut => return log_out(ctx, query),
                 };
                 let sections = shown(page, query, ctx.ui, ctx.store);
-                if !query.is_empty() && sections.is_empty() {
+                // The profiles open from the account's card, as Discord's:
+                // listed only when a search finds them.
+                let unlisted = if query.is_empty() {
+                    page == Profiles
+                } else {
+                    sections.is_empty()
+                };
+                if unlisted {
                     return None;
                 }
                 let selected = page == open;
@@ -1056,7 +1095,8 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         ])
     };
     let open = ui.settings_state.select;
-    if let Some(shown) = crate::account::privacy_setting(store, key, look, open) {
+    let server = ui.settings_state.dm_server;
+    if let Some(shown) = crate::account::privacy_setting(store, key, look, open, server, width) {
         return Some(shown);
     }
     if let Some(shown) = restricted::setting(ctx, key) {
@@ -1084,49 +1124,12 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         return Some(shown);
     }
     Some(match key {
-        "display-name" => display_name(ctx),
+        // Discord's: the name at the right end, without its «Editar»:
+        // Rustcord does not change it.
         "handle" => parts::setting(
             t("Nombre de usuario"),
-            Some(t("No se puede cambiar.")),
-            Some(line(
-                format!("@{}", store.me_user()?.name),
-                16.0,
-                look.muted,
-            )),
-            true,
-            look,
-        ),
-        "accent" => {
-            let locked = profile_locked(store);
-            Element::column(vec![
-                parts::setting(
-                    t("Color del avatar"),
-                    Some(locked.unwrap_or(
-                        t("Tu inicial se muestra sobre este color."),
-                    )),
-                    None,
-                    locked.is_none(),
-                    look,
-                ),
-                swatches(
-                    &Swatches {
-                        prefix: ACCENT.into(),
-                        chosen: store.me_user().map(|me| me.accent),
-                        default: None,
-                        custom: ui.settings_state.accent_hex.clone(),
-                        enabled: locked.is_none(),
-                        narrow: width < swatches_width(false),
-                        picked: crate::color_picker::picked(ui, ACCENT),
-                    },
-                    look,
-                ),
-                Element::spacer().size(None, Some(12.0)),
-            ])
-        }
-        "profile" => parts::setting(
-            t("Perfil"),
-            Some(t("Pronombres, biografía y cómo te ven los demás.")),
-            Some(parts::secondary_button("profile:edit", t("Editar perfil"), true, look)),
+            None,
+            Some(line(store.me_user()?.name.clone(), 16.0, look.text)),
             true,
             look,
         ),
@@ -1224,7 +1227,7 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "desktop" => toggle(
             "us:desktop",
             t("Activar las notificaciones de escritorio"),
-            Some(t("Avisos del sistema para menciones y mensajes directos.")),
+            Some(t("Si estás buscando notificaciones por canal o por servidor, haz clic derecho en el ícono del servidor que deseas y selecciona Ajustes de notificaciones.")),
             prefs.desktop_notifications,
         ),
         "notification-content" => toggle(
@@ -1233,11 +1236,35 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
             Some(t("Apagado, la notificación dice quién escribió y «Nuevo mensaje», sin el texto.")),
             prefs.notification_content,
         ),
-        "message-sound" => toggle(
-            "us:message-sound",
-            t("Nuevo mensaje"),
-            Some(t("Un tono breve con cada mención o mensaje directo que avisaría.")),
-            prefs.message_sounds,
+        "message-sound" => {
+            sounds::event(ctx, CallSound::Message, t("Nuevo mensaje"), "us:message-sound")
+        }
+        "ring-sound" => sounds::event(
+            ctx,
+            CallSound::Ring,
+            CallSound::Ring.label(),
+            "us:sound=ring",
+        ),
+        "related-voice" => parts::related(
+            "us:page=voice",
+            icon_of(Voice),
+            t("Voz y video"),
+            t("Activar/desactivar los sonidos que se reproducen cuando estás en una llamada, como, por ejemplo, silenciar, desactivar silencio, ensordecer y más."),
+            look,
+        ),
+        "related-media" => parts::related(
+            "us:page=appearance",
+            icon_of(Appearance),
+            t("Apariencia"),
+            t("Mostrar/ocultar archivos multimedia en el chat"),
+            look,
+        ),
+        "related-activity-privacy" => parts::related(
+            "us:page=activity",
+            icon_of(Activity),
+            t("Privacidad de la actividad"),
+            t("Controla cómo se comparte tu actividad de juegos y aplicaciones: qué es visible y quién puede verla."),
+            look,
         ),
         "unread-badges" => toggle(
             "us:unread-badges",
@@ -1840,56 +1867,6 @@ fn dropdown(
         .menu_width(width)
         .height(parts::FIELD_HEIGHT)
         .render()
-}
-
-/// The display name: what it is and a button to change it, or the field
-/// being written with its buttons under it.
-fn display_name(ctx: &Ctx) -> Element {
-    let look = ctx.look;
-    let (border, focus) = parts::field_outline(look);
-    let locked = profile_locked(ctx.store);
-    let me = ctx.store.me_user();
-    let note = locked.unwrap_or(t(
-        "Cómo te ven los demás. Vacío, se muestra tu nombre de usuario.",
-    ));
-    match &ctx.ui.settings_state.name {
-        Some(draft) => Element::column(vec![
-            parts::setting(t("Nombre para mostrar"), Some(note), None, true, look),
-            Element::row(vec![
-                TextField::new(
-                    NAME,
-                    draft.clone(),
-                    me.map_or("", |me| me.name.as_str()),
-                    look.palette(),
-                )
-                .accessibility_label(t("Nombre para mostrar"))
-                .height(parts::FIELD_HEIGHT)
-                .outline(border, focus)
-                .radius(parts::FIELD_RADIUS)
-                .render()
-                .flex(1.0),
-                parts::primary_button("us:name:save", t("Guardar"), true, look),
-                parts::secondary_button("us:name:cancel", t("Cancelar"), true, look),
-            ])
-            .gap(8.0),
-            Element::spacer().size(None, Some(12.0)),
-        ]),
-        None => parts::setting(
-            t("Nombre para mostrar"),
-            Some(note),
-            Some(
-                Element::row(vec![
-                    line(me.map_or("—", |me| me.shown_name()), 16.0, look.muted)
-                        .max_width(220.0)
-                        .centered_y(),
-                    parts::secondary_button("us:name:edit", t("Editar"), locked.is_none(), look),
-                ])
-                .gap(16.0),
-            ),
-            locked.is_none(),
-            look,
-        ),
-    }
 }
 
 /// The microphone and the speaker, side by side from 480 px and one under

@@ -10,13 +10,13 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use limn::{Component, ControlSize, DropdownOption, Element, Point, Select, UiAction};
+use limn::{Component, ControlSize, DropdownOption, Element, FontFamily, Point, Select, UiAction};
 use rustcord_components::channel_menu::{self as menu_parts, grouped, Entry, Item};
 use rustcord_components::folders::{self as folder_parts, FolderForm};
 use rustcord_components::profile::NoteField;
 use rustcord_components::rail::{Placement, RailEntry, RailFolder, RailItem};
 use rustcord_components::user_settings as setting_parts;
-use rustcord_components::{line, Look};
+use rustcord_components::{text, Look};
 use rustcord_i18n::t;
 use rustcord_model::{
     account::{valid_folders, valid_note},
@@ -790,15 +790,18 @@ pub(crate) fn overlay(
 
 // Messaging privacy, in the settings.
 
-/// The setting `key` of «Mensajes directos y solicitudes», as its page
-/// shows it; `None` for other keys.
-/// `open` is the list open in the settings, if any: the explicit filters'
-/// lists are named `explicit-{who}`.
+/// The setting `key` of «Permisos de mensajes», as Discord's page shows
+/// it in a column `width` wide; `None` for other keys. `open` is the list
+/// open in the settings, if any: the explicit filters' lists are named
+/// `explicit-{who}`, the server whose direct messages show `dm-server`.
+/// `server` is that server, `None` for all of them.
 pub(crate) fn privacy_setting(
     store: &Store,
     key: &str,
     look: &Look,
     open: Option<&str>,
+    server: Option<ServerId>,
+    width: f32,
 ) -> Option<Element> {
     let permit = store.account_abilities().privacy;
     let kept = store.messaging_privacy();
@@ -808,8 +811,8 @@ pub(crate) fn privacy_setting(
     });
     let privacy = kept.cloned().unwrap_or_default();
     let denied = denied.as_deref();
-    let toggle = |id: &str, label: &str, note: &str, on: bool| {
-        setting_parts::toggle(id, label, Some(note), on, denied, look)
+    let toggle = |id: &str, label: &str, note: Option<&str>, on: bool| {
+        setting_parts::toggle(id, label, note, on, denied, look)
     };
     let stacked = |label: &str, note: &str, below: Element| {
         Element::column(vec![
@@ -824,26 +827,72 @@ pub(crate) fn privacy_setting(
             Element::spacer().size(None, Some(12.0)),
         ])
     };
+    // A server's own switches, or what servers joined from now on get.
+    let server = server.filter(|server| store.server(*server).is_some());
+    let for_all = t("Para los servidores a los que entres desde ahora.");
     Some(match key {
-        "server-dms" => toggle(
-            "us:privacy:server-dms",
-            t("Permitir mensajes directos de miembros del servidor"),
-            t("Permite recibir MD de otros miembros del servidor. Para los servidores a los que entres desde ahora."),
-            privacy.server_dms,
-        ),
-        "message-requests" => Element::column(vec![
-            toggle(
-                "us:privacy:requests",
-                t("Solicitudes de mensajes"),
-                t("Filtra mensajes de miembros del servidor que quizás no conozcas."),
-                privacy.request_filter,
-            ),
-            line(
-                t("Para cambiarlo en un servidor, usa «Ajustes de privacidad» en su menú."),
-                14.0,
-                look.muted,
-            ),
-        ]),
+        "dm-server" => {
+            let name = |server: Option<ServerId>| {
+                server
+                    .and_then(|server| store.server(server))
+                    .map_or(t("Todos los servidores"), |found| found.name.as_str())
+            };
+            let options = std::iter::once(None)
+                .chain(store.servers().iter().map(|found| Some(found.id)))
+                .map(|choice| {
+                    let value = choice.map_or("all".to_owned(), |id| id.to_string());
+                    DropdownOption::new(format!("us:dm-server={value}"), name(choice))
+                        .selected(choice == server)
+                })
+                .collect();
+            look.select(Select::new(
+                "us:select:dm-server",
+                name(server),
+                options,
+                open == Some("dm-server"),
+                "us:select:dismiss",
+                look.palette(),
+            ))
+            .size(ControlSize::Spacious)
+            .accessibility_label(t("Servidor"))
+            .width(width)
+            .menu_width(width)
+            .render()
+        }
+        "server-dms" => {
+            let note = t("Permite recibir MD de otros miembros del servidor.");
+            match server {
+                Some(server) => toggle(
+                    &format!("us:privacy:dms-in:{server}"),
+                    t("Mensajes directos"),
+                    Some(note),
+                    privacy.dms_in(server),
+                ),
+                None => toggle(
+                    "us:privacy:server-dms",
+                    t("Mensajes directos"),
+                    Some(&format!("{note} {for_all}")),
+                    privacy.server_dms,
+                ),
+            }
+        }
+        "message-requests" => {
+            let note = t("Filtra mensajes de miembros del servidor que quizás no conozcas.");
+            match server {
+                Some(server) => toggle(
+                    &format!("us:privacy:requests-in:{server}"),
+                    t("Solicitudes de mensajes"),
+                    Some(note),
+                    privacy.requests_in(server),
+                ),
+                None => toggle(
+                    "us:privacy:requests",
+                    t("Solicitudes de mensajes"),
+                    Some(&format!("{note} {for_all}")),
+                    privacy.request_filter,
+                ),
+            }
+        }
         "spam-filter" => {
             let selected = match privacy.spam {
                 SpamFilter::Everyone => "us:privacy:spam=everyone",
@@ -854,15 +903,11 @@ pub(crate) fn privacy_setting(
                 "us:privacy:spam",
                 t("Filtrar automáticamente los mensajes de spam sospechosos"),
                 &[
-                    (
-                        "us:privacy:spam=everyone".to_owned(),
-                        t("Filtrar todo el spam"),
-                        Some(t("También los de tus amigos.")),
-                    ),
+                    ("us:privacy:spam=everyone".to_owned(), t("Filtrar todo el spam"), None),
                     (
                         "us:privacy:spam=non-friends".to_owned(),
-                        t("Filtrar los mensajes de personas que no sean tus amigos (recomendado)"),
-                        Some(t("Lo que la cuenta hace si nunca se cambió.")),
+                        t("Filtrar mensajes de personas que no estén en tu lista de amigos (Recomendado)"),
+                        None,
                     ),
                     ("us:privacy:spam=off".to_owned(), t("No filtrar el spam"), None),
                 ],
@@ -871,7 +916,7 @@ pub(crate) fn privacy_setting(
             );
             stacked(
                 t("Filtrar automáticamente los mensajes de spam sospechosos"),
-                t("Lo que parece spam va a una carpeta aparte en vez de a tus mensajes directos."),
+                t("El servicio puede filtrar algunos mensajes que contengan spam. Estos mensajes van a una carpeta aparte, no a tus mensajes directos."),
                 if denied.is_some() {
                     Element::spacer()
                 } else {
@@ -880,10 +925,22 @@ pub(crate) fn privacy_setting(
             )
         }
         "explicit-content" => {
-            let rows = [
-                ("servers", t("Mensajes en los canales del servidor"), privacy.explicit_servers),
-                ("friends", t("Mensajes directos de amigos"), privacy.explicit_friends),
-                ("others", t("Mensajes directos de otras personas"), privacy.explicit_others),
+            let rows: Vec<Element> = [
+                (
+                    "friends",
+                    t("Mensajes directos de amigos"),
+                    privacy.explicit_friends,
+                ),
+                (
+                    "others",
+                    t("Mensajes directos de otras personas"),
+                    privacy.explicit_others,
+                ),
+                (
+                    "servers",
+                    t("Mensajes en los canales del servidor"),
+                    privacy.explicit_servers,
+                ),
             ]
             .into_iter()
             .map(|(who, label, filter)| {
@@ -922,51 +979,108 @@ pub(crate) fn privacy_setting(
                         look.palette(),
                     ))
                     .size(ControlSize::Spacious)
-                .accessibility_label(label)
-                .enabled(denied.is_none())
-                .width(180.0)
-                .menu_width(180.0)
-                .render();
-                setting_parts::setting(label, None, Some(control), denied.is_none(), look)
+                    .accessibility_label(label)
+                    .enabled(denied.is_none())
+                    .width(140.0)
+                    .menu_width(160.0)
+                    .render();
+                let ink = if denied.is_none() {
+                    look.text
+                } else {
+                    look.muted
+                };
+                Element::row(vec![
+                    text(label, 16.0, ink)
+                        .font_family(FontFamily::SansMedium)
+                        .flex(1.0)
+                        .centered_y(),
+                    control.centered_y(),
+                ])
+                .gap(16.0)
+                .min_size(0.0, 48.0)
             })
             .collect();
+            // Discord's categories are tabs at the left; this is its only one.
+            let category = Element::row(vec![
+                Element::panel(Element::spacer())
+                    .size(Some(2.0), None)
+                    .background(look.accent),
+                text(
+                    t("Archivo multimedia sexual para adultos"),
+                    16.0,
+                    look.accent,
+                )
+                .font_family(FontFamily::SansMedium)
+                .flex(1.0)
+                .centered_y(),
+            ])
+            .gap(10.0)
+            .min_size(0.0, 40.0);
+            let mut table = Vec::new();
+            for row in rows {
+                table.push(row);
+                table.push(
+                    Element::panel(Element::spacer())
+                        .size(None, Some(1.0))
+                        .background(look.border),
+                );
+            }
+            table.push(Element::spacer().size(None, Some(16.0)));
+            table.push(text(
+                t("Ayuda a detectar archivos multimedia basados en imágenes que pueden contener material sexual explícito o sugerente para adultos."),
+                14.0,
+                look.muted,
+            ));
+            let table = Element::column(table);
+            // Side by side as Discord's 356 px of filters; one under the
+            // other where they would not fit.
+            let filters = 356.0_f32.min(width / 2.0);
+            let body = if width >= 600.0 {
+                Element::row(vec![
+                    Element::column(vec![category]).flex(1.0),
+                    Element::spacer().size(Some(16.0), None),
+                    table.size(Some(filters), None),
+                ])
+            } else {
+                Element::column(vec![category, table]).gap(8.0)
+            };
             Element::column(vec![
-                setting_parts::subtitle(t("Archivo multimedia sexual para adultos"), look),
-                line(
-                    t("Difumina las imágenes explícitas hasta que decidas verlas."),
-                    14.0,
-                    look.muted,
+                setting_parts::setting(
+                    t("Filtros de contenido delicado"),
+                    Some(denied.unwrap_or(t("Elige cómo quieres ver los archivos multimedia de imágenes que sean detectados por los filtros de contenido sensible del servicio."))),
+                    None,
+                    denied.is_none(),
+                    look,
                 ),
-                Element::spacer().size(None, Some(8.0)),
-                setting_parts::rows(rows),
+                body,
+                Element::spacer().size(None, Some(12.0)),
             ])
         }
         "friend-requests" => {
             let sources = privacy.friend_sources;
             Element::column(vec![
                 setting_parts::subtitle(t("Permitir solicitudes de amistad de..."), look),
-                setting_parts::rows(
-                    vec![
-                        toggle(
-                            "us:privacy:friends-everyone",
-                            t("Todo el mundo"),
-                            t("Cualquiera que sepa tu nombre de usuario."),
-                            sources.everyone,
-                        ),
-                        toggle(
-                            "us:privacy:friends-fof",
-                            t("Amigos de amigos"),
-                            t("Quienes tienen un amigo en común contigo."),
-                            sources.friends_of_friends,
-                        ),
-                        toggle(
-                            "us:privacy:friends-members",
-                            t("Miembros del servidor"),
-                            t("Los miembros del servidor solo pueden enviarte solicitudes de amistad desde los servidores donde también permites mensajes directos."),
-                            sources.server_members,
-                        ),
-                    ],
-                ),
+                setting_parts::rows(vec![
+                    // Discord's «Todos»; here «Todos» is a filter's "All".
+                    toggle(
+                        "us:privacy:friends-everyone",
+                        t("Todo el mundo"),
+                        None,
+                        sources.everyone,
+                    ),
+                    toggle(
+                        "us:privacy:friends-fof",
+                        t("Amigos de amigos"),
+                        None,
+                        sources.friends_of_friends,
+                    ),
+                    toggle(
+                        "us:privacy:friends-members",
+                        t("Miembros del servidor"),
+                        Some(t("Los miembros del servidor solo pueden enviarte solicitudes de amistad desde los servidores donde también permites mensajes directos.")),
+                        sources.server_members,
+                    ),
+                ]),
             ])
         }
         _ => return None,

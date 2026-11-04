@@ -28,6 +28,11 @@ pub(super) const SECTIONS: &[Section] = &[Section {
             "cache-days",
             es("borrar las imágenes sin usar después de días retención caché"),
         ),
+        // Discord's privacy page ends with this card.
+        (
+            "related-activity-privacy",
+            es("ajustes relacionados privacidad de la actividad juegos aplicaciones quién puede verla"),
+        ),
     ],
 }];
 

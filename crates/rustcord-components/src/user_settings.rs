@@ -28,6 +28,8 @@ use crate::{avatar, gap, icon, line, strong_line, text, with_status, Look};
 pub const PERSON: &str = crate::glyphs::glyph!("person");
 /// A shield with a check, for the page of data and privacy.
 pub const SHIELD: &str = crate::glyphs::glyph!("shield");
+/// A circle crossed by a slash: the blocked accounts.
+pub const BLOCK: &str = crate::glyphs::glyph!("block");
 
 /// Room between the panel and the window, on every side, up to [`WIDE`].
 pub const MARGIN: f32 = 40.0;
@@ -131,6 +133,8 @@ pub struct Account {
     pub accent: Color,
     /// The link that opens the profile editor; `None` when there is none.
     pub edit: Option<String>,
+    /// The profiles are open: the card is their line of the sidebar.
+    pub selected: bool,
 }
 
 /// One line of the sidebar.
@@ -290,12 +294,23 @@ fn account_row(account: &Account, look: &Look) -> Element {
     ]);
     let size = (Some(ITEM_WIDTH), Some(ACCOUNT_HEIGHT));
     match &account.edit {
-        Some(edit) => Element::clickable(edit, content)
-            .size(size.0, size.1)
-            .radius(8.0)
-            .hover_background(look.hover)
-            .hover_foreground(look.text)
-            .accessible(limn::Access::new(limn::Role::Button).name(t("Editar perfiles"))),
+        Some(edit) => {
+            let card = Element::clickable(edit, content)
+                .size(size.0, size.1)
+                .radius(8.0)
+                .hover_background(look.hover)
+                .hover_foreground(look.text)
+                .accessible(
+                    limn::Access::new(limn::Role::Button)
+                        .name(t("Editar perfiles"))
+                        .selected(account.selected),
+                );
+            if account.selected {
+                card.background(look.selected)
+            } else {
+                card
+            }
+        }
         None => content.size(size.0, size.1),
     }
 }
@@ -340,6 +355,9 @@ fn empty_search(look: &Look) -> Element {
     ])
 }
 
+/// A page's line: its icon and its name, which wraps as Discord's does
+/// («Privacidad de la actividad»): 36 px tall for one row of text, about 56
+/// for two.
 fn nav_item(page: &NavPage, look: &Look) -> Element {
     let ink = if page.selected { look.text } else { look.muted };
     let item = Element::clickable(
@@ -350,14 +368,20 @@ fn nav_item(page: &NavPage, look: &Look) -> Element {
                 .size(Some(20.0), Some(20.0))
                 .centered_y(),
             gap(8.0, 0.0),
-            line(page.label.clone(), 16.0, ink)
-                .font_family(FontFamily::SansMedium)
-                .flex(1.0)
-                .centered_y(),
+            // A row of 16 px text is about 20.6 tall: 7 above and below
+            // keep one row within the 36 and give two Discord's 56.
+            Element::column(vec![
+                gap(0.0, 7.0),
+                text(page.label.clone(), 16.0, ink).font_family(FontFamily::SansMedium),
+                gap(0.0, 7.0),
+            ])
+            .flex(1.0)
+            .centered_y(),
             gap(ITEM_PAD, 0.0),
         ]),
     )
-    .size(Some(ITEM_WIDTH), Some(ITEM_HEIGHT))
+    .size(Some(ITEM_WIDTH), None)
+    .min_size(ITEM_WIDTH, ITEM_HEIGHT)
     .radius(8.0)
     .hover_background(look.hover)
     .hover_foreground(look.text)
@@ -1002,8 +1026,9 @@ pub fn related(id: &str, glyph: Icon, title: &str, note: &str, look: &Look) -> E
     ])
 }
 
-/// Someone of a list in the settings: their picture, their name over their
-/// handle, and at the right the control that undoes what the list is for.
+/// Someone of a list in the settings: their 40 px picture, their name over
+/// their handle, and at the right the control that undoes what the list is
+/// for.
 pub fn person(
     name: &str,
     handle: &str,
@@ -1013,9 +1038,9 @@ pub fn person(
     look: &Look,
 ) -> Element {
     Element::row(vec![
-        crate::avatar_with_image(name, accent, 32.0, image).centered_y(),
+        crate::avatar_with_image(name, accent, 40.0, image).centered_y(),
         Element::column(vec![
-            line(name, 16.0, look.text).font_family(FontFamily::SansMedium),
+            line(name, 16.0, look.text).font_family(FontFamily::SansSemibold),
             line(handle, 14.0, look.muted),
         ])
         .gap(2.0)
@@ -1023,7 +1048,65 @@ pub fn person(
         .centered_y(),
         control.centered_y(),
     ])
-    .gap(12.0)
+    .gap(8.0)
+}
+
+/// A list of people in a card, as Discord's blocked accounts: a header on
+/// a lighter ground with `glyph` in a 40 px circle, the list's name over
+/// how many it holds, then a [`person`] each, 16 px in from the sides and
+/// parted by lines.
+pub fn people_card(
+    glyph: Icon,
+    title: &str,
+    count: &str,
+    people: Vec<Element>,
+    look: &Look,
+) -> Element {
+    let veil = veil(look);
+    let head = Element::row(vec![
+        Element::panel(crate::centered(icon(glyph, look.muted).large_icon(24.0)))
+            .size(Some(40.0), Some(40.0))
+            .radius(20.0)
+            .background(veil.hover)
+            .centered_y(),
+        Element::column(vec![
+            line(title, 16.0, look.text).font_family(FontFamily::SansSemibold),
+            line(count, 16.0, look.text),
+        ])
+        .gap(2.0)
+        .flex(1.0)
+        .centered_y(),
+    ])
+    .gap(8.0)
+    .padding(16.0)
+    .background(veil.raised);
+    let mut list = Vec::new();
+    for (index, person) in people.into_iter().enumerate() {
+        if index > 0 {
+            list.push(
+                Element::panel(Element::spacer())
+                    .size(None, Some(1.0))
+                    .background(look.border),
+            );
+        }
+        list.push(Element::column(vec![
+            gap(0.0, 16.0),
+            person,
+            gap(0.0, 16.0),
+        ]));
+    }
+    Element::column(vec![
+        head,
+        Element::row(vec![
+            gap(16.0, 0.0),
+            Element::column(list).flex(1.0),
+            gap(16.0, 0.0),
+        ]),
+    ])
+    .background(look.raised)
+    .radius(8.0)
+    .clip_children()
+    .accessible(limn::Access::new(limn::Role::Group).name(title.to_owned()))
 }
 
 /// A note that informs, framed in the accent.
@@ -1445,7 +1528,85 @@ mod tests {
             name: "Invitado".into(),
             accent: look.accent,
             edit: Some("profile:edit".into()),
+            selected: false,
         }
+    }
+
+    #[test]
+    fn a_long_page_name_wraps_and_its_line_grows_as_discord_s() {
+        let look = Look::DARK;
+        let page = |id: &str, label: &str| {
+            Nav::Page(NavPage {
+                id: id.into(),
+                label: label.into(),
+                icon: Icon::Gamepad,
+                selected: false,
+                anchors: Vec::new(),
+            })
+        };
+        let (_, laid) = frame(
+            sidebar(
+                &account(&look),
+                search_box("q", "", &look),
+                &[
+                    page("short", "Sistema"),
+                    page("long", "Privacidad de la actividad"),
+                ],
+                "Rustcord",
+                &look,
+            ),
+            Size::new(SIDEBAR_WIDTH, 700.0),
+        );
+        let rect = |id: &str| {
+            laid.regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap()
+                .rect
+        };
+        assert_eq!(rect("short").height, ITEM_HEIGHT);
+        let long = rect("long").height;
+        assert!((long - 56.0).abs() < 2.0, "two rows of text: {long}");
+        assert!(texts(&laid).concat().contains("Privacidad de la actividad"));
+    }
+
+    #[test]
+    fn a_people_card_names_its_list_and_parts_its_people_by_lines() {
+        let look = Look::DARK;
+        let row = |name: &str| {
+            person(
+                name,
+                "handle",
+                None,
+                look.accent,
+                secondary_button(&format!("{name}:undo"), "Desbloquear", true, &look),
+                &look,
+            )
+        };
+        let (_, laid) = frame(
+            people_card(
+                Icon::Custom(BLOCK),
+                "Cuentas bloqueadas",
+                "2 cuentas",
+                vec![row("Ana"), row("Beto")],
+                &look,
+            ),
+            Size::new(COLUMN_WIDTH, 400.0),
+        );
+        let painted = texts(&laid);
+        for text in ["Cuentas bloqueadas", "2 cuentas", "Ana", "Beto"] {
+            assert!(painted.iter().any(|shown| shown == text), "{text}");
+        }
+        assert_eq!(controls(&laid), ["Ana:undo", "Beto:undo"]);
+        // One line between the two people; none over the first or under the last.
+        let lines = laid
+            .commands
+            .iter()
+            .filter(|command| {
+                matches!(command, limn::DrawCommand::FillRect { rect, .. } if rect.height == 1.0)
+            })
+            .count();
+        assert_eq!(lines, 1);
     }
 
     #[test]

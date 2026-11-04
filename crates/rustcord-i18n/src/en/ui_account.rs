@@ -18,10 +18,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Servidor", "Server"),
     ("Mensaje directo", "Direct message"),
     ("La cuenta todavía no se conectó.", "The account hasn't connected yet."),
-    (
-        "Este proveedor no permite editar el perfil.",
-        "This provider doesn't allow editing the profile.",
-    ),
     ("El próximo envío será rechazado", "The next send will be rejected"),
     (
         "Fallo simulado, para ver el reintento.",
@@ -177,14 +173,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Your account's privacy hasn't been read yet.",
     ),
     (
-        "Permitir mensajes directos de miembros del servidor",
-        "Allow direct messages from server members",
-    ),
-    (
-        "Permite recibir MD de otros miembros del servidor. Para los servidores a los que entres desde ahora.",
-        "Allow direct messages from other server members. For the servers you join from now on.",
-    ),
-    (
         "Solicitudes de mensajes",
         "Message requests",
     ),
@@ -192,28 +180,11 @@ pub(super) const ENTRIES: super::Entries = &[
         "Filtra mensajes de miembros del servidor que quizás no conozcas.",
         "Filter messages from server members you may not know.",
     ),
-    (
-        "Para cambiarlo en un servidor, usa «Ajustes de privacidad» en su menú.",
-        "To change it for a server, use “Privacy settings” in its menu.",
-    ),
     ("Filtrar todo el spam", "Filter all spam"),
-    ("También los de tus amigos.", "Your friends' too."),
-    (
-        "Filtrar los mensajes de personas que no sean tus amigos (recomendado)",
-        "Filter messages from people who aren't your friends (recommended)",
-    ),
-    (
-        "Lo que la cuenta hace si nunca se cambió.",
-        "What the account does if it was never changed.",
-    ),
     ("No filtrar el spam", "Don't filter spam"),
     (
         "Filtrar automáticamente los mensajes de spam sospechosos",
         "Automatically filter suspected spam messages",
-    ),
-    (
-        "Lo que parece spam va a una carpeta aparte en vez de a tus mensajes directos.",
-        "What looks like spam goes to a separate folder instead of your direct messages.",
     ),
     (
         "Mensajes en los canales del servidor",
@@ -225,23 +196,10 @@ pub(super) const ENTRIES: super::Entries = &[
         "Direct messages from others",
     ),
     ("Archivo multimedia sexual para adultos", "Mature sexual media"),
-    (
-        "Difumina las imágenes explícitas hasta que decidas verlas.",
-        "Blurs explicit images until you decide to view them.",
-    ),
     ("Mostrar", "Show"),
     ("Difuminar", "Blur"),
     ("Bloquear", "Block"),
-    ("Todo el mundo", "Everyone"),
-    (
-        "Cualquiera que sepa tu nombre de usuario.",
-        "Anyone who knows your username.",
-    ),
     ("Amigos de amigos", "Friends of friends"),
-    (
-        "Quienes tienen un amigo en común contigo.",
-        "People who have a friend in common with you.",
-    ),
     (
         "Los miembros del servidor solo pueden enviarte solicitudes de amistad desde los servidores donde también permites mensajes directos.",
         "Server members can only send you friend requests from servers where you also allow direct messages.",
@@ -310,4 +268,13 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Abre Rustcord de forma automática cuando se inicie tu computadora", "Open Rustcord automatically when your computer starts"),
     ("Al hacer clic en X, Rustcord se minimiza en lugar de cerrarse por completo.", "Clicking X minimizes Rustcord instead of closing it completely."),
     ("Minimiza Rustcord en la bandeja del sistema", "Minimize Rustcord to System Tray"),
+    ("Ayuda a detectar archivos multimedia basados en imágenes que pueden contener material sexual explícito o sugerente para adultos.", "Helps detect image-based media that may contain explicit or suggestive adult sexual content."),
+    ("El servicio puede filtrar algunos mensajes que contengan spam. Estos mensajes van a una carpeta aparte, no a tus mensajes directos.", "The service can filter some messages that contain spam. These messages go to a separate folder, not to your direct messages."),
+    ("Elige cómo quieres ver los archivos multimedia de imágenes que sean detectados por los filtros de contenido sensible del servicio.", "Choose how you want to see image media detected by the service's sensitive content filters."),
+    ("Filtrar mensajes de personas que no estén en tu lista de amigos (Recomendado)", "Filter messages from people who are not on your friends list (Recommended)"),
+    ("Filtros de contenido delicado", "Sensitive content filters"),
+    ("Para los servidores a los que entres desde ahora.", "For servers you join from now on."),
+    ("Permite recibir MD de otros miembros del servidor.", "Allow DMs from other members in this server."),
+    ("Todos los servidores", "All servers"),
+    ("Todo el mundo", "Everyone"),
 ];

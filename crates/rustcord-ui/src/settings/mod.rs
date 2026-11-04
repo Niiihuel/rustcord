@@ -18,11 +18,10 @@ use std::time::{Duration, Instant};
 
 use limn::{Key, UiAction, UiEvent, UiTree};
 use rustcord_components::message::{MessageStyle, GROUP_GAP, TEXT_SIZE};
-use rustcord_components::server_settings::parse_hex;
 use rustcord_components::user_settings::mark_at;
 use rustcord_i18n::t;
 use rustcord_model::{ChannelId, ChannelKind, ServerId};
-use rustcord_provider::{Command, ProfileEdit};
+use rustcord_provider::Command;
 use rustcord_state::Store;
 
 use crate::{open, open_server, Destination, Intent, Theme, Ui};
@@ -30,9 +29,6 @@ use crate::{open, open_server, Destination, Intent, Theme, Ui};
 pub const SWITCHER_QUERY: &str = "switcher:query";
 /// The fields of the settings, whose text limn keeps by id.
 pub(crate) const SEARCH: &str = "us:search";
-pub(crate) const NAME: &str = "us:name";
-pub(crate) const ACCENT: &str = "us:accent";
-pub(crate) const ACCENT_HEX: &str = "us:accent:hex";
 
 /// The marks of the sliders, and the one each starts at.
 pub(crate) const TEXT_SIZES: [u8; 7] = [12, 14, 15, 16, 18, 20, 24];
@@ -48,15 +44,15 @@ pub enum SettingsPage {
     Privacy,
     Messaging,
     Notifications,
-    Connection,
     Voice,
     Appearance,
     Accessibility,
     // Rustcord's own updates, keys and desktop settings, as Discord's «Sistema».
     System,
     Language,
-    Games,
     Activity,
+    Games,
+    Connection,
     Developer,
 }
 
@@ -68,14 +64,14 @@ impl SettingsPage {
         Self::Privacy,
         Self::Messaging,
         Self::Notifications,
-        Self::Connection,
         Self::Voice,
         Self::Appearance,
         Self::Accessibility,
         Self::System,
         Self::Language,
-        Self::Games,
         Self::Activity,
+        Self::Games,
+        Self::Connection,
         Self::Developer,
     ];
 
@@ -773,12 +769,8 @@ pub struct SettingsState {
     /// A section jumped to, marked until the page is scrolled by hand; and
     /// where the page stood once it got there.
     jumped: Option<(&'static str, Option<f32>)>,
-    /// The display name being written, while it is.
-    pub name: Option<String>,
     /// The list that is open: `mic`, `speaker`, `language` or `role-colors`.
     pub select: Option<&'static str>,
-    /// The field for a color of one's own, while it is open.
-    pub accent_hex: Option<String>,
     /// The zoom's mark while its slider is dragged: applied when let go,
     /// since the slider would move under the pointer as everything grows.
     pub zoom_drag: Option<usize>,
@@ -795,6 +787,9 @@ pub struct SettingsState {
     pub forget_asked: bool,
     /// The folds the account opened (`voice-advanced`…); all closed at first.
     pub folds: Vec<String>,
+    /// The server whose direct messages «Permisos de mensajes» shows; `None`
+    /// for all of them, as at first.
+    pub dm_server: Option<ServerId>,
 }
 
 /// Whether the host should hand its next key press to [`record_key`].
@@ -982,9 +977,7 @@ fn go_to_section(
     }
     ui.settings = Some(page);
     let state = &mut ui.settings_state;
-    state.name = None;
     state.select = None;
-    state.accent_hex = None;
     state.recording = None;
     state.jumped = None;
     state.section = None;
@@ -1036,8 +1029,6 @@ pub fn update(
                     state.section = None;
                     state.jumped = None;
                 }
-                NAME => state.name = Some(value.clone()),
-                ACCENT_HEX => state.accent_hex = Some(value.clone()),
                 crate::call_sounds::FOLDER => ui.call_sounds.typed = Some(value.clone()),
                 _ => {}
             }
@@ -1048,24 +1039,7 @@ pub fn update(
                 Some(page) => go_to_page(ui, store, page),
                 None => Vec::new(),
             },
-            NAME => save_name(ui, store),
             crate::call_sounds::FOLDER => crate::call_sounds::use_folder(ui),
-            ACCENT_HEX => {
-                let typed = ui.settings_state.accent_hex.take().unwrap_or_default();
-                match parse_hex(&typed) {
-                    Some(color) => edit_profile(
-                        store,
-                        ProfileEdit {
-                            accent: Some(color),
-                            ..ProfileEdit::default()
-                        },
-                    ),
-                    None => {
-                        ui.settings_state.accent_hex = Some(typed);
-                        Vec::new()
-                    }
-                }
-            }
             _ => Vec::new(),
         }),
         UiAction::SliderChanged {
@@ -1138,48 +1112,6 @@ fn slid(ui: &mut Ui, id: &str, fraction: f32, committed: bool) -> Vec<Intent> {
     } else {
         Vec::new()
     }
-}
-
-/// Send what the display name field holds, if it changed.
-fn save_name(ui: &mut Ui, store: &Store) -> Vec<Intent> {
-    let Some(typed) = ui.settings_state.name.take() else {
-        return Vec::new();
-    };
-    let Some(me) = store.me_user() else {
-        return Vec::new();
-    };
-    let typed = typed.trim();
-    let name = (!typed.is_empty() && typed != me.name).then(|| typed.to_owned());
-    if name == me.display_name {
-        return Vec::new();
-    }
-    edit_profile(
-        store,
-        ProfileEdit {
-            display_name: Some(name),
-            ..ProfileEdit::default()
-        },
-    )
-}
-
-/// Why the profile cannot be edited, when it cannot.
-pub(crate) fn profile_locked(store: &Store) -> Option<&'static str> {
-    if store.me_user().is_none() {
-        return Some(t("La cuenta todavía no se conectó."));
-    }
-    let editable = store
-        .provider
-        .as_ref()
-        .is_some_and(|info| info.capabilities.edit_profile);
-    (!editable).then_some(t("Este proveedor no permite editar el perfil."))
-}
-
-/// Ask the provider to change the profile; nothing shows until it answers.
-fn edit_profile(store: &Store, edit: ProfileEdit) -> Vec<Intent> {
-    if profile_locked(store).is_some() {
-        return Vec::new();
-    }
-    vec![Intent::Command(Command::EditProfile(edit))]
 }
 
 /// Reset both controlled state and the input retained by limn for a new query.
@@ -1297,9 +1229,6 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
     if let Some(intents) = pages::cosmetics::clicked(ui, rest) {
         return intents;
     }
-    if let Some(hex) = rest.strip_prefix("accent:") {
-        return accent(ui, store, hex);
-    }
     if let Some(privacy) = rest.strip_prefix("privacy:") {
         // A choice closes the list it was made in.
         ui.settings_state.select = None;
@@ -1321,11 +1250,17 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
             ("explicit-servers", _) => Some("explicit-servers"),
             ("explicit-friends", _) => Some("explicit-friends"),
             ("explicit-others", _) => Some("explicit-others"),
+            ("dm-server", _) => Some("dm-server"),
             _ => None,
         };
         return Vec::new();
     }
     ui.settings_state.select = None;
+    if let Some(server) = rest.strip_prefix("dm-server=") {
+        // «all», or a server's ID.
+        ui.settings_state.dm_server = server.parse().ok().map(ServerId);
+        return Vec::new();
+    }
     // The microphone test's help: the diagnostics, opened, at the page's end.
     if rest == "diagnostics" {
         let folds = &mut ui.settings_state.folds;
@@ -1367,28 +1302,6 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
                 },
                 Intent::Focus(SEARCH.into()),
             ]
-        }
-        "name:edit" => {
-            if profile_locked(store).is_some() {
-                return Vec::new();
-            }
-            let shown = store
-                .me_user()
-                .map(|me| me.shown_name().to_owned())
-                .unwrap_or_default();
-            ui.settings_state.name = Some(shown.clone());
-            vec![
-                Intent::SetInput {
-                    id: NAME.into(),
-                    value: shown,
-                },
-                Intent::Focus(NAME.into()),
-            ]
-        }
-        "name:save" => save_name(ui, store),
-        "name:cancel" => {
-            ui.settings_state.name = None;
-            Vec::new()
         }
         "mic-default" => choose_microphone(ui, None),
         "speaker-default" => crate::profile::choose_output(ui, None),
@@ -1631,78 +1544,9 @@ fn choose_microphone(ui: &mut Ui, id: Option<String>) -> Vec<Intent> {
     intents
 }
 
-/// The avatar's color: a preset, the field for one's own, or closing it.
-fn accent(ui: &mut Ui, store: &Store, what: &str) -> Vec<Intent> {
-    match what {
-        "custom" => {
-            let current = store
-                .me_user()
-                .map(|me| rustcord_components::server_settings::hex(me.accent))
-                .unwrap_or_default();
-            ui.settings_state.accent_hex = Some(current.clone());
-            vec![
-                Intent::SetInput {
-                    id: ACCENT_HEX.into(),
-                    value: current,
-                },
-                Intent::Focus(ACCENT_HEX.into()),
-            ]
-        }
-        "dismiss" => {
-            ui.settings_state.accent_hex = None;
-            Vec::new()
-        }
-        hex => match parse_hex(hex) {
-            Some(color) => {
-                ui.settings_state.accent_hex = None;
-                edit_profile(
-                    store,
-                    ProfileEdit {
-                        accent: Some(color),
-                        ..ProfileEdit::default()
-                    },
-                )
-            }
-            None => Vec::new(),
-        },
-    }
-}
-
-/// Letting go of the avatar color's picker (its field or its hue bar) asks
-/// for the color it shows, as Enter in its hex field does: the color is the
-/// provider's, and each move before would be a request. It stays open.
-pub(crate) fn picker_released(ui: &Ui, store: &Store, action: &UiAction) -> Vec<Intent> {
-    let (UiAction::AreaSliderChanged {
-        id,
-        committed: true,
-        ..
-    }
-    | UiAction::SliderChanged {
-        id,
-        committed: true,
-        ..
-    }) = action
-    else {
-        return Vec::new();
-    };
-    if id.rsplit_once(':').map(|(picker, _)| picker) != Some(ACCENT) {
-        return Vec::new();
-    }
-    match ui.settings_state.accent_hex.as_deref().and_then(parse_hex) {
-        Some(color) if store.me_user().is_some_and(|me| me.accent != color) => edit_profile(
-            store,
-            ProfileEdit {
-                accent: Some(color),
-                ..ProfileEdit::default()
-            },
-        ),
-        _ => Vec::new(),
-    }
-}
-
 /// Esc while the settings are open closes what floats in them first: a
-/// list, the color field, the name being written, the question to sign out;
-/// then the settings, unless the profile has changes not saved.
+/// list or the question to sign out; then the settings, unless the profile
+/// has changes not saved.
 pub fn intercept(ui: &mut Ui, store: &Store, event: &UiEvent) -> Option<Vec<Intent>> {
     ui.settings?;
     // A dialog over the settings, such as the nickname's, takes the key.
@@ -1719,11 +1563,7 @@ pub fn intercept(ui: &mut Ui, store: &Store, event: &UiEvent) -> Option<Vec<Inte
         return None;
     }
     let state = &mut ui.settings_state;
-    if state.select.take().is_some()
-        || state.accent_hex.take().is_some()
-        || state.name.take().is_some()
-        || std::mem::take(&mut state.log_out_asked)
-    {
+    if state.select.take().is_some() || std::mem::take(&mut state.log_out_asked) {
         return Some(Vec::new());
     }
     if !crate::profile::may_leave(ui, store) {
