@@ -59,7 +59,8 @@ const SELECT_GAP: f32 = 8.0;
 
 /// Every hint, as Discord's: 70 ms after the pointer rests, 14 px medium
 /// text 8 × 12 inside a body rounded 8, a rounded pointer 16 wide and 10
-/// deep, growing from 0.95 on a spring a little past full size and back,
+/// deep that the body's ring ([`Look::tooltip_style`]) goes on round as one
+/// outline, growing from 0.95 on a spring a little past full size and back,
 /// settled after 200 ms and opaque after about 55, as measured on Discord's.
 pub const HINT: TooltipOptions = TooltipOptions {
     delay_ms: 70,
@@ -278,7 +279,8 @@ impl Look {
     }
 
     /// Every hint's colors: the floating black of [`Self::hint`], the ring
-    /// of floating surfaces, the text and its muted ink, and their shadow.
+    /// of floating surfaces (border-subtle) round its body and its pointer,
+    /// the text and its muted ink, and their shadow.
     pub fn tooltip_style(&self) -> TooltipStyle {
         TooltipStyle {
             background: self.hint(),

@@ -127,7 +127,10 @@ Measured motion (20 px icons):
   `0 12 24` black at 24 %; padding 8×12. Text 14/18 medium `#dcdcdf`
   (a server's: 16/20 semibold, with its rows 12/16 under it). One line is
   34 high.
-- Caret: a rounded triangle 16 wide, 10 deep (10×16 sideways), in the fill.
+- Caret: a rounded triangle 16 wide, 10 deep (10×16 sideways), in the fill,
+  the body's ring going on round it with no line across its base (the
+  pointer is drawn twice, `.tooltipPointerBg::before` in the fill and
+  `::after` in the border color, offset).
 - Entry: after ~70 ms of hover it scales 0.95 → 1 with a slight spring
   (overshoot 1.006) while fading 0 → 1 in ~70 ms.
 
