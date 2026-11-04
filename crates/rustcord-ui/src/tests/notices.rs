@@ -84,6 +84,19 @@ fn center(rect: Rect) -> Point {
     Point::new(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0)
 }
 
+/// Scroll the row of chosen files to its start or its end, as a wheel over
+/// it does.
+fn scroll_files(host: &mut Host, channel: ChannelId, window: Size, end: bool) {
+    let files = format!("composer:{channel}:uploads");
+    let row = region(&layout(host, window), &files, HitKind::Scroll);
+    for _ in 0..20 {
+        host.tree.handle_event(UiEvent::ScrollDirect {
+            position: center(row),
+            delta_y: if end { -400.0 } else { 400.0 },
+        });
+    }
+}
+
 fn draft_controls(frame: &Frame, channel: ChannelId) -> Vec<Rect> {
     vec![
         region(frame, &editor_id(channel), HitKind::TextArea),
@@ -125,8 +138,7 @@ fn an_unsupported_drop_notice_leaves_multiline_reply_and_eight_files_visible() {
         assert_eq!(host.ui.uploads.drafts[&channel].len(), 8);
         for (token, end) in [(1, false), (8, true)] {
             if end {
-                host.tree
-                    .scroll_to_end(&format!("composer:{channel}:uploads"));
+                scroll_files(&mut host, channel, window, true);
             }
             let frame = layout(&mut host, window);
             let id = format!("composer:{channel}:upload:{token}:remove");
@@ -412,13 +424,8 @@ fn notices_leave_the_live_draft_reachable_at_the_minimum_desktop_size() {
         frame.hit_test(center(editor)),
         Some(editor_id(channel).as_str())
     );
-    let files = format!("composer:{channel}:uploads");
     for (token, end) in [(1, false), (8, true)] {
-        if end {
-            host.tree.scroll_to_end(&files);
-        } else {
-            host.tree.scroll_to_start(&files);
-        }
+        scroll_files(&mut host, channel, window, end);
         let frame = layout(&mut host, window);
         let id = format!("composer:{channel}:upload:{token}:remove");
         let remove = region(&frame, &id, HitKind::Button);

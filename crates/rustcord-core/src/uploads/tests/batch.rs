@@ -41,6 +41,7 @@ fn token(uploads: &Uploads, account: UserId, channel: ChannelId, id: u64) {
                 size_bytes: 4,
             },
             path: None,
+            bytes: bytes::Bytes::new(),
         },
     );
 }

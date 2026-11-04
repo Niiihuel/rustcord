@@ -107,6 +107,10 @@ struct TokenControl {
     metadata: PendingAttachment,
     /// Where it was read from, when it has a path: a draft keeps it.
     path: Option<PathBuf>,
+    /// Its bytes, shared with the actor's payload, for its picture's
+    /// thumbnail. The actor's entry outlives this one, so dropping it under
+    /// the lock never frees the buffer.
+    bytes: bytes::Bytes,
 }
 
 #[derive(Default)]
@@ -377,6 +381,17 @@ impl Uploads {
         files: Vec<rustcord_storage::DraftFile>,
     ) -> Result<(), UploadError> {
         self.prepare(request, channel, PickInput::Restore(files))
+    }
+
+    /// The bytes of the file prepared under a token, to draw its picture.
+    pub(super) fn previews(&self) -> Box<dyn Fn(UploadToken) -> Option<bytes::Bytes> + Send> {
+        let shared = self.shared.clone();
+        Box::new(move |token| {
+            let control = shared
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            Some(control.tokens.get(&token)?.bytes.clone())
+        })
     }
 
     /// Where the files `tokens` of `channel`'s draft were read from, in

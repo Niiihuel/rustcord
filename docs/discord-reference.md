@@ -330,3 +330,56 @@ Measured on the friends home (`/channels/@me`), tabs «En línea», «Todos»,
   No gap above it (cards have 12).
 - Cards (`.refresh-active-now`): radius 16, 12 apart, shadow `0 1 4`
   black 14 %, clipped. Not re-measured here: no friend was active.
+
+## Composer attachments
+
+Measured by pasting synthetic pictures (a canvas gradient as a `File` in a
+`paste` event on the editor) and a text file into a channel's composer,
+sampling the composer every animation frame from the paste, and removing
+every staged file afterwards; nothing was sent.
+
+- Where: inside the composer box (fill `#101013`, radius 8, 1 px border
+  `#9696a0` at 20 %), above the editor's row, in the same box: no
+  hairline between them. A horizontal list (`ul`, `overflow-x: auto`,
+  ghost scrollbar shown only when it overflows), padding 20 10 10, cards
+  24 apart, never wrapping. The box grows by the list's 248 (20 + 218 +
+  10): 68 → 316 high. Its own scrollbar sits under the cards when they
+  pass the width.
+- Card (`.upload`): 218 × 218 (200 content, padding 8, border 1 px
+  `#96969f` at 24 %), radius 8, fill `#0a0a0c` (`--background-surface-high`),
+  shadow `0 1 4` black at 14 %. A flex column: the media, then the
+  filename 26 high (8 margin, then 14/18 `#d4d5d8`, one line with an
+  ellipsis). The media and the filename both take `margin-top: auto`, so
+  the media is centred in the 174 left above the filename.
+- Media of a picture: a box the card's full 200 wide and as high as the
+  picture fitted to that width without enlarging it, at most 174
+  (400 × 300 → 200 × 150; 300 × 800 → 200 × 174; 40 × 30 → 200 × 30).
+  The box is filled `#94949c` at 12 % (the spoiler container's
+  background), radius 8; the picture is drawn `object-fit: contain`,
+  centred, never enlarged, radius 8. A picture narrower than the box
+  shows that fill on its sides.
+- Loading: no shimmer and no spinner. The card appears 20–130 ms after
+  the paste (longer for bigger files; Discord reads the file first), and
+  until the picture is decoded the box is that same static `#94949c` 12 %
+  fill, radius 8, at the picture's size once its header is read (0 high
+  before). A 400 × 300 PNG was drawn 5 ms after its card appeared; a
+  5000 × 3600 one (16.8 MB) about 50 ms after. Nothing animates and
+  there is no upload progress in the card: the bytes go only when the
+  message is sent.
+- Other files: the media is Discord's file-type art (a document page for
+  text) 200 × 144, centred above the filename; same card.
+- Actions: always shown (not only on hover), a bar 96 × 32 at the card's
+  top right, moved by `translate(25%, -25%)` so it hangs over the corner
+  (its top 8 above the content, 1 inside the card's top edge; its right
+  edge 24 past the content, 15 past the card's). Fill `#17181b`, radius 4, shadow `0 0 0 1` white at 8 % and
+  `0 1 4` black at 14 %. Three 32 × 32 buttons with 20 px icons
+  `#96979e`: «Archivo adjunto de spoiler» (eye), «Modificar archivo
+  adjunto» (pencil), «Eliminar archivo adjunto» (trash, `#eb5f5e`).
+  Hover: fill `#94949c` at 12 %; the card itself does not change.
+- A file past the account's limit (20 MB) never becomes a card: a modal
+  «Ups, este archivo supera el tamaño máximo.» opens instead.
+- Rustcord draws these cards with only the remove button (it has no
+  spoiler or editor for a file), the picture decoded on this device from
+  the prepared bytes. While it decodes, the fill takes the whole media
+  area, its size not known yet. Under a window 760 high the cards shrink
+  with it, so the editor stays in view.

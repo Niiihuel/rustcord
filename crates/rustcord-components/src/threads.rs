@@ -127,6 +127,8 @@ pub struct PostFiles {
     /// The forum, for the IDs of the list's controls.
     pub forum: u64,
     pub files: Vec<rustcord_model::PendingAttachment>,
+    /// What each of `files` shows on its card.
+    pub thumbnails: Vec<crate::uploads::Thumbnail>,
     /// The choice being prepared, while it runs.
     pub picking: Option<u64>,
     /// The post was asked for: nothing changes until the answer.
@@ -463,19 +465,27 @@ fn post_files(files: &PostFiles, look: &Look) -> Element {
     }
     let mut parts = vec![Element::row(row).gap(10.0)];
     if !files.files.is_empty() || files.picking.is_some() {
-        parts.push(crate::uploads::draft_uploads(
-            crate::uploads::DraftUploads {
-                channel: rustcord_model::ChannelId(files.forum),
-                files: &files.files,
-                picking: files.picking,
-                selecting: files.picking.is_some(),
-                cancelling: false,
-                submitting: files.waiting,
-                width: WIDTH - 48.0,
-                max_list_height: 120.0,
-            },
-            look,
-        ));
+        parts.push(
+            Element::panel(crate::uploads::draft_uploads(
+                crate::uploads::DraftUploads {
+                    channel: rustcord_model::ChannelId(files.forum),
+                    files: &files.files,
+                    thumbnails: files.thumbnails.clone(),
+                    picking: files.picking,
+                    selecting: files.picking.is_some(),
+                    cancelling: false,
+                    submitting: files.waiting,
+                    width: WIDTH - 68.0,
+                    max_list_height: 120.0,
+                },
+                look,
+            ))
+            .padding(10.0)
+            .size(Some(WIDTH - 48.0), None)
+            .background(look.card)
+            .border(look.border, 1.0)
+            .radius(8.0),
+        );
     }
     if let Some((sent, total)) = files.progress {
         let value = if total == 0 {
@@ -667,6 +677,7 @@ mod tests {
                     filename: "lente.jpg".into(),
                     size_bytes: 2048,
                 }],
+                thumbnails: Vec::new(),
                 picking: None,
                 waiting: false,
                 denied: None,

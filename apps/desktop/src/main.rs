@@ -10,7 +10,8 @@
 //! capture a given state. Mock captures also accept `--capture-draft <text>`
 //! and `--capture-hover` to exercise the editor beside the last message, or
 //! `--capture-hover-id <id>` to hold the pointer over a control, its hint open;
-//! `--action shift` holds Shift.
+//! `--action shift` holds Shift; `--action decoding` keeps the pictures of
+//! staged files decoding, their cards' placeholder shown.
 
 // Windows: a window, not a console program; what Rustcord writes
 // to stderr goes to its log file (`log.rs`). Tests keep their console.
@@ -929,6 +930,9 @@ struct Capture {
     hover_id: Option<String>,
     /// `--action shift`: Shift held, as limn says it.
     hold_shift: bool,
+    /// `--action decoding`: the pictures of the files chosen for a message
+    /// are never asked for, so their cards stay as they are while decoding.
+    decoding: bool,
     /// Wait for a native drop and capture its rejection after the usual interval.
     file_drop: Option<DropCapture>,
     attachments: bool,
@@ -1373,6 +1377,7 @@ impl App {
                 channel: arguments.channel,
                 // Read before `actions` takes them.
                 hold_shift: arguments.actions.iter().any(|action| action == "shift"),
+                decoding: arguments.actions.iter().any(|action| action == "decoding"),
                 actions: arguments.actions,
                 draft: arguments.capture_draft,
                 hover_last_message: arguments.capture_hover,
@@ -3789,8 +3794,9 @@ impl App {
                 // `{open}` names the conversation open, as in `after:`.
                 let open = self.ui.channel().map_or(0, |channel| channel.0);
                 let id = id.replace("{open}", &open.to_string());
-                // `shift` is held in every frame (`Capture::hold_shift`).
-                if id == "shift" {
+                // `shift` is held in every frame (`Capture::hold_shift`), and
+                // `decoding` holds the staged pictures back.
+                if id == "shift" || id == "decoding" {
                     continue;
                 }
                 // `own-stream` makes the account's share live as the flow does
@@ -3801,7 +3807,8 @@ impl App {
                     continue;
                 }
                 // `file:{path}` prepares a file for the open conversation or
-                // forum, from its path, as the selector would.
+                // forum, from its path, as the selector would; several paths
+                // go joined by `|`, as one choice.
                 if let (Some(path), Some(channel)) = (id.strip_prefix("file:"), self.ui.channel()) {
                     if let Ok(request) = rustcord_ui::begin_attachment_import(
                         &mut self.ui,
@@ -3812,7 +3819,7 @@ impl App {
                         let _ = self.client.prepare_attachment_paths(
                             request,
                             channel,
-                            vec![path.into()],
+                            path.split('|').map(Into::into).collect(),
                         );
                     }
                     continue;
@@ -4705,6 +4712,13 @@ impl eframe::App for App {
             .and_then(|capture| capture.fixture.as_ref());
         if let Some((source, _)) = fixture {
             wanted.retain(|image| image != source);
+        }
+        if self
+            .capture
+            .as_ref()
+            .is_some_and(|capture| capture.decoding)
+        {
+            wanted.retain(|image| rustcord_model::UploadToken::previewed(image).is_none());
         }
         // Pictures on disk: the person's budgets as they
         // change, and what it takes for the settings.

@@ -351,7 +351,7 @@ pub fn with_effect(
 
 /// The size a PNG says in its header, read from the start of its base64:
 /// pictures arrive normalized to PNG, but a picture does not carry its size.
-fn png_size(image: &RasterImage) -> Option<(u32, u32)> {
+pub(crate) fn png_size(image: &RasterImage) -> Option<(u32, u32)> {
     let digit = |c: u8| match c {
         b'A'..=b'Z' => Some(c - b'A'),
         b'a'..=b'z' => Some(c - b'a' + 26),
@@ -998,7 +998,7 @@ pub fn clock(seconds: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::{frame, texts};
+    use crate::testing::{frame, png, texts};
     use limn::Size;
 
     fn image() -> RasterImage {
@@ -1060,31 +1060,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(after.x, 58.0);
-    }
-
-    /// A PNG of `width` by `height` as a picture: only its header matters.
-    fn png(width: u32, height: u32) -> RasterImage {
-        let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
-        bytes.extend(width.to_be_bytes());
-        bytes.extend(height.to_be_bytes());
-        const DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        let base64: String = bytes
-            .chunks(3)
-            .flat_map(|chunk| {
-                let n = u32::from(chunk[0]) << 16
-                    | u32::from(*chunk.get(1).unwrap_or(&0)) << 8
-                    | u32::from(*chunk.get(2).unwrap_or(&0));
-                (0..4).map(move |k| DIGITS[(n >> (18 - 6 * k) & 63) as usize] as char)
-            })
-            .collect();
-        RasterImage::new(
-            "3".repeat(64),
-            limn::RasterImageFormat::Png,
-            24,
-            std::sync::Arc::from(base64.as_str()),
-            "x",
-        )
-        .unwrap()
     }
 
     #[test]
