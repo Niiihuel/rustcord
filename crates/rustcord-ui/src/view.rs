@@ -55,6 +55,8 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     // Every text written from here on, rows built during layout included.
     rustcord_i18n::set_thread(Some(ui.language()));
     let look = &ui.look();
+    // Every hint and floating surface built from here on, in this look.
+    limn::set_tokens(look.tokens());
     // Until the session is loaded: Rustcord's mark and the stage it is in.
     if crate::splash::visible(store) {
         let root = with_notices(

@@ -2,16 +2,34 @@
 //! palettes limn's components take. The accent is Discord's brand blurple, as
 //! the owner authorized on 2026-11-04 (see `docs/discord-reference.md`).
 
-use limn::{Color, ComponentPalette, ContextMenuMetrics, ScrollbarAppearance};
+use limn::{
+    BoxShadow, Color, ComponentPalette, ContextMenuMetrics, FontFamily, Point, Radius,
+    ScrollbarAppearance, Select, SelectVariant, Size, Tokens, TooltipOptions, TooltipShape,
+    TooltipStyle,
+};
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{Rgb, Status};
 
+/// The edge of Discord's floating surfaces (menus, lists, hints): its
+/// `#9595a2` at 20 %, over whatever fill they have.
+const RING: Color = Color::rgba(149, 149, 162, 51);
+
+/// The shadow under Discord's floating surfaces: black at 24 %, 12 below,
+/// blurred 24.
+const FLOATING_SHADOW: BoxShadow = BoxShadow {
+    color: Color::rgba(0, 0, 0, 61),
+    offset: Point::new(0.0, 12.0),
+    blur: 24.0,
+    spread: 0.0,
+};
+
 /// The density of every context menu, as Discord's menus:
-/// rows of at least 32 with 14 px labels, 8 around the rows and 8 on each
-/// side of a separator.
+/// rows of at least 34 with 14 px medium labels, 8 around the rows and 8 on
+/// each side of a separator, the ring and shadow of its floating surfaces.
 pub const MENU_METRICS: ContextMenuMetrics = ContextMenuMetrics {
-    row_height: 32.0,
+    row_height: 34.0,
     label_size: 14.0,
+    label_font_family: FontFamily::SansMedium,
     detail_size: 12.0,
     inset: 8.0,
     horizontal_padding: 8.0,
@@ -20,6 +38,43 @@ pub const MENU_METRICS: ContextMenuMetrics = ContextMenuMetrics {
     scrollbar_gutter: 14.0,
     header_height: 24.0,
     max_height: 480.0,
+    row_radius: None,
+    border: Some(RING),
+    shadow: Some(FLOATING_SHADOW),
+};
+
+/// An open select's list, as Discord's: 44 px options of 16 px text with 12
+/// at their sides, flush with the list, whose corners clip them.
+const SELECT_METRICS: ContextMenuMetrics = ContextMenuMetrics {
+    row_height: 44.0,
+    label_size: 16.0,
+    horizontal_padding: 12.0,
+    inset: 0.0,
+    row_radius: Some(0.0),
+    ..MENU_METRICS
+};
+
+/// The space between a select and its open list.
+const SELECT_GAP: f32 = 8.0;
+
+/// Every hint, as Discord's: 70 ms after the pointer rests, 14 px medium
+/// text 8 × 12 inside a body rounded 8, a rounded pointer 16 wide and 10
+/// deep, growing from 0.95 as it fades in over 70 ms.
+pub const HINT: TooltipOptions = TooltipOptions {
+    delay_ms: 70,
+    title_font_size: 14.0,
+    title_font_family: FontFamily::SansMedium,
+    shape: Some(TooltipShape {
+        radius: 8.0,
+        padding_x: 12.0,
+        padding_y: 8.0,
+        shadow_offset: FLOATING_SHADOW.offset,
+        shadow_blur: FLOATING_SHADOW.blur,
+        caret: Size::new(16.0, 10.0),
+    }),
+    open_scale: 0.95,
+    enter_ms: Some(70),
+    ..TooltipOptions::DEFAULT
 };
 
 /// [`MENU_METRICS`] for a menu that may grow as tall as `room` less 32, as
@@ -196,6 +251,55 @@ impl Look {
         ComponentPalette {
             raised: self.raised,
             ..self.palette_on(self.menu)
+        }
+    }
+
+    /// `select` as Discord's: a 40 px field rounded 8 with 16 px text, its
+    /// border `#9595a2` at 44 % on focus and while open; its list 8 below in 44 px options flush
+    /// with the list's corners, the choice on `#96969f` at 24 % and checked
+    /// in the accent, the others muted. A call site can still change the
+    /// trigger after it.
+    pub fn select(&self, select: Select) -> Select {
+        select
+            .variant(SelectVariant::Field)
+            .height(40.0)
+            .radius(8.0)
+            .font_size(16.0)
+            .outline(self.border, Color::rgba(149, 149, 162, 112))
+            .menu_palette(ComponentPalette {
+                selected: Color::rgba(150, 150, 159, 61),
+                ..self.menu_palette()
+            })
+            .menu_metrics(SELECT_METRICS)
+            .menu_gap(SELECT_GAP)
+            .filled_choice(self.accent, self.on_accent)
+    }
+
+    /// Every hint's colors: the floating black of [`Self::hint`], the ring
+    /// of floating surfaces, the text and its muted ink, and their shadow.
+    pub fn tooltip_style(&self) -> TooltipStyle {
+        TooltipStyle {
+            background: self.hint(),
+            border: RING,
+            keycap: self.selected,
+            text: self.text,
+            muted: self.muted,
+            shadow: FLOATING_SHADOW.color,
+        }
+    }
+
+    /// limn's shape and pace for this look: Discord's floating surfaces
+    /// rounded 8 and its hints ([`HINT`], [`Self::tooltip_style`]). Set once
+    /// for each frame, before the tree is built.
+    pub fn tokens(&self) -> Tokens {
+        Tokens {
+            radius: Radius {
+                surface: 8.0,
+                ..Radius::DEFAULT
+            },
+            tooltip: Some(self.tooltip_style()),
+            tooltip_options: HINT,
+            ..Tokens::DEFAULT
         }
     }
 

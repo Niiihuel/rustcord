@@ -8,8 +8,7 @@
 
 use limn::{
     AlertDialog, Button, ButtonVariant, Color, Component, DropdownOption, Element, Icon, Kbd,
-    ListRow, Modal, PopoverPlacement, ScrollArea, SearchField, Select, SelectVariant, Size,
-    TextField,
+    ListRow, Modal, PopoverPlacement, ScrollArea, SearchField, Select, Size, TextField,
 };
 use rustcord_components::quick_voice as quick;
 use rustcord_components::server_settings::{swatches, swatches_width, Swatches};
@@ -1643,25 +1642,21 @@ fn select(
                 .enabled(*enabled)
         })
         .collect();
-    let (border, focus) = parts::field_outline(ctx.look);
-    Select::new(
-        format!("us:select:{name}"),
-        current,
-        choices,
-        ctx.ui.settings_state.select == Some(name),
-        "us:select:dismiss",
-        ctx.look.palette(),
-    )
-    .menu_palette(ctx.look.menu_palette())
-    .variant(SelectVariant::Field)
-    .size(limn::ControlSize::Spacious)
-    .accessibility_label(label)
-    .width(width)
-    .menu_width(width)
-    .height(parts::FIELD_HEIGHT)
-    .outline(border, focus)
-    .radius(parts::FIELD_RADIUS)
-    .render()
+    ctx.look
+        .select(Select::new(
+            format!("us:select:{name}"),
+            current,
+            choices,
+            ctx.ui.settings_state.select == Some(name),
+            "us:select:dismiss",
+            ctx.look.palette(),
+        ))
+        .size(limn::ControlSize::Spacious)
+        .accessibility_label(label)
+        .width(width)
+        .menu_width(width)
+        .height(parts::FIELD_HEIGHT)
+        .render()
 }
 
 /// The display name: what it is and a button to change it, or the field
@@ -2038,24 +2033,20 @@ fn camera(ctx: &Ctx) -> Element {
             .map_or(id, |(_, name)| name.as_str())
     });
     let width = ctx.geometry.column.min(480.0);
-    let (border, focus) = parts::field_outline(look);
-    let select = Select::new(
-        "us:select:camera",
-        current,
-        options,
-        ui.settings_state.select == Some("camera"),
-        "us:select:dismiss",
-        look.palette(),
-    )
-    .menu_palette(look.menu_palette())
-    .icon(Icon::Video)
-    .accessibility_label(t("Cámara"))
-    .width(width)
-    .menu_width(width)
-    .height(parts::FIELD_HEIGHT)
-    .outline(border, focus)
-    .radius(parts::FIELD_RADIUS)
-    .render();
+    let select = look
+        .select(Select::new(
+            "us:select:camera",
+            current,
+            options,
+            ui.settings_state.select == Some("camera"),
+            "us:select:dismiss",
+            look.palette(),
+        ))
+        .icon(Icon::Video)
+        .accessibility_label(t("Cámara"))
+        .width(width)
+        .menu_width(width)
+        .render();
     let size = Size::new(width, width * 9.0 / 16.0);
     let picture = match video.camera.live.frame().filter(|_| video.testing) {
         Some((w, h)) => {
