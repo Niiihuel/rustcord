@@ -209,13 +209,17 @@ pub fn progress(stage: &Stage, look: &Look) -> Option<Element> {
             .gap(6.0)
         }
         Stage::Installing => Element::row(vec![
-            Spinner::new("update:installing", look.accent).render(),
-            line(t("Instalando…"), 12.0, look.muted),
+            Spinner::new("update:installing", look.accent)
+                .render()
+                .centered_y(),
+            line(t("Instalando…"), 12.0, look.muted).centered_y(),
         ])
         .gap(8.0),
         Stage::Restarting => Element::row(vec![
-            Spinner::new("update:restarting", look.accent).render(),
-            line(t("Reiniciando Rustcord…"), 12.0, look.muted),
+            Spinner::new("update:restarting", look.accent)
+                .render()
+                .centered_y(),
+            line(t("Reiniciando Rustcord…"), 12.0, look.muted).centered_y(),
         ])
         .gap(8.0),
         Stage::Installed => line(
@@ -360,15 +364,19 @@ fn card_body(stage: Option<&Stage>, error: Option<&str>, look: &Look) -> Option<
         }
         Some(Stage::Installing) => Some(
             Element::row(vec![
-                Spinner::new("update:installing", look.accent).render(),
-                line(t("Instalando…"), 12.0, look.muted),
+                Spinner::new("update:installing", look.accent)
+                    .render()
+                    .centered_y(),
+                line(t("Instalando…"), 12.0, look.muted).centered_y(),
             ])
             .gap(8.0),
         ),
         Some(Stage::Restarting) => Some(
             Element::row(vec![
-                Spinner::new("update:restarting", look.accent).render(),
-                line(t("Reiniciando Rustcord…"), 12.0, look.muted),
+                Spinner::new("update:restarting", look.accent)
+                    .render()
+                    .centered_y(),
+                line(t("Reiniciando Rustcord…"), 12.0, look.muted).centered_y(),
             ])
             .gap(8.0),
         ),
@@ -432,7 +440,12 @@ pub fn check_card(card: CheckCard, look: &Look) -> Element {
     parts.extend(card_body(card.stage.as_ref(), card.error.as_deref(), look));
     let mut actions = vec![Element::spacer().flex(1.0)];
     if card.busy {
-        actions.push(Spinner::new("update:busy", look.accent).render());
+        // Beside the buttons, on their middle, not their top.
+        actions.push(
+            Spinner::new("update:busy", look.accent)
+                .render()
+                .centered_y(),
+        );
     }
     actions.extend(card.actions);
     parts.push(Element::row(actions).gap(8.0));
@@ -449,6 +462,48 @@ pub fn check_card(card: CheckCard, look: &Look) -> Element {
 mod tests {
     use super::*;
     use crate::testing::frame;
+
+    #[test]
+    fn the_spinner_waits_on_the_middle_of_the_buttons() {
+        let card = check_card(
+            CheckCard {
+                title: "Buscando actualizaciones…".into(),
+                subtitle: "Instalada: Rustcord 1.1.0.".into(),
+                pill: None,
+                stage: None,
+                error: None,
+                busy: true,
+                actions: vec![limn::Button::new(
+                    ids::CHECK,
+                    "Buscar ahora",
+                    Look::DARK.accent_palette(),
+                )
+                .render()
+                .size(None, Some(32.0))],
+            },
+            &Look::DARK,
+        );
+        let (_, frame) = frame(card, Size::new(600.0, 400.0));
+        let spinner = frame
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                limn::DrawCommand::Spinner { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .expect("a spinner");
+        let button = frame
+            .regions
+            .iter()
+            .find(|region| region.id == ids::CHECK)
+            .expect("the button")
+            .rect;
+        let middle = |rect: limn::Rect| rect.y + rect.height / 2.0;
+        assert!(
+            (middle(spinner) - middle(button)).abs() <= 0.5,
+            "spinner {spinner:?}, button {button:?}"
+        );
+    }
 
     fn texts(element: Element) -> Vec<String> {
         crate::testing::texts(&frame(element, Size::new(1280.0, 800.0)).1)
