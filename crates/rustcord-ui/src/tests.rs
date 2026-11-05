@@ -992,7 +992,6 @@ fn joining_a_voice_channel_shows_the_call_at_once_and_asks_with_the_microphone_s
         .unwrap();
     host.click("me:mute");
     host.click(&format!("voice:{channel}"));
-    host.click(rustcord_components::voice::ids::JOIN);
     assert_eq!(
         host.store.call().unwrap().phase,
         rustcord_model::CallPhase::Joining
@@ -1018,7 +1017,7 @@ fn joining_a_voice_channel_shows_the_call_at_once_and_asks_with_the_microphone_s
         .painted()
         .iter()
         .any(|text| text.contains("Voz conectada (simulada)")));
-    host.click("vz:leave");
+    host.click(rustcord_components::voice::ids::PANEL_LEAVE);
     assert!(host.store.call().is_none());
     assert!(matches!(host.sent.last(), Some(Command::LeaveVoice)));
 }

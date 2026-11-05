@@ -152,9 +152,9 @@ fn every_top_bar_keeps_the_buttons_room() {
     assert_alone_in(&host.tree.layout(narrow), narrow.width);
     // A voice channel's stage.
     let room = host.channel_named("Sala común");
-    // A click previews it; «Unirse al chat de voz» joins and shows its stage.
+    // A click joins it; another, once in, shows its stage.
     host.click(&format!("voice:{room}"));
-    host.click(rustcord_components::voice::ids::JOIN);
+    host.click(&format!("voice:{room}"));
     assert_eq!(host.ui.voice.stage, Some(room));
     let frame = host.frame();
     assert_alone(&frame);

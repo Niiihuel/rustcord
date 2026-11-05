@@ -306,6 +306,10 @@ const SECTIONS: &[Section] = &[
         key: "advanced",
         title: es("Avanzado"),
         rows: &[
+            (
+                "voice-switch-warning",
+                es("advertencia aviso confirmación cambiar de canal de voz preguntar antes"),
+            ),
             // «Mostrar ajustes de diagnóstico»: Rustcord's own tests and
             // the system's side.
             (
@@ -1421,6 +1425,12 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
             t("Control automático de ganancia"),
             Some(t("Ajusta automáticamente el nivel de tu voz para mantenerlo claro y constante. No cambia el volumen del micrófono.")),
             prefs.effective_processing().automatic_gain,
+        ),
+        "voice-switch-warning" => toggle(
+            "us:voice-switch-warning",
+            t("Cambiar la advertencia del canal de voz"),
+            Some(t("Mostrar un aviso de confirmación antes de cambiar a otro canal de voz.")),
+            prefs.voice_switch_warning,
         ),
         "camera" => camera(ctx),
         // Windows has no GPU engine yet: OpenH264 always.

@@ -895,7 +895,7 @@ fn message_action(
             .as_ref()
             .is_some_and(|found| found.embeds.iter().any(|card| card.channel == Some(voice)));
         return Some(if named {
-            crate::voice::join(ui, store, voice, now)
+            crate::voice::connect(ui, store, voice, now)
         } else {
             Vec::new()
         });

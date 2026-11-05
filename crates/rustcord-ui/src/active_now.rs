@@ -627,14 +627,14 @@ pub(crate) fn update(
         return Some(crate::open_server(ui, store, Some(ServerId(server))));
     }
     if let Some(channel) = number(id, ids::JOIN) {
-        return Some(crate::voice::join(ui, store, ChannelId(channel), now));
+        return Some(crate::voice::connect(ui, store, ChannelId(channel), now));
     }
     if let Some(user) = number(id, ids::WATCH) {
         let channel = store
             .voice_state_of(UserId(user))
             .map(|state| state.channel);
         return Some(match channel {
-            Some(channel) => crate::voice::join(ui, store, channel, now),
+            Some(channel) => crate::voice::connect(ui, store, channel, now),
             None => Vec::new(),
         });
     }

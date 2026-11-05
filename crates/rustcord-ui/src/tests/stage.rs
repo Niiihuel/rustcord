@@ -28,18 +28,20 @@ fn on_a_stage_the_account_listens_raises_its_hand_and_speaks_when_invited() {
     let stage = host.channel_named("Escenario (simulado)");
     let me = host.store.me().unwrap();
     let from = host.sent.len();
-    let intents = update(
-        &mut host.ui,
-        &mut host.store,
-        &UiAction::Clicked {
-            id: format!("voice:{stage}"),
-        },
-        host.now,
-    );
-    host.run(intents);
-    // The click previews it; «Unirse al chat de voz» joins.
-    host.click(rustcord_components::voice::ids::JOIN);
+    // The click joins it, and once in, another opens its stage.
+    for _ in 0..2 {
+        let intents = update(
+            &mut host.ui,
+            &mut host.store,
+            &UiAction::Clicked {
+                id: format!("voice:{stage}"),
+            },
+            host.now,
+        );
+        host.run(intents);
+    }
     assert!(matches!(host.sent[from..], [Command::JoinVoice { channel, .. }] if channel == stage));
+    assert_eq!(host.ui.voice.stage, Some(stage));
     // The provider seats it in the audience.
     host.event(seat(&host, stage, true, None));
     host.event(Event::CallPhase {

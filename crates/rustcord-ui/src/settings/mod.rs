@@ -208,6 +208,9 @@ pub struct Prefs {
     /// Whether a call from a person's menu is asked about first; the account
     /// turns it off with «No volver a preguntar». Kept with the account.
     pub ask_before_call: bool,
+    /// Moving the call to another voice channel is asked about first, as
+    /// Discord's «Cambiar la advertencia del canal de voz». On by default.
+    pub voice_switch_warning: bool,
     /// The desktop portal's token for the screen last chosen, to share it
     /// again without its picker. It names a choice there, not a credential.
     pub screen_restore: Option<String>,
@@ -405,6 +408,7 @@ impl Default for Prefs {
             voice_volumes: BTreeMap::new(),
             hidden_video: BTreeSet::new(),
             ask_before_call: true,
+            voice_switch_warning: true,
             screen_restore: None,
             // Asked for: a notification of the system is never a surprise.
             desktop_notifications: false,
@@ -543,6 +547,7 @@ impl Prefs {
             ("echo_cancellation", flag(self.processing.echo_cancellation)),
             ("automatic_gain", flag(self.processing.automatic_gain)),
             ("system_echo", flag(self.system_echo)),
+            ("voice_switch_warning", flag(self.voice_switch_warning)),
             ("input_volume", Some(self.input_volume.to_string())),
             ("auto_sensitivity", flag(self.auto_sensitivity)),
             ("sensitivity", Some(self.sensitivity.to_string())),
@@ -627,6 +632,7 @@ impl Prefs {
             automatic_gain: flag("automatic_gain", usual.processing.automatic_gain),
         };
         self.system_echo = flag("system_echo", usual.system_echo);
+        self.voice_switch_warning = flag("voice_switch_warning", usual.voice_switch_warning);
         self.input_volume = number("input_volume")
             .filter(|value| (0.0..=rustcord_media::MAX_INPUT_VOLUME).contains(value))
             .unwrap_or(usual.input_volume);
@@ -704,6 +710,13 @@ impl Prefs {
     pub(crate) fn set_ask_before_call(&mut self, ask: bool) -> Intent {
         self.ask_before_call = ask;
         save(crate::person_menu::ASK_SETTING, ask)
+    }
+
+    /// Ask before moving the call to another voice channel, or not. Returns
+    /// what to keep.
+    pub(crate) fn set_voice_switch_warning(&mut self, on: bool) -> Intent {
+        self.voice_switch_warning = on;
+        save("voice_switch_warning", on)
     }
 
     /// The IDs of the cameras hidden, `;` between them.
@@ -1383,6 +1396,7 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
         "reactions" => flip(&mut prefs.reactions, "reactions"),
         "video-hardware" => flip(&mut prefs.video_hardware, "video_hardware"),
         "system-echo" => flip(&mut prefs.system_echo, "system_echo"),
+        "voice-switch-warning" => flip(&mut prefs.voice_switch_warning, "voice_switch_warning"),
         "image-previews" => flip(&mut prefs.image_previews, "image_previews"),
         "emoticons" => flip(&mut prefs.convert_emoticons, "convert_emoticons"),
         "developer" => flip(&mut prefs.developer, "developer"),
@@ -1651,6 +1665,8 @@ mod tests {
             hidden_video: BTreeSet::from([3]),
             // An account's setting, kept with the account (not here).
             ask_before_call: true,
+            // Off is the one that is not the default.
+            voice_switch_warning: false,
             screen_restore: Some("4f1c-portal-choice".into()),
             desktop_notifications: true,
             notification_content: false,

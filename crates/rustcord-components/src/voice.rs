@@ -12,7 +12,7 @@ use limn::{
     Color, Component, ComponentPalette, ControlSize, CornerRadii, DropdownMenu, DropdownMenuEntry,
     DropdownMenuItem, Element, FontFamily, Icon, IconButton, LineChart, Modal, Point,
     PopoverPlacement, RadiusRole, Role, ScrollArea, ScrollbarAppearance, Size, Slider, Switch,
-    Tooltip, TooltipPlacement, TooltipSpec,
+    TextSpan, Tooltip, TooltipPlacement, TooltipSpec,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{CallPhase, CallQuality, Rgb, ShareKind, StreamQuality};
@@ -143,6 +143,11 @@ pub mod ids {
     pub const PERSON_CALL: &str = "vz:person-call";
     pub const PERSON_CALL_CANCEL: &str = "vz:person-call:cancel";
     pub const PERSON_CALL_FORGET: &str = "vz:person-call:forget";
+    /// The question before moving the call to another voice channel: its
+    /// «Confirmar», its «Cancelar» (and close), and «No volver a preguntar».
+    pub const SWITCH: &str = "vz:switch";
+    pub const SWITCH_CANCEL: &str = "vz:switch:cancel";
+    pub const SWITCH_FORGET: &str = "vz:switch:forget";
     /// The arrow beside the bar's microphone: its quick voice panel,
     /// [`crate::quick_voice`].
     pub const INPUT_OPTIONS: &str = "vz:input-options";
@@ -4713,6 +4718,48 @@ pub fn call_question(root: Element, dont_ask_again: bool, look: &Look) -> Elemen
     .render()
 }
 
+/// The question before moving the call to the voice channel `channel`, over
+/// `root`, as Discord's: the channel named in bold, and «No volver a
+/// preguntar» (ticked when `dont_ask_again`) on the actions' row.
+pub fn switch_question(root: Element, channel: &str, dont_ask_again: bool, look: &Look) -> Element {
+    let palette = look.menu_palette();
+    let asked = t("Parece que estás en otro canal de voz. ¿Realmente quieres cambiar a {channel}?");
+    let (before, after) = asked.split_once("{channel}").unwrap_or((asked, ""));
+    let body = Element::formatted_text(vec![
+        TextSpan::new(before, look.text, 16.0, FontFamily::Sans),
+        TextSpan::new(channel, look.text, 16.0, FontFamily::SansBold),
+        TextSpan::new(after, look.text, 16.0, FontFamily::Sans),
+    ]);
+    let footer = Element::row(vec![
+        Checkbox::new(ids::SWITCH_FORGET, dont_ask_again, palette)
+            .label(t("No volver a preguntar"))
+            .render()
+            .centered_y(),
+        Element::spacer().flex(1.0),
+        Button::new(ids::SWITCH_CANCEL, t("Cancelar"), palette)
+            .variant(ButtonVariant::Secondary)
+            .size(ControlSize::Spacious)
+            .render(),
+        Button::new(ids::SWITCH, t("Confirmar"), look.accent_palette())
+            .size(ControlSize::Spacious)
+            .render(),
+    ])
+    .gap(9.0);
+    Modal::new(
+        root,
+        true,
+        t("¿Confirmas?"),
+        "",
+        ids::SWITCH_CANCEL,
+        palette,
+    )
+    .width(crate::friends::CONFIRM_WIDTH)
+    .body(body)
+    .footer(footer)
+    .initial_focus(ids::SWITCH)
+    .render()
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -6702,6 +6749,51 @@ mod tests {
         ] {
             assert!(clickable.contains(&id.to_owned()), "{id} in {clickable:?}");
         }
+    }
+
+    #[test]
+    fn the_switch_question_names_the_channel_in_bold_with_the_check_box_left_of_the_actions() {
+        let look = Look::ONYX;
+        let (_, laid) = frame(
+            switch_question(Element::spacer(), "Pair programming", false, &look),
+            Size::new(800.0, 600.0),
+        );
+        let shown = texts(&laid);
+        for expected in [
+            "¿Confirmas?",
+            "Parece que estás en otro canal de voz.",
+            "No volver a preguntar",
+            "Cancelar",
+            "Confirmar",
+        ] {
+            assert!(
+                shown.iter().any(|text| text.starts_with(expected)),
+                "{expected} in {shown:?}"
+            );
+        }
+        let bold = laid.commands.iter().any(|command| {
+            matches!(command, limn::DrawCommand::Text { text, font_family, .. }
+                if text.contains("Pair") && *font_family == FontFamily::SansBold)
+        });
+        assert!(bold, "the channel's name is in bold");
+        let rect = |id: &str| {
+            laid.regions
+                .iter()
+                .find(|region| region.id == id && region.kind == limn::HitKind::Button)
+                .unwrap_or_else(|| panic!("{id} is clickable"))
+                .rect
+        };
+        let (check, cancel, confirm) = (
+            rect(ids::SWITCH_FORGET),
+            rect(ids::SWITCH_CANCEL),
+            rect(ids::SWITCH),
+        );
+        assert!(check.x < cancel.x && cancel.x < confirm.x);
+        assert!(
+            (check.y + check.height / 2.0 - (confirm.y + confirm.height / 2.0)).abs() < 1.0,
+            "one row"
+        );
+        assert!(controls(&laid).contains(&format!("{}:close", ids::SWITCH_CANCEL)));
     }
 
     /// The hover's fills of `look.hover` painted in `frame`.
