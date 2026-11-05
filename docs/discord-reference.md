@@ -369,6 +369,59 @@ Read from the web bundle the desktop client cached (2026-11-04).
   icons 20 px `#96979e`; check boxes 20, radius 4, border at 64 %.
 - Separator: 1 px with 8 above and below (17 in all).
 
+## Message menu
+
+The «…» of a message's hover bar (`navId` `message-actions`) and its
+right-click menu (`message`) are one list, built by the same function;
+the right-click one adds items for a link, picture or selected text under
+the pointer. Read on own messages in a server where the account may do
+everything, with developer mode; the rest from the client's code.
+
+- Surface: the context menus' (`#121214`, radius 8, 1 px border at 20 %,
+  shadow `0 12 24` at 24 %), 222 wide; padding 8 on top, bottom and left
+  and a stable 8 px scrollbar gutter on the right, so rows are 204.
+- Quick reactions first: a grid of the four frequent emoji, padding 8, gap
+  4, 60 high; each 44 × 44, radius 8, fill `#97979f` at 12 %, the emoji
+  20 px, its `:name:` as hint. Not over a selection of text.
+- Rows 36 high, padding 8: the glyph first (20 px, `#96979e`, the label's
+  `#dcdcdf` under the pointer), 8 apart from the label (14/18 medium
+  `#dcdcdf`, 160 wide); a submenu's chevron 20 px `#81828a` at the right.
+  Under the pointer: `#97979f` at 12 %, radius 4. Danger rows: label and
+  glyph `#eb5f5e`. Separators as the context menus'.
+- A submenu opens 4 to the right, its first row level with its row,
+  as wide as its labels.
+- «…» opens it at the left of the button, their tops level (8 apart),
+  pushed up to stay in the window.
+- Groups, in order, each only when it has something (es-419):
+  1. Quick reactions; «Agregar reacción ›» (the twelve frequent emoji as
+     `:name:` with the emoji before, a separator, «Ver más» opening the
+     picker); «Ver las reacciones» when it has some.
+  2. «Editar mensaje» (own, editable), «Responder», «Reenviar», «Crear
+     hilo» (where threads can start).
+  3. «Copiar texto» (it has text), «Fijar mensaje» or
+     «Retirar mensaje» (pin permission, or a direct conversation; not in
+     voice channels), «Marcar mensaje» and «Crear recordatorio ›»
+     (bookmarks and reminders), «Apps ›» (the apps' message commands),
+     «Reenviar mensaje» (one that failed), «Marcar como no leído», «Copiar
+     enlace del mensaje», «Grabar mensaje» (text to speech; «Dejar de
+     grabar mensaje» while speaking), «Finalizar encuesta ahora» (own open
+     poll).
+  4. «Eliminar reacciones ›» and «Eliminar todas las reacciones» (manage
+     messages, with reactions), «Eliminar mensaje» (own, or manage
+     messages; a failed one is deleted here without asking; Shift skips
+     the question), «Denunciar mensaje» (others'), all danger.
+  5. «Copiar ID del mensaje» (developer mode; Shift copies
+     `channel-message`).
+- Glyphs: smile for «Agregar reacción», a face with a peeled corner for
+  «Ver las reacciones» and «Ver más», pencil, reply and forward arrows,
+  thread, copy, pin, bookmark, clock, apps, bubble with a dot, chain link,
+  speaker, clock with a cross, trash, flag, «ID» in a rounded square.
+- Shift held over a message (with neither its menu nor its picker open)
+  widens the hover bar: «Copiar ID del mensaje» (developer mode),
+  «Copiar enlace», «Marcar como no leído», «Marcar mensaje», «Fijar», then
+  reacting, replying or editing and forwarding, and «Eliminar» in red in
+  place of «…».
+
 ## Selects (dropdowns)
 
 - Closed: 40 high, radius 8, fill black at 12 %, border 1 px at 24 %

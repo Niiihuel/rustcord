@@ -13,7 +13,7 @@ use rustcord_i18n::{es, t, tr};
 use rustcord_model::{Delivery, Message, MessageId, MessageKind, Timestamp};
 
 use crate::text::{self, Names, Spoilers};
-use crate::{emoji, gap, icon, line, strong_line, Look};
+use crate::{emoji, gap, glyphs, icon, line, strong_line, Look};
 
 mod attachments;
 mod components;
@@ -243,6 +243,9 @@ pub struct Live<'a> {
     /// Shift is held: its bar shows the direct actions in place of the
     /// quick reactions, as the official client's do.
     pub shift: bool,
+    /// The window's height, which its menu may grow to as Discord's does;
+    /// `None` keeps it to the menus' usual height.
+    pub room: Option<f32>,
 }
 
 /// What the card of an invitation link knows of where it leads.
@@ -462,7 +465,7 @@ pub fn live_row(view: MessageView<'_>, live: Live<'_>, look: &Look) -> Element {
     let Some(at) = live.context.filter(|_| offers) else {
         return element;
     };
-    DropdownMenu::new(
+    message_menu(
         element,
         menu_entries(
             message,
@@ -473,10 +476,9 @@ pub fn live_row(view: MessageView<'_>, live: Live<'_>, look: &Look) -> Element {
         ),
         true,
         action(message, "context:dismiss"),
-        look.menu_palette(),
+        live.room,
+        look,
     )
-    .context_menu_style()
-    .context_metrics(crate::look::MENU_METRICS)
     .at(at)
     .render()
 }
@@ -1798,36 +1800,31 @@ fn reactions(message: &Message, can_react: bool, sample: bool, look: &Look) -> E
     Element::row(pills).gap(6.0)
 }
 
-/// The menu's choices the bar shows itself while Shift is held, in the
-/// order the bar has them; «Eliminar» then deletes without asking.
-const SHIFT_ACTIONS: [&str; 7] = [
-    "pin",
-    "unpin",
-    "unread",
-    "copy-link",
-    "copy",
-    "copy-id",
-    "delete",
-];
+/// The menu's choices the bar shows itself while Shift is held, before
+/// adding a reaction, in the official client's order; its «Eliminar» comes
+/// last, in place of «Más», and then deletes without asking.
+const SHIFT_ACTIONS: [&str; 5] = ["copy-id", "copy-link", "unread", "pin", "unpin"];
 
 /// The bar over the message's top right corner while the pointer is on it:
 /// three quick reactions, then adding a reaction, editing (own) or replying
-/// (others'), and «Más», the whole menu. With Shift held the quick
-/// reactions give way to the direct actions of [`SHIFT_ACTIONS`].
+/// (others'), and «Más», the whole menu. With Shift held, and neither the
+/// menu nor the picker open, the quick reactions give way to the direct
+/// actions of [`SHIFT_ACTIONS`] and «Más» to «Eliminar».
 fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
     let message = view.message;
     let abilities = view.abilities;
     if message.delivery.is_local() {
         return Element::spacer();
     }
-    let quick = if abilities.react && !live.shift {
+    let shift = live.shift && !live.more && !view.reacting;
+    let quick = if abilities.react && !shift {
         emoji::frequent(live.recent, 3)
     } else {
         Vec::new()
     };
     let mut bar: Vec<Element> = quick
         .iter()
-        .map(|glyph| quick_reaction(message, "quick", glyph, 28.0, look))
+        .map(|glyph| quick_reaction(message, glyph, false, look))
         .collect();
     if !bar.is_empty() {
         bar.push(
@@ -1837,8 +1834,35 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
                 .centered_y(),
         );
     }
+    // The menu's own choices, so the bar offers only what it does.
+    let offered: Vec<Choice> = if shift {
+        choices(message, abilities, view.style.copy_id)
+            .into_iter()
+            .flatten()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let direct = |what: &str| {
+        offered
+            .iter()
+            .find(|choice| choice.what == what)
+            .map(|choice| {
+                let tip =
+                    limn::TooltipSpec::new(choice.label).placement(limn::TooltipPlacement::Below);
+                MessageAction::new(action(message, what), choice.icon, choice.label).tooltip_with(
+                    match choice.hint {
+                        Some(hint) => tip.description(hint),
+                        None => tip,
+                    },
+                )
+            })
+    };
     let mut row = MessageActions::new(action(message, "actions"), look.menu_palette())
         .visibility(MessageActionsVisibility::Always);
+    for found in SHIFT_ACTIONS.iter().filter_map(|what| direct(what)) {
+        row = row.action(found);
+    }
     if abilities.react {
         row = row.action(MessageAction::new(
             action(message, "react"),
@@ -1859,28 +1883,24 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
             t("Responder"),
         ));
     }
-    if live.shift {
-        // The menu's own choices, so the bar offers only what it does.
-        let offered: Vec<Choice> = choices(message, abilities, view.style.copy_id)
-            .into_iter()
-            .flatten()
-            .collect();
-        for what in SHIFT_ACTIONS {
-            if let Some(choice) = offered.iter().find(|choice| choice.what == what) {
-                row = row.action(MessageAction::new(
-                    action(message, what),
-                    choice.icon,
-                    choice.label,
-                ));
-            }
-        }
+    let delete = direct("delete");
+    let deletes = delete.is_some();
+    if let Some(delete) = delete {
+        row = row.action(delete);
     }
-    let row = row.overflow(
-        menu_entries(message, abilities, view.style.copy_id, live.recent, look),
-        live.more,
-        t("Más"),
-    );
     bar.push(row.render().centered_y());
+    if !deletes {
+        bar.push(
+            more(
+                message,
+                menu_entries(message, abilities, view.style.copy_id, live.recent, look),
+                live.more,
+                live.room,
+                look,
+            )
+            .centered_y(),
+        );
+    }
     let panel = Element::panel(Element::row(bar).gap(2.0))
         .padding(3.0)
         .radius(8.0)
@@ -1928,20 +1948,28 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
 const BAR_RAISE: f32 = 16.0;
 
 /// A quick reaction: the emoji, with its name and what a click does on hover.
-/// `what` tells the bar's from the menu's, so each has its own ID.
-fn quick_reaction(message: &Message, what: &str, glyph: &str, side: f32, look: &Look) -> Element {
+/// The bar's (`quick`) is 28 square; the menu's (`menu-quick`), Discord's:
+/// 44 high, a quarter of its row 4 apart, rounded 8 on a grey fill, its
+/// emoji 20.
+fn quick_reaction(message: &Message, glyph: &str, in_menu: bool, look: &Look) -> Element {
+    let (what, width, side, size, radius, fill) = if in_menu {
+        ("menu-quick", QUICK_WIDTH, 44.0, 20.0, 8.0, look.hover)
+    } else {
+        ("quick", 28.0, 28.0, 28.0 * 0.62, 6.0, Color::TRANSPARENT)
+    };
     let id = action(message, &format!("{what}={glyph}"));
     let button = Element::clickable(
         id.clone(),
         crate::centered(
             Element::text(glyph.to_owned())
                 .font_family(FontFamily::Sans)
-                .font_size(side * 0.62)
+                .font_size(size)
                 .foreground(look.text),
         ),
     )
-    .size(Some(side), Some(side))
-    .radius(6.0)
+    .size(Some(width), Some(side))
+    .radius(radius)
+    .background(fill)
     .hover_background(look.selected)
     .accessibility_label(tr!("Reaccionar con {code}", code = emoji::code(glyph)));
     Tooltip::new(button, id, emoji::code(glyph), look.menu_palette())
@@ -1955,6 +1983,8 @@ struct Choice {
     label: &'static str,
     icon: Icon,
     danger: bool,
+    /// A line under the label: what it does not reach.
+    hint: Option<&'static str>,
 }
 
 const fn choice(what: &'static str, label: &'static str, icon: Icon) -> Choice {
@@ -1963,17 +1993,33 @@ const fn choice(what: &'static str, label: &'static str, icon: Icon) -> Choice {
         label,
         icon,
         danger: false,
+        hint: None,
     }
 }
 
-/// The groups of a message's menu, in order: react; edit and reply; copy,
-/// pin and mark unread; delete; and the id in developer mode.
+/// The groups of a message's menu, in the official client's order: react
+/// and see who did; edit, reply, forward and start a thread; copy, pin, send
+/// again, mark unread, copy the link, and see the poll's votes or end it;
+/// delete; and the ID in developer mode.
 fn choices(message: &Message, abilities: Abilities, copy_id: bool) -> Vec<Vec<Choice>> {
     let plain = message.kind == MessageKind::Default;
     let sent = !message.delivery.is_local();
-    let mut groups = Vec::new();
+    // Refused, or maybe lost: sent again or thrown away from here.
+    let unsent = matches!(
+        message.delivery,
+        Delivery::Failed { .. } | Delivery::Unknown { .. }
+    );
+    let mut react = Vec::new();
     if abilities.react && sent {
-        groups.push(vec![choice("react", t("Agregar reacción"), Icon::Emoji)]);
+        react.push(choice("react", t("Agregar reacción"), Icon::Emoji));
+    }
+    // Only normal reactions are listed; super reactions alone offer nothing.
+    if abilities.reaction_list && sent && message.reactions.iter().any(|r| r.count > 0) {
+        react.push(choice(
+            "reactions",
+            t("Ver las reacciones"),
+            Icon::Custom(glyphs::REACTIONS),
+        ));
     }
     let mut answer = Vec::new();
     if abilities.edit && plain && sent {
@@ -1982,76 +2028,79 @@ fn choices(message: &Message, abilities: Abilities, copy_id: bool) -> Vec<Vec<Ch
     if abilities.reply && plain && sent {
         answer.push(choice("reply", t("Responder"), Icon::Reply));
     }
-    if abilities.thread && plain && sent {
-        answer.push(choice("thread", t("Crear hilo"), Icon::Chat));
-    }
-    // Message actions: a poll is not forwarded, as in Discord.
+    // A poll is not forwarded, as in Discord.
     if abilities.forward && plain && sent && message.poll.is_none() {
-        answer.push(choice("forward", t("Reenviar"), Icon::ArrowRight));
+        answer.push(choice("forward", t("Reenviar"), Icon::Forward));
     }
-    groups.push(answer);
+    if abilities.thread && plain && sent {
+        answer.push(choice(
+            "thread",
+            t("Crear hilo"),
+            Icon::Custom(glyphs::THREAD),
+        ));
+    }
     let mut keep = Vec::new();
     if plain && !message.content.is_empty() {
         keep.push(choice("copy", t("Copiar texto"), Icon::Copy));
     }
     if abilities.pin && plain && sent {
         keep.push(if message.pinned {
-            choice("unpin", t("Desfijar mensaje"), Icon::Pin)
+            choice("unpin", t("Retirar mensaje"), Icon::Pin)
         } else {
             choice("pin", t("Fijar mensaje"), Icon::Pin)
         });
     }
+    if unsent {
+        keep.push(choice("resend", t("Reenviar mensaje"), Icon::Refresh));
+    }
     if sent {
-        keep.push(choice(
-            "unread",
-            if abilities.read_sync {
-                t("Marcar como no leído")
-            } else {
-                t("Marcar como no leído (solo en Rustcord)")
-            },
-            Icon::Unread,
-        ));
+        keep.push(Choice {
+            hint: (!abilities.read_sync).then(|| t("Solo en Rustcord")),
+            ..choice("unread", t("Marcar como no leído"), Icon::Unread)
+        });
     }
     if abilities.copy_link && sent {
         keep.push(choice(
             "copy-link",
             t("Copiar enlace del mensaje"),
-            Icon::ExternalLink,
+            Icon::Custom(glyphs::LINK),
         ));
     }
-    groups.push(keep);
-    // Message actions: who reacted and voted, and ending a poll.
-    let mut look = Vec::new();
-    // Only normal reactions are listed; super reactions alone offer nothing.
-    if abilities.reaction_list && sent && message.reactions.iter().any(|r| r.count > 0) {
-        look.push(choice("reactions", t("Ver reacciones"), Icon::Emoji));
-    }
+    // Not in Discord's menu: Rustcord shows who voted from here.
     if abilities.poll_voters && sent && message.poll.is_some() {
-        look.push(choice("voters", t("Ver votos"), Icon::ChartBar));
+        keep.push(choice("voters", t("Ver votos"), Icon::ChartBar));
     }
     if abilities.end_poll && sent && message.poll.is_some() {
-        look.push(choice("end-poll", t("Terminar encuesta"), Icon::Stop));
+        keep.push(choice(
+            "end-poll",
+            t("Finalizar encuesta ahora"),
+            Icon::Custom(glyphs::POLL_END),
+        ));
     }
-    groups.push(look);
-    if abilities.delete && sent {
-        groups.push(vec![Choice {
+    // One that was not sent is deleted here only.
+    let mut remove = Vec::new();
+    if (abilities.delete && sent) || unsent {
+        remove.push(Choice {
             danger: true,
             ..choice("delete", t("Eliminar mensaje"), Icon::Trash)
-        }]);
+        });
     }
+    let mut id = Vec::new();
     if copy_id && sent {
-        groups.push(vec![choice(
+        id.push(choice(
             "copy-id",
             t("Copiar ID del mensaje"),
-            Icon::Hash,
-        )]);
+            Icon::Custom(glyphs::ID),
+        ));
     }
+    let mut groups = vec![react, answer, keep, remove, id];
     groups.retain(|group| !group.is_empty());
     groups
 }
 
-/// The menu of «Más» and of a secondary click: four quick reactions, then
-/// the choices, «Agregar reacción» with the frequent emoji beside it.
+/// The menu of «Más» and of a secondary click, as the official client's:
+/// four quick reactions, then the choices with their glyphs, «Agregar
+/// reacción» opening the frequent emoji and «Ver más», the picker.
 fn menu_entries(
     message: &Message,
     abilities: Abilities,
@@ -2063,17 +2112,13 @@ fn menu_entries(
     if abilities.react && !message.delivery.is_local() {
         let quick = emoji::frequent(recent, 4)
             .iter()
-            .map(|glyph| {
-                Element::panel(quick_reaction(message, "menu-quick", glyph, 46.0, look))
-                    .radius(8.0)
-                    .background(look.raised)
-            })
+            .map(|glyph| quick_reaction(message, glyph, true, look))
             .collect();
         entries.push(DropdownMenuEntry::custom(
             Element::row(quick)
-                .gap(5.0)
-                .padding(4.0)
-                .size(None, Some(54.0)),
+                .gap(4.0)
+                .padding(8.0)
+                .size(None, Some(60.0)),
         ));
     }
     for (index, group) in choices(message, abilities, copy_id).into_iter().enumerate() {
@@ -2081,20 +2126,19 @@ fn menu_entries(
             entries.push(DropdownMenuEntry::Separator);
         }
         for choice in group {
-            let mut item =
-                DropdownMenuItem::new(action(message, choice.what), choice.label).icon(choice.icon);
+            // At rest Discord's glyphs are muted beside the labels.
+            let ink = if choice.danger {
+                look.danger
+            } else {
+                look.muted
+            };
+            let mut item = DropdownMenuItem::new(action(message, choice.what), choice.label)
+                .leading(icon(choice.icon, ink));
             if choice.what == "react" {
-                item = item.submenu(
-                    emoji::frequent(recent, 8)
-                        .iter()
-                        .map(|glyph| {
-                            DropdownMenuEntry::Item(DropdownMenuItem::new(
-                                action(message, &format!("menu-quick={glyph}")),
-                                format!("{glyph}  {}", emoji::code(glyph)),
-                            ))
-                        })
-                        .collect(),
-                );
+                item = item.submenu(reaction_entries(message, recent, look));
+            }
+            if let Some(hint) = choice.hint {
+                item = item.description(hint);
             }
             if choice.danger {
                 item = item.destructive(look.danger);
@@ -2103,6 +2147,98 @@ fn menu_entries(
         }
     }
     entries
+}
+
+/// «Agregar reacción»'s menu: the twelve frequent emoji by their names, and
+/// apart, «Ver más», the picker.
+fn reaction_entries(message: &Message, recent: &[String], look: &Look) -> Vec<DropdownMenuEntry> {
+    let mut entries: Vec<DropdownMenuEntry> = emoji::frequent(recent, 12)
+        .iter()
+        .map(|glyph| {
+            DropdownMenuEntry::Item(
+                DropdownMenuItem::new(
+                    action(message, &format!("react={glyph}")),
+                    emoji::code(glyph),
+                )
+                .leading(
+                    Element::text(glyph.clone())
+                        .font_family(FontFamily::Sans)
+                        .font_size(14.0)
+                        .foreground(look.text),
+                ),
+            )
+        })
+        .collect();
+    entries.push(DropdownMenuEntry::Separator);
+    entries.push(DropdownMenuEntry::Item(
+        DropdownMenuItem::new(action(message, "other-reactions"), t("Ver más"))
+            .leading(icon(Icon::Custom(glyphs::REACTIONS), look.muted)),
+    ));
+    entries
+}
+
+/// A message's menu as Discord's: its rows 36 high (for its 20 px glyphs;
+/// limn draws them at 16), and as tall as `room`, the window's height, lets
+/// it.
+fn message_menu(
+    anchor: Element,
+    entries: Vec<DropdownMenuEntry>,
+    open: bool,
+    dismiss: String,
+    room: Option<f32>,
+    look: &Look,
+) -> DropdownMenu {
+    let metrics = room.map_or(crate::look::MENU_METRICS, crate::look::menu_metrics_within);
+    DropdownMenu::new(anchor, entries, open, dismiss, look.menu_palette())
+        .context_menu_style()
+        .context_metrics(limn::ContextMenuMetrics {
+            row_height: 36.0,
+            ..metrics
+        })
+        .width(MENU_WIDTH)
+}
+
+/// Discord's message menu is 222 wide, its labels 160 wide. limn keeps the
+/// chevron's column in every row of a menu with a submenu, so its labels get
+/// that room at 240.
+const MENU_WIDTH: f32 = 240.0;
+/// The menu's quick reactions share its row less its padding of 8 and their
+/// gaps of 4, as Discord's grid does (44 square in its 222).
+const QUICK_WIDTH: f32 = (MENU_WIDTH - 2.0 * crate::look::MENU_METRICS.inset - 16.0 - 12.0) / 4.0;
+
+/// The bar's «Más» and its menu, which opens at its left with their tops
+/// level, as the official client's.
+fn more(
+    message: &Message,
+    entries: Vec<DropdownMenuEntry>,
+    open: bool,
+    room: Option<f32>,
+    look: &Look,
+) -> Element {
+    let palette = look.menu_palette();
+    // limn's `MessageActions` keeps its menu's metrics: this is its «···».
+    let trigger = limn::IconButton::new(action(message, "actions:more"), Icon::More, palette)
+        .variant(limn::ButtonVariant::Ghost)
+        .size(limn::ControlSize::Dense)
+        .ink(if open { palette.text } else { palette.muted })
+        .hover_ink(palette.text)
+        .active(open)
+        .tooltip_with(
+            limn::TooltipSpec::new(t("Más"))
+                .placement(limn::TooltipPlacement::Below)
+                .suppressed(open),
+        )
+        .render();
+    message_menu(
+        trigger,
+        entries,
+        open,
+        action(message, "actions:more:dismiss"),
+        room,
+        look,
+    )
+    .placement(limn::PopoverPlacement::LeftStart)
+    .render()
 }
 
 /// A rule across the timeline with the day in its middle.
@@ -3854,14 +3990,12 @@ mod tests {
         shown.style.copy_id = true;
         let bar = controls(&laid(live_row(shown, held, &Look::DARK)));
         for id in [
+            "msg:1:copy-id",
+            "msg:1:unread",
+            "msg:1:pin",
             "msg:1:react",
             "msg:1:edit",
-            "msg:1:pin",
-            "msg:1:unread",
-            "msg:1:copy",
-            "msg:1:copy-id",
             "msg:1:delete",
-            "msg:1:actions:more",
         ] {
             assert!(bar.contains(&id.to_owned()), "{id} in {bar:?}");
         }
@@ -3869,12 +4003,17 @@ mod tests {
             !bar.iter().any(|id| id.starts_with("msg:1:quick=")),
             "{bar:?}"
         );
-        // The order: pin, unread, link, text, ID, then delete.
+        // Discord's order: the ID, unread and pin before reacting, and
+        // deleting last, in place of «Más»; copying the text stays in it.
         let place = |id: &str| bar.iter().position(|shown| shown == id).unwrap();
-        assert!(place("msg:1:pin") < place("msg:1:unread"));
-        assert!(place("msg:1:copy") < place("msg:1:copy-id"));
-        assert!(place("msg:1:copy-id") < place("msg:1:delete"));
-        // Only what the account may do: no pin nor delete without them.
+        assert!(place("msg:1:copy-id") < place("msg:1:unread"));
+        assert!(place("msg:1:unread") < place("msg:1:pin"));
+        assert!(place("msg:1:pin") < place("msg:1:react"));
+        assert!(place("msg:1:edit") < place("msg:1:delete"));
+        assert!(!bar.contains(&"msg:1:actions:more".to_owned()));
+        assert!(!bar.contains(&"msg:1:copy".to_owned()));
+        // Only what the account may do: no pin nor delete without them, and
+        // then «Más» stays.
         let limited = Abilities {
             pin: false,
             delete: false,
@@ -3884,10 +4023,15 @@ mod tests {
         assert!(
             !bar.contains(&"msg:1:pin".to_owned()) && !bar.contains(&"msg:1:delete".to_owned())
         );
+        assert!(bar.contains(&"msg:1:actions:more".to_owned()));
         assert!(
             !bar.contains(&"msg:1:copy-id".to_owned()),
             "outside developer mode"
         );
+        // With its menu open the bar stays as it was, as Discord's.
+        let open = Live { more: true, ..held };
+        let bar = controls(&laid(live_row(view(&said, ALL), open, &Look::DARK)));
+        assert!(bar.contains(&"msg:1:quick=👍".to_owned()), "{bar:?}");
         // Without Shift, the quick reactions and none of them.
         let bar = controls(&laid(live_row(
             view(&said, ALL),
@@ -3897,6 +4041,240 @@ mod tests {
         assert!(
             bar.contains(&"msg:1:quick=👍".to_owned()) && !bar.contains(&"msg:1:pin".to_owned())
         );
+    }
+
+    /// The entries of a message's menu, as `what` of `msg:1:{what}`, `|` for
+    /// a separator and `quick` for the row of quick reactions.
+    fn entries_of(said: &Message, abilities: Abilities, copy_id: bool) -> Vec<String> {
+        menu_entries(said, abilities, copy_id, &[], &Look::DARK)
+            .into_iter()
+            .map(|entry| match entry {
+                DropdownMenuEntry::Item(item) => item
+                    .action_id
+                    .strip_prefix("msg:1:")
+                    .unwrap_or(&item.action_id)
+                    .to_owned(),
+                DropdownMenuEntry::Separator => "|".into(),
+                _ => "quick".into(),
+            })
+            .collect()
+    }
+
+    /// Every ability a message's menu asks about.
+    const EVERY: Abilities = Abilities {
+        forward: true,
+        copy_link: true,
+        reaction_list: true,
+        poll_voters: true,
+        end_poll: true,
+        ..ALL
+    };
+
+    #[test]
+    fn the_menu_has_discords_entries_in_its_order_and_groups() {
+        let mut said = (*message(1, 1, 0)).clone();
+        said.content = "hola".into();
+        said.toggle_reaction("👍");
+        // The account's own, in developer mode.
+        assert_eq!(
+            entries_of(&said, EVERY, true),
+            [
+                "quick",
+                "react",
+                "reactions",
+                "|",
+                "edit",
+                "reply",
+                "forward",
+                "thread",
+                "|",
+                "copy",
+                "pin",
+                "unread",
+                "copy-link",
+                "|",
+                "delete",
+                "|",
+                "copy-id",
+            ]
+        );
+        // Someone else's: no editing, and deleting only with moderation;
+        // pinned, it is taken out.
+        said.pinned = true;
+        let others = Abilities {
+            edit: false,
+            delete: false,
+            ..EVERY
+        };
+        assert_eq!(
+            entries_of(&said, others, false),
+            [
+                "quick",
+                "react",
+                "reactions",
+                "|",
+                "reply",
+                "forward",
+                "thread",
+                "|",
+                "copy",
+                "unpin",
+                "unread",
+                "copy-link",
+            ]
+        );
+        // A direct conversation's: no thread nor link where the provider
+        // has none; the rest as anywhere.
+        let direct = Abilities {
+            thread: false,
+            copy_link: false,
+            ..EVERY
+        };
+        assert!(!entries_of(&said, direct, false).contains(&"thread".to_owned()));
+        // The account's poll: its votes and its end with the keeping ones.
+        let mut poll = (*message(1, 1, 0)).clone();
+        poll.poll = Some(rustcord_model::Poll::default());
+        let shown = entries_of(&poll, EVERY, false);
+        let place = |what: &str| shown.iter().position(|entry| entry == what).unwrap();
+        assert!(place("copy-link") < place("voters") && place("voters") < place("end-poll"));
+        assert!(place("end-poll") < place("delete"));
+        // A system message: only what any message has.
+        let mut joined = (*message(1, 1, 0)).clone();
+        joined.kind = MessageKind::Join;
+        assert_eq!(
+            entries_of(&joined, EVERY, false),
+            ["quick", "react", "|", "unread", "copy-link", "|", "delete"]
+        );
+    }
+
+    #[test]
+    fn the_menus_entries_carry_discords_labels_glyphs_and_danger() {
+        let mut said = (*message(1, 1, 0)).clone();
+        said.content = "hola".into();
+        said.pinned = true;
+        said.toggle_reaction("👍");
+        let offered: Vec<Choice> = choices(&said, EVERY, true).into_iter().flatten().collect();
+        let of = |what: &str| {
+            offered
+                .iter()
+                .find(|choice| choice.what == what)
+                .map(|choice| (choice.label, choice.icon, choice.danger))
+                .unwrap_or_else(|| panic!("{what} offered"))
+        };
+        assert_eq!(of("react"), ("Agregar reacción", Icon::Emoji, false));
+        assert_eq!(
+            of("reactions"),
+            ("Ver las reacciones", Icon::Custom(glyphs::REACTIONS), false)
+        );
+        assert_eq!(of("edit"), ("Editar mensaje", Icon::Edit, false));
+        assert_eq!(of("reply"), ("Responder", Icon::Reply, false));
+        assert_eq!(of("forward"), ("Reenviar", Icon::Forward, false));
+        assert_eq!(
+            of("thread"),
+            ("Crear hilo", Icon::Custom(glyphs::THREAD), false)
+        );
+        assert_eq!(of("copy"), ("Copiar texto", Icon::Copy, false));
+        assert_eq!(of("unpin"), ("Retirar mensaje", Icon::Pin, false));
+        assert_eq!(of("unread"), ("Marcar como no leído", Icon::Unread, false));
+        assert_eq!(
+            of("copy-link"),
+            (
+                "Copiar enlace del mensaje",
+                Icon::Custom(glyphs::LINK),
+                false
+            )
+        );
+        assert_eq!(of("delete"), ("Eliminar mensaje", Icon::Trash, true));
+        assert_eq!(
+            of("copy-id"),
+            ("Copiar ID del mensaje", Icon::Custom(glyphs::ID), false)
+        );
+        let mut poll = said.clone();
+        poll.poll = Some(rustcord_model::Poll::default());
+        let offered = choices(&poll, EVERY, false);
+        let end = offered
+            .iter()
+            .flatten()
+            .find(|c| c.what == "end-poll")
+            .unwrap();
+        assert_eq!(
+            (end.label, end.icon),
+            ("Finalizar encuesta ahora", Icon::Custom(glyphs::POLL_END))
+        );
+        // Only deleting is drawn in the danger color.
+        for entry in menu_entries(&said, EVERY, true, &[], &Look::DARK) {
+            if let DropdownMenuEntry::Item(item) = entry {
+                let danger = item.action_id == "msg:1:delete";
+                assert_eq!(
+                    item.destructive,
+                    danger.then_some(Look::DARK.danger),
+                    "{}",
+                    item.action_id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn adding_a_reaction_opens_twelve_frequent_emoji_and_the_picker() {
+        let said = message(1, 1, 0);
+        let recent: Vec<String> = [
+            "🦀", "🐒", "👍", "😍", "🥵", "🤓", "💓", "🤌", "🌈", "🇦🇷", "🎸", "🍕", "🧉",
+        ]
+        .map(String::from)
+        .to_vec();
+        let react = menu_entries(&said, ALL, false, &recent, &Look::DARK)
+            .into_iter()
+            .find_map(|entry| match entry {
+                DropdownMenuEntry::Item(item) if item.action_id == "msg:1:react" => item.submenu,
+                _ => None,
+            })
+            .expect("«Agregar reacción» opens a menu");
+        let ids: Vec<String> = react
+            .iter()
+            .map(|entry| match entry {
+                DropdownMenuEntry::Item(item) => item.action_id.clone(),
+                _ => "|".into(),
+            })
+            .collect();
+        assert_eq!(ids.len(), 14, "twelve, a line, «Ver más»: {ids:?}");
+        assert_eq!(ids[0], "msg:1:react=🦀", "the latest first");
+        assert_eq!(ids[12], "|");
+        assert_eq!(ids[13], "msg:1:other-reactions");
+        let DropdownMenuEntry::Item(first) = &react[0] else {
+            unreachable!()
+        };
+        assert_eq!(first.label, ":crab:", "by its name, the emoji beside it");
+    }
+
+    #[test]
+    fn a_message_that_was_not_sent_is_sent_again_or_deleted_from_its_menu() {
+        let mut failed = (*message(1, 1, 0)).clone();
+        failed.content = "hola".into();
+        failed.delivery = Delivery::Failed {
+            reason: "sin red".into(),
+        };
+        assert_eq!(
+            entries_of(&failed, EVERY, true),
+            ["copy", "resend", "|", "delete"]
+        );
+        let offered = choices(&failed, EVERY, true);
+        let retry = offered
+            .iter()
+            .flatten()
+            .find(|c| c.what == "resend")
+            .unwrap();
+        assert_eq!(
+            (retry.label, retry.icon),
+            ("Reenviar mensaje", Icon::Refresh)
+        );
+        // One that may have arrived too; one still on its way has only its text.
+        failed.delivery = Delivery::Unknown {
+            reason: "sin respuesta".into(),
+        };
+        assert!(entries_of(&failed, EVERY, false).contains(&"resend".to_owned()));
+        failed.delivery = Delivery::Sending;
+        assert_eq!(entries_of(&failed, EVERY, true), ["copy"]);
     }
 
     #[test]
@@ -3909,7 +4287,16 @@ mod tests {
         };
         let mut shown = view(&said, ALL);
         shown.style.copy_id = true;
-        let laid = laid(live_row(shown, open, &Look::DARK));
+        // Lower in the window, so the menu has room to open level with «Más».
+        let laid = frame(
+            Element::column(vec![
+                gap(0.0, 60.0),
+                live_row(shown, open, &Look::DARK),
+                Element::spacer().flex(1.0),
+            ]),
+            Size::new(700.0, 700.0),
+        )
+        .1;
         let painted = texts(&laid);
         for label in [
             "Agregar reacción",
@@ -3934,11 +4321,30 @@ mod tests {
                 .count(),
             3
         );
-        assert!(
+        assert_eq!(
             ids.iter()
                 .filter(|id| id.starts_with("msg:1:menu-quick="))
-                .count()
-                >= 4
+                .count(),
+            4
+        );
+        // Discord's measures: quick reactions 44 square, rows 36 high, and
+        // the menu at the left of «Más», their tops level.
+        let rect = |id: &str| {
+            laid.regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+                .rect
+        };
+        let quick = rect("msg:1:menu-quick=👍");
+        assert_eq!((quick.width, quick.height), (QUICK_WIDTH, 44.0));
+        assert_eq!(rect("msg:1:reply").height, 36.0);
+        let more = rect("msg:1:actions:more");
+        let menu = rect("popover_surface:msg:1:actions:more:dismiss");
+        assert!(menu.x + menu.width <= more.x, "{menu:?} left of {more:?}");
+        assert!(
+            (menu.y - more.y).abs() < 1.0,
+            "{menu:?} level with {more:?}"
         );
         let plain: usize = choices(&said, Abilities::default(), false)
             .iter()
@@ -4075,11 +4481,9 @@ mod tests {
         assert!(ids.contains(&"msg:1:copy".to_owned()), "{ids:?}");
         let closed = laid(live_row(view(&pending, ALL), Live::default(), &Look::DARK));
         assert_eq!(closed.context_menu_at(row), Some("msg:1:menu"));
-        // Failed and without text, nothing is offered: no menu is asked for.
+        // Still sending and without text, nothing is offered: no menu is
+        // asked for.
         pending.content.clear();
-        pending.delivery = rustcord_model::Delivery::Failed {
-            reason: "sin red".into(),
-        };
         let closed = laid(live_row(view(&pending, ALL), Live::default(), &Look::DARK));
         assert_eq!(closed.context_menu_at(row), None);
         assert!(!menu(&laid(live_row(
@@ -4087,6 +4491,16 @@ mod tests {
             open(),
             &Look::DARK
         ))));
+        // Failed, it is sent again or deleted from it, as Discord's.
+        pending.delivery = rustcord_model::Delivery::Failed {
+            reason: "sin red".into(),
+        };
+        let shown = laid(live_row(view(&pending, ALL), open(), &Look::DARK));
+        let ids = controls(&shown);
+        assert!(
+            ids.contains(&"msg:1:resend".to_owned()) && ids.contains(&"msg:1:delete".to_owned()),
+            "{ids:?}"
+        );
     }
 
     #[test]

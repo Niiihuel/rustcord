@@ -881,11 +881,13 @@ fn picture_source(source: &rustcord_core::PictureSource) -> Option<rustcord_ui::
 }
 
 /// The newest message of `channel` a capture's `last:{what}` acts on: one
-/// with reactions, the account's own poll, or a plain one.
+/// with reactions, the account's own poll, or a plain one; `mine` keeps to
+/// the account's own, or to someone else's.
 fn last_message(
     store: &Store,
     channel: ChannelId,
     what: &str,
+    mine: Option<bool>,
 ) -> Option<rustcord_model::MessageId> {
     let me = store.me();
     store
@@ -895,6 +897,7 @@ fn last_message(
         .rev()
         .find(|message| {
             !message.delivery.is_local()
+                && mine.is_none_or(|mine| (Some(message.author) == me) == mine)
                 && match what {
                     "reactions" => !message.reactions.is_empty(),
                     "voters" | "end-poll" => message.poll.is_some() && Some(message.author) == me,
@@ -4417,11 +4420,18 @@ impl App {
         // `voice-menu` opens the menu of the first person in voice in
         // the open server.
         if let Some(what) = id.strip_prefix("last:") {
+            // `last:mine:{what}` and `last:theirs:{what}`: the newest the
+            // account wrote, or someone else.
+            let (mine, what) = match what.split_once(':') {
+                Some(("mine", what)) => (Some(true), what),
+                Some(("theirs", what)) => (Some(false), what),
+                _ => (None, what),
+            };
             // `last:emoji-card` also opens the card of its first emoji.
             let card = what == "emoji-card";
             let what = if card { "emoji" } else { what };
             if let Some((channel, found)) = self.ui.channel().and_then(|channel| {
-                last_message(&self.store, channel, what).map(|found| (channel, found))
+                last_message(&self.store, channel, what, mine).map(|found| (channel, found))
             }) {
                 // `last:emoji` brings the newest message naming a server's
                 // emoji into view; `last:forward`, the newest
