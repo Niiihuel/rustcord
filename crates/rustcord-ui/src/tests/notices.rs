@@ -418,10 +418,12 @@ fn updating_from_the_header_in_a_call_asks_first() {
     host.open_channel("general");
     host.click(ids::BUTTON);
     assert!(host.ui.updates.voice_confirm, "the question shows");
-    let painted = host.painted();
-    assert!(painted
-        .iter()
-        .any(|text| text == "¿Salir del canal de voz por un momento?"));
+    // Its 20 px title takes two lines, as Discord's.
+    let painted: String = host.painted().concat().split_whitespace().collect();
+    assert!(
+        painted.contains("¿Salirdelcanaldevozporunmomento?"),
+        "{painted}"
+    );
     let frame = host.frame();
     for id in [ids::VOICE_CONFIRM, ids::VOICE_CANCEL] {
         region(&frame, id, HitKind::Button);
