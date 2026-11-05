@@ -1739,13 +1739,19 @@ fn resetting_voice_and_video_takes_back_what_was_changed() {
     host.us_open();
     host.us_press("us:page=voice");
     host.us_press("us:fold=voice-diagnostics");
-    host.us_press("us:jump=advanced");
-    assert!(!host.us_buttons().contains(&"us:reset-voice".to_owned()));
+    // Its row is the page's last but the footnote, in sight at the end on
+    // every system (Windows has one more row above it).
+    let at_end = |host: &mut Host| {
+        host.tree.scroll_to_end(&SettingsPage::Voice.scroll_id());
+        host.frame();
+        host.us_buttons().contains(&"us:reset-voice".to_owned())
+    };
+    assert!(!at_end(&mut host), "nothing to reset");
     host.ui.prefs.push_to_talk = true;
     host.ui.prefs.input_profile = crate::InputProfile::Studio;
     host.ui.prefs.output_volume = 0.5;
     host.ui.prefs.developer = true;
-    assert!(host.us_buttons().contains(&"us:reset-voice".to_owned()));
+    assert!(at_end(&mut host));
     host.us_press("us:reset-voice");
     let usual = crate::Prefs::default();
     assert!(!host.ui.prefs.push_to_talk);
