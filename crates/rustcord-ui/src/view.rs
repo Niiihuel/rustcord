@@ -1,8 +1,6 @@
 //! The whole window, from the state.
 
-use limn::{
-    AlertTone, Component, Element, ElementKind, Empty, Icon, ScrollArea, ScrollbarAppearance, Toast,
-};
+use limn::{Component, Element, ElementKind, Empty, Icon, ScrollArea, Size};
 use rustcord_components::chrome;
 use rustcord_components::gap;
 use rustcord_components::members::{self, Group, MemberRow, Profile};
@@ -33,7 +31,13 @@ const NARROW_HEADER: f32 = 800.0;
 /// Whether a window `width` wide folds the header's inbox and threads into
 /// a «más», the title needing the room.
 pub(crate) fn narrow_header(ui: &Ui, width: f32) -> bool {
-    width - crate::title_bar::room(ui) < NARROW_HEADER
+    // The update's button takes a tool's room: 32 and 13 before it.
+    let update = if crate::updates::header_stage(ui).is_some() {
+        45.0
+    } else {
+        0.0
+    };
+    width - crate::title_bar::room(ui) - update < NARROW_HEADER
 }
 
 /// Below this width the member list gives its room to the conversation;
@@ -53,8 +57,18 @@ const COMPOSER_MARGIN: f32 = 11.5;
 const COMPOSER_CLEARANCE: f32 = 8.0;
 /// Above the first row of the column of channels.
 const LIST_TOP: f32 = 2.0;
-const CONVERSATION_NOTICES: &str = "conversation:notices";
+/// The notices' list over the foot of the column of channels, and the one
+/// in the window's corner while something floats over that column.
+const NOTICES: &str = "notices";
+const CORNER_NOTICES: &str = "notices:corner";
+/// The notices take the account card's width, up to this.
 const NOTICE_WIDTH: f32 = 360.0;
+/// Between two notices, and between the lowest and the account's panel.
+const NOTICE_GAP: f32 = 8.0;
+/// From the window's foot to the lowest notice in the corner: over the
+/// account's row, its edges and its margin, as over the column.
+const CORNER_BOTTOM: f32 =
+    chrome::USER_PANEL_HEIGHT + 2.0 + chrome::USER_PANEL_MARGIN.2 + NOTICE_GAP;
 
 /// The window for the state.
 pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
@@ -69,14 +83,14 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
             crate::splash::view(ui, store, look, context),
             ui,
             look,
-            None,
+            context.window,
         );
         return crate::title_bar::overlay(ui, root, look);
     }
     if crate::auth::visible(store) {
         let root = crate::auth::view(ui, store, look, context)
             .size(Some(context.window.width), Some(context.window.height));
-        return crate::title_bar::overlay(ui, with_notices(root, ui, look, None), look);
+        return crate::title_bar::overlay(ui, with_notices(root, ui, look, context.window), look);
     }
     // Every time written from here on, rows built during layout included.
     rustcord_components::time::set_twelve_hour(ui.prefs.twelve_hour);
@@ -84,7 +98,7 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     let mut ground = look.canvas;
     // A stream watched shown alone fills the window, full screen.
     if let Some(focused) = crate::video::focused_view(ui, store, window, context.now) {
-        return with_notices(focused, ui, look, None);
+        return with_notices(focused, ui, look, window);
     }
     let body = if let Some(settings) = channel_settings::view(ui, store, context) {
         settings
@@ -101,14 +115,19 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
         // the rail and the column.
         let panes = Element::row(vec![
             Element::column(vec![
-                Element::row(vec![
-                    region(
-                        server_rail(ui, store, look, context.wall),
-                        RAIL,
-                        t("Servidores"),
-                    ),
-                    column(ui, store, look, context.wall),
-                ])
+                under_notices(
+                    Element::row(vec![
+                        region(
+                            server_rail(ui, store, look, context.wall),
+                            RAIL,
+                            t("Servidores"),
+                        ),
+                        column(ui, store, look, context.wall),
+                    ]),
+                    ui,
+                    look,
+                    window,
+                )
                 .flex(1.0),
                 account(ui, store, look, context.now, context.wall),
             ])
@@ -175,48 +194,72 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     // An app's modal, under the verification it may need.
     let root = crate::interactions::overlay(ui, store, root, look, context);
     let root = crate::challenges::overlay(ui, store, root, look);
-    // An optional one, in the corner,
-    // under the notices.
-    let update = crate::updates::card(ui, look);
+    // Before an update leaves the call.
+    let root = crate::updates::overlay(ui, root, look);
     // The window's own buttons, over everything; a stream
     // shown alone, above, fills the window without them.
-    crate::title_bar::overlay(ui, with_notices(root, ui, look, update), look)
+    crate::title_bar::overlay(ui, with_notices(root, ui, look, window), look)
 }
 
-/// Fill the visible conversation's flow slot, or announce above its
-/// replacement. With an optional update's card in the corner, every notice
-/// stacks over it there instead, so none covers its buttons.
-fn with_notices(mut root: Element, ui: &Ui, look: &Look, update: Option<Element>) -> Element {
-    if let Some(update) = update {
-        let mut cards = notice_cards(ui, look, NOTICE_WIDTH);
-        cards.push(update);
-        return Toast::layer(root, cards, 16.0);
-    }
+/// The notices at the window's bottom left, oldest on top, `NOTICE_GAP`
+/// apart: in their slot over the foot of the column of channels
+/// ([`under_notices`]) while nothing floats over it, else in the window's
+/// corner over everything, as high, so a dialog never hides them. Only the
+/// newest three are kept (`Ui::notify`); a long one scrolls in the list.
+fn with_notices(mut root: Element, ui: &Ui, look: &Look, window: Size) -> Element {
     if ui.notices.is_empty() && ui.save_as.is_none() {
         return root;
     }
     if let Some(slot) = notice_slot(&mut root) {
-        let width =
-            slot.style.width.unwrap_or(notice_width()) - ScrollbarAppearance::default().rail_width;
+        let width = slot.style.width.unwrap_or(NOTICE_WIDTH);
         if let ElementKind::Scroll { child, .. } = &mut slot.kind {
-            **child = Element::column(
-                notice_cards(ui, look, width)
-                    .into_iter()
-                    .map(|card| Element::row(vec![Element::spacer().flex(1.0), card]))
-                    .collect(),
-            )
-            .gap(8.0);
+            **child = Element::column(notice_cards(ui, look, width)).gap(NOTICE_GAP);
         }
         return root;
     }
-    // Login, full-page editors and actual window overlays have no exposed slot.
-    // Keep their passive announcements from intercepting the underlying controls.
-    Toast::layer(root, notice_cards(ui, look, NOTICE_WIDTH), 16.0)
+    let cards = Element::column(notice_cards(ui, look, NOTICE_WIDTH)).gap(NOTICE_GAP);
+    Element::overlay(
+        root,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            Element::row(vec![
+                gap(chrome::USER_PANEL_MARGIN.0, 0.0),
+                notice_viewport(CORNER_NOTICES, NOTICE_WIDTH, window.height, look, cards),
+                Element::spacer().flex(1.0),
+            ])
+            .shrink_height_to_fit(),
+            gap(0.0, CORNER_BOTTOM),
+        ]),
+    )
+}
+
+/// `channels`, the rail and the column of channels, with the notices' slot
+/// over their foot, `NOTICE_GAP` above the account's panel and as wide as
+/// its card, up to `NOTICE_WIDTH`. [`with_notices`] fills it.
+fn under_notices(channels: Element, ui: &Ui, look: &Look, window: Size) -> Element {
+    if ui.notices.is_empty() && ui.save_as.is_none() {
+        return channels;
+    }
+    let (left, right, _) = chrome::USER_PANEL_MARGIN;
+    let width = (rail::WIDTH + ui.prefs.sidebar_width - left - right).min(NOTICE_WIDTH);
+    Element::stack(vec![
+        channels,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            Element::row(vec![
+                gap(left, 0.0),
+                notice_viewport(NOTICES, width, window.height, look, Element::spacer()),
+                Element::spacer().flex(1.0),
+            ])
+            .shrink_height_to_fit(),
+            gap(0.0, NOTICE_GAP),
+        ]),
+    ])
 }
 
 fn notice_slot(element: &mut Element) -> Option<&mut Element> {
     match &element.kind {
-        ElementKind::Scroll { id, .. } if id == CONVERSATION_NOTICES => return Some(element),
+        ElementKind::Scroll { id, .. } if id == NOTICES => return Some(element),
         _ => {}
     }
     match &mut element.kind {
@@ -229,39 +272,29 @@ fn notice_slot(element: &mut Element) -> Option<&mut Element> {
     }
 }
 
-fn notice_width() -> f32 {
-    NOTICE_WIDTH + ScrollbarAppearance::default().rail_width
-}
-
 fn notice_viewport(id: &str, width: f32, height: f32, look: &Look, cards: Element) -> Element {
     ScrollArea::new(id, cards)
-        .appearance(
-            ScrollbarAppearance::reserved()
-                .buttons(false)
-                .tint(look.muted),
-        )
+        // Over the cards, which keep the whole width.
+        .appearance(look.scrollbar(true))
         .render()
         .size(Some(width), None)
         // Short lists keep their natural height; long copy remains reachable.
-        .max_height(height / 4.0)
+        .max_height(height / 2.0)
 }
 
+/// A save under way, then the notices as Discord's toasts, the newest last.
 fn notice_cards(ui: &Ui, look: &Look, width: f32) -> Vec<Element> {
     let saving = crate::save_as::status(ui, look).map(|status| status.size(Some(width), None));
     saving
         .into_iter()
         .chain(ui.notices.iter().map(|notice| {
-            let toast = Toast::new(notice.title.clone(), look.menu_palette())
-                .width(width)
-                .tone(if notice.error {
-                    AlertTone::Error
-                } else {
-                    AlertTone::Neutral
-                });
-            match &notice.detail {
-                Some(detail) => toast.description(detail.clone()).render(),
-                None => toast.render(),
-            }
+            chrome::toast(
+                &notice.title,
+                notice.detail.as_deref(),
+                notice.error,
+                width,
+                look,
+            )
         }))
         .collect()
 }
@@ -783,22 +816,6 @@ fn conversation(
     }
     if let Some(slowmode) = channel_list::slowmode(store, channel, look) {
         conversation_column.push(slowmode);
-    }
-    if !ui.notices.is_empty() || ui.save_as.is_some() {
-        conversation_column.push(
-            Element::row(vec![
-                Element::spacer().flex(1.0),
-                notice_viewport(
-                    CONVERSATION_NOTICES,
-                    notice_width().min(content_width - 2.0 * COMPOSER_MARGIN),
-                    context.window.height,
-                    look,
-                    Element::spacer(),
-                ),
-                gap(COMPOSER_MARGIN, 0.0),
-            ])
-            .shrink_height_to_fit(),
-        );
     }
     conversation_column.push(gap(0.0, COMPOSER_CLEARANCE));
     conversation_column.push(Element::row(vec![

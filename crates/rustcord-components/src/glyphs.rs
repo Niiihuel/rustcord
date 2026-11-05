@@ -31,6 +31,8 @@ pub const MORE_VERTICAL: &str = glyph!("more-vertical");
 /// A person in a circle with a status dot: shows or hides the profile beside
 /// a direct conversation.
 pub const USER_PROFILE: &str = glyph!("user-profile");
+/// An arrow down onto a line: the header's button of an update offered.
+pub const DOWNLOAD: &str = glyph!("download");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

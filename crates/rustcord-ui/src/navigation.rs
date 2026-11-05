@@ -185,6 +185,10 @@ pub(crate) fn header(
         // The header is the
         // window's rightmost.
         end: crate::title_bar::room(ui),
+        // A narrow header has it in its «más» (`updates::more_entry`).
+        update: (!narrow)
+            .then(|| crate::updates::header_stage(ui))
+            .flatten(),
     }
 }
 

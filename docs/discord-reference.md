@@ -704,3 +704,55 @@ and its pictures' colors; nothing copied.
 - The application icon (`discord.png`, 256 px) fills its whole box, as
   Windows' and the desktops' icons do; Rustcord's tile is cut to its edges
   at 32 px and up (16 and 24 keep their pixel-fitted drawings).
+
+## Toasts (in-app notices)
+
+Read from the web bundle's styles (`wrapper`, `baselayer`, `container` of
+its toast) and the live client's resolved variables; no toast was
+triggered.
+
+- Card: fill `--background-surface-highest` `#17181b`, radius 12
+  (`--radius-md`), padding 12, a 1 px ring `--border-normal` (`#9595a2` at
+  24 %), shadow `0 12 24` black at 24 % (`--shadow-high`), at most 280 wide
+  and fit to its text. Text 16/20 normal `#dcdcdf` (`text-md/normal`,
+  `text-strong`), at most 2 lines; an icon 18 px before it, 8 apart.
+- Critical: the ground `--background-base-low` (black), under a layer of
+  `#d22d39` at 12 % ringed 1 px `#e24d50`; the circled «!» in `#eb5f5e`.
+  Success: green at 12 %, ring green.
+- Placement: one at a time, centred 8 above the window's foot (or under
+  its top), the next queued; it slides in from its own height over
+  300 ms (fade only under reduced motion).
+- Rustcord: as asked by the owner, its notices stack at the bottom left
+  instead, 8 apart, oldest on top, the newest three kept: over the foot of
+  the column of channels, 8 above the account's card and as wide as it
+  (up to 360, so they line up with it), else, while a dialog or a menu is
+  open, in the window's corner over everything at the same height. A
+  title and an optional detail (14 muted) where Discord has one line; long
+  copy scrolls in the stack instead of being cut at 2 lines.
+
+## Update button (title bar)
+
+Read from the bundle (`AutoUpdateStore` and the title bar's trailing
+icons).
+
+- Last of the title bar's icons, after the inbox and the help: a 24 × 24
+  item (radius 6, glyph 18, hover fill `#97979f` at 20 %) with
+  `DownloadIcon` (`assets/glyphs/download.svg`) in `--green-360`
+  `#3d9e60`. Hint below.
+- Only while an update downloads (`UPDATE_AVAILABLE`: disabled at 50 %
+  opacity, the glyph bobbing 2 px over 2 s, ease-in-out, forever; hint
+  «Descargando la actualización») or is downloaded (`UPDATE_DOWNLOADED`:
+  «¡Actualización lista!»). A click quits and installs; in a voice call it
+  first asks «¿Salir del canal de voz por un momento?» with a red
+  «¡Actualizar de todas formas!» and «Cancelar».
+- Rustcord has no title bar: the button ends the headers' tools (a
+  conversation's, the friends', a voice channel's stage), 32 square as
+  its neighbours; it takes a tool's room (45), so a conversation's header
+  folds 45 sooner and a narrow one has it in its «más» (not while it
+  downloads: the settings show that). Rustcord does not download by
+  itself, so it shows from the offer («Hay una actualización disponible»,
+  a click installs); a failure shows in red, its hint «No se pudo
+  actualizar» with the reason under it, and a click tries again. It does
+  not bob (limn has no looping motion for an icon yet),
+  and the call's question says the person leaves the call and has to
+  join again: Rustcord does not rejoin it after the restart.

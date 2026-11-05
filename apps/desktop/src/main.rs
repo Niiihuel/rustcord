@@ -3475,6 +3475,11 @@ impl App {
             self.capture_own_stream(ctx, now);
             return;
         }
+        // `after:notices`, such as over a call joined first.
+        if id == "notices" {
+            capture_fixture::notices(&mut self.ui, now);
+            return;
+        }
         // `click:{id}` once laid out, such as a control the call adds.
         if let Some(id) = id.strip_prefix("click:") {
             let action = limn::UiAction::Clicked { id: id.into() };
@@ -3821,6 +3826,22 @@ impl App {
                 // `shift` is held in every frame (`Capture::hold_shift`), and
                 // `decoding` holds the staged pictures back.
                 if id == "shift" || id == "decoding" {
+                    continue;
+                }
+                // `offer-update:{stage}` and `notices`: the header's button of
+                // an update, and a stack of notices (`capture_fixture`).
+                if let Some(stage) = id.strip_prefix("offer-update:") {
+                    capture_fixture::offer_update(&mut self.ui, stage);
+                    continue;
+                }
+                if id == "notices" {
+                    capture_fixture::notices(&mut self.ui, now);
+                    continue;
+                }
+                // `zoom:{percent}`: more of the window in a capture held to
+                // the screen's size; the capture keeps no setting.
+                if let Some(zoom) = id.strip_prefix("zoom:").and_then(|zoom| zoom.parse().ok()) {
+                    self.ui.prefs.zoom = zoom;
                     continue;
                 }
                 // `own-stream` makes the account's share live as the flow does

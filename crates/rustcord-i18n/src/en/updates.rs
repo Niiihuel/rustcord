@@ -1,6 +1,6 @@
 //! Rustcord's own updates: what `rustcord-update` reports, the
-//! mandatory update screen, the notice of an optional one and Ajustes ›
-//! Actualizaciones.
+//! mandatory update screen, the header's button of an optional one and
+//! Ajustes › Actualizaciones.
 
 pub(super) const ENTRIES: super::Entries = &[
     // rustcord-update.
@@ -52,20 +52,25 @@ pub(super) const ENTRIES: super::Entries = &[
         "La actualización se interrumpió. Reintenta para completarla.",
         "The update was interrupted. Try again to finish it.",
     ),
-    // rustcord-components: the mandatory screen and the optional notice.
+    // rustcord-components: the mandatory screen.
     ("Actualización obligatoria", "Mandatory update"),
     (
         "Rustcord {version} reemplaza a la {installed} que tienes instalada, que ya no se puede usar. Rustcord se actualiza antes de abrir.",
         "Rustcord {version} replaces the {installed} you have installed, which can no longer be used. Rustcord updates before it opens.",
     ),
     ("Rustcord {version} está disponible", "Rustcord {version} is available"),
-    (
-        "Tienes la {installed}. Se instala y Rustcord vuelve a abrir.",
-        "You have {installed}. It installs and Rustcord opens again.",
-    ),
     ("Actualizar y reiniciar", "Update and restart"),
     ("Más tarde", "Later"),
-    ("Notas", "Notes"),
+    // The header's button of an optional one, and its question over a call.
+    ("Hay una actualización disponible", "An update is available"),
+    ("Descargando la actualización", "Downloading the update"),
+    ("¡Actualización lista!", "Update ready!"),
+    ("¿Salir del canal de voz?", "Leave the voice channel?"),
+    (
+        "Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal y tendrás que volver a entrar. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo.",
+        "If you update Rustcord while you're in a voice channel, you'll leave it and have to join again. You'll probably update anyway but, you know, just giving you a heads-up.",
+    ),
+    ("¡Actualizar de todas formas!", "Update anyway!"),
     ("Descargando… {have} de {whole}", "Downloading… {have} of {whole}"),
     ("Instalando…", "Installing…"),
     ("Reiniciando Rustcord…", "Restarting Rustcord…"),

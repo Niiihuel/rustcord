@@ -1,23 +1,27 @@
 //! Rustcord's own updates: the screen of a
-//! mandatory one, shown before the main window, and the notice of an
-//! optional one over it. Actions start with `update:`.
+//! mandatory one, shown before the main window, and the header's button of
+//! an optional one, as Discord's title bar has it. Actions start with
+//! `update:`.
 
 use limn::{
-    Access, Button, ButtonVariant, Component, ControlSize, Element, FontFamily, Icon,
-    Progress as Bar, Role, ScrollArea, Size, Spinner,
+    Access, AlertDialog, Button, ButtonVariant, Component, ComponentPalette, ControlSize, Element,
+    FontFamily, Icon, IconButton, Progress as Bar, Role, ScrollArea, Size, Spinner,
+    TooltipPlacement, TooltipSpec,
 };
 use rustcord_i18n::{t, tr};
 
-use crate::{centered, file_size, line, strong_line, text, Look};
+use crate::{centered, file_size, line, text, Look};
 
-/// The actions of the screen, the notice and their settings.
+/// The actions of the screen, the header's button and their settings.
 pub mod ids {
     /// Download, install and start again.
     pub const INSTALL: &str = "update:install";
-    /// Put the notice off until the next start.
-    pub const LATER: &str = "update:later";
-    /// Show or hide the notes in the notice.
-    pub const NOTES: &str = "update:notes";
+    /// The header's button: install, start the installed version or try
+    /// again, as the update stands.
+    pub const BUTTON: &str = "update:button";
+    /// Update anyway, leaving the voice channel (the question over a call).
+    pub const VOICE_CONFIRM: &str = "update:voice-confirm";
+    pub const VOICE_CANCEL: &str = "update:voice-cancel";
     /// Try a failed download or installation again.
     pub const RETRY: &str = "update:retry";
     /// Leave Rustcord from the mandatory screen.
@@ -131,46 +135,11 @@ pub fn screen(view: &UpdateView, window: Size, look: &Look) -> Element {
     if !view.notes.trim().is_empty() {
         parts.push(notes(&view.notes, 180.0, look));
     }
-    parts.push(stage(view, look, true));
+    parts.push(stage(view, look));
     let middle = Element::column(parts).gap(14.0).size(Some(460.0), None);
     Element::panel(centered(middle))
         .background(look.canvas)
         .size(Some(window.width), Some(window.height))
-}
-
-/// The card of an optional update, over the window until it is installed
-/// or put off: «Actualizar y reiniciar», «Más tarde» and its notes.
-pub fn notice(view: &UpdateView, notes_open: bool, look: &Look) -> Element {
-    let mut parts = vec![
-        strong_line(
-            tr!("Rustcord {version} está disponible", version = view.version),
-            14.0,
-            look.text,
-        ),
-        text(
-            tr!(
-                "Tienes la {installed}. Se instala y Rustcord vuelve a abrir.",
-                installed = view.installed
-            ),
-            12.0,
-            look.muted,
-        ),
-    ];
-    if notes_open && !view.notes.trim().is_empty() {
-        parts.push(notes(&view.notes, 140.0, look));
-    }
-    parts.push(stage(view, look, false));
-    Element::column(parts)
-        .gap(8.0)
-        .padding(14.0)
-        .size(Some(360.0), None)
-        .background(look.menu)
-        .border(look.border, 1.0)
-        .radius(8.0)
-        .accessible(Access::new(Role::Status).name(tr!(
-            "Rustcord {version} está disponible",
-            version = view.version
-        )))
 }
 
 /// The release's notes, scrolled when long.
@@ -231,8 +200,9 @@ pub fn progress(stage: &Stage, look: &Look) -> Option<Element> {
     })
 }
 
-/// The buttons of where the update stands, under its progress.
-fn stage(view: &UpdateView, look: &Look, mandatory: bool) -> Element {
+/// The buttons of the mandatory screen where the update stands, under its
+/// progress.
+fn stage(view: &UpdateView, look: &Look) -> Element {
     let button = |id: &str, label: &str, primary: bool| {
         Button::new(
             id,
@@ -253,22 +223,13 @@ fn stage(view: &UpdateView, look: &Look, mandatory: bool) -> Element {
     };
     let buttons = |list: Vec<Element>| Element::row(list).gap(8.0);
     let actions = match &view.stage {
-        Stage::Offered if mandatory => {
+        Stage::Offered => {
             return centered(Spinner::new("update:waiting", look.accent).render())
                 .size(None, Some(24.0));
         }
-        Stage::Offered => Some(buttons(vec![
-            button(ids::INSTALL, t("Actualizar y reiniciar"), true),
-            button(ids::LATER, t("Más tarde"), false),
-            button(ids::NOTES, t("Notas"), false),
-        ])),
-        Stage::Failed(_) if mandatory => Some(buttons(vec![
-            button(ids::RETRY, t("Reintentar"), true),
-            button(ids::QUIT, t("Salir"), false),
-        ])),
         Stage::Failed(_) => Some(buttons(vec![
             button(ids::RETRY, t("Reintentar"), true),
-            button(ids::LATER, t("Más tarde"), false),
+            button(ids::QUIT, t("Salir"), false),
         ])),
         Stage::Installed => Some(buttons(vec![button(
             ids::RESTART,
@@ -281,6 +242,63 @@ fn stage(view: &UpdateView, look: &Look, mandatory: bool) -> Element {
     parts.extend(progress(&view.stage, look));
     parts.extend(actions);
     Element::column(parts).gap(8.0)
+}
+
+/// The header's button of an update offered, last of its tools, as the one
+/// Discord's title bar ends with: its download glyph in the look's green,
+/// named by its hint. Offered or failed (in red, the reason under its hint)
+/// it installs, installed it starts the new version; while it downloads,
+/// installs or restarts it waits at half its ink, as Discord's disabled one.
+pub fn header_button(stage: &Stage, look: &Look) -> Element {
+    let (hint, enabled) = match stage {
+        Stage::Offered => (t("Hay una actualización disponible"), true),
+        Stage::Downloading { .. } | Stage::Installing => (t("Descargando la actualización"), false),
+        Stage::Restarting => (t("Reiniciando Rustcord…"), false),
+        Stage::Installed => (t("¡Actualización lista!"), true),
+        Stage::Failed(_) => (t("No se pudo actualizar"), true),
+    };
+    let mut hint = TooltipSpec::new(hint).placement(TooltipPlacement::Below);
+    if let Stage::Failed(reason) = stage {
+        // A reason is a sentence: it wraps under the title.
+        hint = hint.description(reason.clone()).max_width(280.0);
+    }
+    let ink = if matches!(stage, Stage::Failed(_)) {
+        look.danger
+    } else {
+        look.online
+    };
+    // A disabled button paints its palette's muted ink.
+    let palette = ComponentPalette {
+        muted: Look::alpha(ink, 128),
+        ..look.palette()
+    };
+    IconButton::new(ids::BUTTON, Icon::Custom(crate::glyphs::DOWNLOAD), palette)
+        .variant(ButtonVariant::Ghost)
+        .tooltip_with(hint)
+        .ink(ink)
+        .hover_ink(ink)
+        .enabled(enabled)
+        .render()
+}
+
+/// Before an update leaves the call, over `root`: Discord's question, with
+/// its red «¡Actualizar de todas formas!». Rustcord does not join the call
+/// again once it opens, so it says the person will have to.
+pub fn voice_confirm(root: Element, look: &Look) -> Element {
+    AlertDialog::new(
+        root,
+        true,
+        t("¿Salir del canal de voz?"),
+        t("Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal y tendrás que volver a entrar. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo."),
+        ids::VOICE_CONFIRM,
+        ids::VOICE_CANCEL,
+        look.menu_palette(),
+    )
+    .width(crate::friends::CONFIRM_WIDTH)
+    .confirm_label(t("¡Actualizar de todas formas!"))
+    .cancel_label(t("Cancelar"))
+    .destructive(look.danger)
+    .render()
 }
 
 /// The color of a status pill: what the state means.
@@ -493,25 +511,73 @@ mod tests {
         }
     }
 
+    /// The header button's name (its hint), the paragraph under it, and
+    /// whether it waits.
+    fn button(stage: Stage) -> (String, Option<String>, bool) {
+        let (_, laid) = frame(header_button(&stage, &Look::ONYX), Size::new(200.0, 60.0));
+        let node = laid
+            .access
+            .iter()
+            .find(|node| node.id == ids::BUTTON)
+            .expect("the button is there");
+        (node.name.clone(), node.description.clone(), node.disabled)
+    }
+
     #[test]
-    fn an_optional_update_offers_to_install_later_or_its_notes() {
-        let closed = texts(notice(&view(Stage::Offered), false, &Look::DARK));
-        for wanted in ["Actualizar y reiniciar", "Más tarde", "Notas"] {
+    fn the_header_button_says_where_the_update_stands_and_waits_while_it_downloads() {
+        let downloading = Stage::Downloading { have: 1, whole: 2 };
+        for (stage, hint, waits) in [
+            (Stage::Offered, "Hay una actualización disponible", false),
+            (downloading, "Descargando la actualización", true),
+            (Stage::Installing, "Descargando la actualización", true),
+            (Stage::Restarting, "Reiniciando Rustcord…", true),
+            (Stage::Installed, "¡Actualización lista!", false),
+        ] {
+            assert_eq!(button(stage), (hint.to_owned(), None, waits));
+        }
+        // A failure says why in its hint, and a press tries again.
+        let failed = Stage::Failed("Sin conexión.".into());
+        assert_eq!(
+            button(failed.clone()),
+            ("No se pudo actualizar".to_owned(), None, false)
+        );
+        let size = Size::new(400.0, 200.0);
+        let (mut tree, laid) = frame(header_button(&failed, &Look::ONYX), size);
+        let at = laid.regions[0].rect;
+        tree.handle_event(limn::UiEvent::PointerMove(limn::Point::new(
+            at.x + at.width / 2.0,
+            at.y + at.height / 2.0,
+        )));
+        let later = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        tree.layout_at(size, later);
+        let shown = crate::testing::texts(&tree.layout_at(size, later));
+        assert!(
+            shown.iter().any(|text| text == "Sin conexión."),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
+    fn the_voice_question_updates_anyway_or_cancels() {
+        let (_, laid) = frame(
+            voice_confirm(Element::spacer(), &Look::ONYX),
+            Size::new(800.0, 600.0),
+        );
+        let shown = crate::testing::texts(&laid);
+        for wanted in [
+            "¿Salir del canal de voz?",
+            "¡Actualizar de todas formas!",
+            "Cancelar",
+        ] {
             assert!(
-                closed.iter().any(|text| text == wanted),
-                "{wanted}: {closed:?}"
+                shown.iter().any(|text| text == wanted),
+                "{wanted}: {shown:?}"
             );
         }
-        assert!(!closed.iter().any(|text| text == "Arregla el inicio."));
-        let open = texts(notice(&view(Stage::Offered), true, &Look::DARK));
-        assert!(open.iter().any(|text| text == "Arregla el inicio."));
-        let failed = texts(notice(
-            &view(Stage::Failed("No.".into())),
-            false,
-            &Look::DARK,
-        ));
-        assert!(failed.iter().any(|text| text == "Reintentar"));
-        assert!(!failed.iter().any(|text| text == "Salir"));
+        let controls = crate::testing::controls(&laid);
+        for id in [ids::VOICE_CONFIRM, ids::VOICE_CANCEL] {
+            assert!(controls.iter().any(|control| control == id), "{controls:?}");
+        }
     }
 
     fn check(stage: Option<Stage>, error: Option<&str>) -> CheckCard {

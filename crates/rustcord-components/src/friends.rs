@@ -187,9 +187,17 @@ pub fn home_entry(selected: bool, pending: usize, look: &Look) -> Element {
 
 /// The bar over the page: what it is, a dot, its tabs as pills («Añadir
 /// amigos» in the accent) and, while the account may make one, a new group
-/// at its end, `end` short of it (the window's own buttons are there).
+/// at its end, `end` short of it (the window's own buttons are there), and
+/// last the button of an update offered, where it stands (`update`).
 /// `pending` counts the requests waiting for the account.
-pub fn header(tab: FriendsTab, pending: usize, new_group: bool, end: f32, look: &Look) -> Element {
+pub fn header(
+    tab: FriendsTab,
+    pending: usize,
+    new_group: bool,
+    update: Option<&crate::updates::Stage>,
+    end: f32,
+    look: &Look,
+) -> Element {
     let mut strip = vec![
         gap(6.0, 0.0),
         icon(Icon::Custom(FRIENDS), look.dim)
@@ -240,6 +248,10 @@ pub fn header(tab: FriendsTab, pending: usize, new_group: bool, end: f32, look: 
                 .render()
                 .centered_y(),
         );
+    }
+    if let Some(stage) = update {
+        parts.push(gap(10.0, 0.0));
+        parts.push(crate::updates::header_button(stage, look).centered_y());
     }
     parts.push(gap(8.0 + end, 0.0));
     Element::panel(Element::row(parts))
@@ -864,7 +876,7 @@ mod tests {
     #[test]
     fn the_header_offers_every_tab_counts_what_waits_and_keeps_clear_of_the_window_buttons() {
         let (_, laid) = frame(
-            header(FriendsTab::Pending, 2, true, 138.0, &Look::DARK),
+            header(FriendsTab::Pending, 2, true, None, 138.0, &Look::DARK),
             Size::new(900.0, 52.0),
         );
         let found = controls(&laid);
@@ -885,10 +897,34 @@ mod tests {
         assert!(group.x + group.width <= 900.0 - 138.0, "{group:?}");
         // Whoever may not make a group is not offered one.
         let (_, plain) = frame(
-            header(FriendsTab::Online, 0, false, 0.0, &Look::DARK),
+            header(FriendsTab::Online, 0, false, None, 0.0, &Look::DARK),
             Size::new(900.0, 52.0),
         );
         assert!(!controls(&plain).contains(&NEW_GROUP.to_owned()));
+        assert!(!controls(&plain).contains(&crate::updates::ids::BUTTON.to_owned()));
+        // An update offered ends the bar, still clear of the window's buttons.
+        let (_, offered) = frame(
+            header(
+                FriendsTab::Online,
+                0,
+                true,
+                Some(&crate::updates::Stage::Offered),
+                138.0,
+                &Look::DARK,
+            ),
+            Size::new(900.0, 52.0),
+        );
+        let rect = |id: &str| {
+            offered
+                .regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+                .rect
+        };
+        let update = rect(crate::updates::ids::BUTTON);
+        assert!(update.x >= rect(NEW_GROUP).x + rect(NEW_GROUP).width);
+        assert!(update.x + update.width <= 900.0 - 138.0, "{update:?}");
     }
 
     #[test]

@@ -151,24 +151,77 @@ fn an_unsupported_drop_notice_leaves_multiline_reply_and_eight_files_visible() {
 }
 
 #[test]
-fn one_short_notice_reserves_only_its_content_height_above_the_composer() {
+fn a_notice_floats_bottom_left_and_takes_no_room_from_the_conversation() {
     let (mut host, channel, _) = draft(8);
     let before = layout(&mut host, WINDOW);
-    let viewport = region(&before, &timeline_id(channel), HitKind::Scroll);
     host.ui.notify("Adjunto preparado", None, false, host.now);
     let after = layout(&mut host, WINDOW);
     let notice = alert(&after, "Adjunto preparado");
-    let remaining = region(&after, &timeline_id(channel), HitKind::Scroll);
-    let reserved = viewport.height - remaining.height;
+    for id in [timeline_id(channel), editor_id(channel)] {
+        let kind = if id == editor_id(channel) {
+            HitKind::TextArea
+        } else {
+            HitKind::Scroll
+        };
+        assert_eq!(
+            region(&before, &id, kind),
+            region(&after, &id, kind),
+            "{id}"
+        );
+    }
+    // Over the column of channels, as wide as the account's card.
+    let (left, right, _) = rustcord_components::chrome::USER_PANEL_MARGIN;
+    let column = rustcord_components::rail::WIDTH + host.ui.prefs.sidebar_width;
+    assert_eq!(notice.x, left);
     assert!(
-        reserved >= notice.height && reserved <= notice.height + 32.0,
-        "the flow must reserve the actual card and spacing, without a large empty tray: {reserved} for {notice:?}"
+        notice.x + notice.width <= column - right + 0.5,
+        "{notice:?}"
     );
-    assert_eq!(
-        region(&before, &editor_id(channel), HitKind::TextArea),
-        region(&after, &editor_id(channel), HitKind::TextArea),
-        "a notice takes timeline space while the draft stays at the bottom"
-    );
+}
+
+#[test]
+fn notices_stack_bottom_left_newest_lowest_above_the_account_panel() {
+    let (mut host, channel, _) = draft(2);
+    let titles = ["Primer aviso", "Segundo aviso", "Tercer aviso"];
+    for title in titles {
+        host.ui
+            .notify(title, Some("Detalle".into()), true, host.now);
+    }
+    for window in [WINDOW, Size::new(980.0, 800.0), Size::new(720.0, 480.0)] {
+        let frame = layout(&mut host, window);
+        let cards: Vec<Rect> = titles.iter().map(|title| alert(&frame, title)).collect();
+        for card in &cards {
+            visible(*card, window);
+            assert_eq!(card.x, rustcord_components::chrome::USER_PANEL_MARGIN.0);
+            assert_eq!(card.width, cards[0].width, "one width for the stack");
+        }
+        // Oldest on top, the same gap between each, none over another.
+        for pair in cards.windows(2) {
+            let gap = pair[1].y - (pair[0].y + pair[0].height);
+            assert!((gap - 8.0).abs() < 0.5, "{gap}: {cards:?}");
+        }
+        // The account's controls stay reachable, under the lowest.
+        let lowest = cards[2];
+        for id in ["me:status", "me:mute", "me:deafen", "me:settings"] {
+            let control = region(&frame, id, HitKind::Button);
+            assert!(lowest.y + lowest.height + 8.0 <= control.y + 0.5, "{id}");
+            assert_eq!(frame.hit_test(center(control)), Some(id));
+        }
+        for control in draft_controls(&frame, channel) {
+            for card in &cards {
+                assert!(card.intersection(control).is_none());
+            }
+        }
+    }
+    // The fourth pushes the oldest out.
+    host.ui.notify("Cuarto aviso", None, false, host.now);
+    let frame = layout(&mut host, WINDOW);
+    assert!(!frame
+        .access
+        .iter()
+        .any(|node| node.role == Role::Alert && node.name == titles[0]));
+    let third = alert(&frame, titles[2]);
+    assert!(alert(&frame, "Cuarto aviso").y > third.y);
 }
 
 #[test]
@@ -194,13 +247,14 @@ fn three_wrapped_notices_scroll_completely_without_overflowing_into_the_draft() 
     let editor = region(&frame, &editor_id(channel), HitKind::TextArea);
     visible(editor, window);
     let controls = draft_controls(&frame, channel);
+    // Their own list, over the column of channels' (which scrolls too).
     let scroll = frame
         .regions
         .iter()
+        .rev()
         .find(|region| {
             region.kind == HitKind::Scroll
-                && region.id != timeline_id(channel)
-                && region.id != format!("composer:{channel}:uploads")
+                && region.id == "notices"
                 && frame.access.iter().any(|node| {
                     node.role == Role::Alert
                         && titles.contains(&node.name)
@@ -209,6 +263,11 @@ fn three_wrapped_notices_scroll_completely_without_overflowing_into_the_draft() 
         })
         .expect("oversized notices must have a scrollable viewport")
         .clone();
+    assert_eq!(
+        frame.hit_test(center(scroll.rect)),
+        Some("notices"),
+        "a wheel over them scrolls them, not the channels under them"
+    );
     visible(scroll.rect, window);
     for control in &controls {
         assert!(scroll.rect.intersection(*control).is_none());
@@ -256,7 +315,15 @@ fn a_notice_is_projected_once_above_a_modal_then_returns_to_the_conversation() {
     host.key(Key::F, false, true);
     assert!(host.ui.search.is_some());
     let frame = layout(&mut host, WINDOW);
-    visible(alert(&frame, title), WINDOW);
+    let projected = alert(&frame, title);
+    visible(projected, WINDOW);
+    // In the window's corner, as high as over the column.
+    assert_eq!(
+        projected.x,
+        rustcord_components::chrome::USER_PANEL_MARGIN.0
+    );
+    let account = region(&frame, "me:settings", HitKind::Button);
+    assert!(projected.y + projected.height <= account.y, "{projected:?}");
     let index = |needle: &str| {
         frame
             .commands
@@ -285,44 +352,109 @@ fn a_notice_is_projected_once_above_a_modal_then_returns_to_the_conversation() {
     assert_eq!(host.tree.input_value(&editor_id(channel)), Some(DRAFT));
 }
 
-#[test]
-fn notices_stack_over_an_offered_update_and_never_cover_its_buttons() {
-    use rustcord_components::updates::{ids, Stage, UpdateView};
-    let (mut host, channel, _) = draft(2);
+fn offer(host: &mut Host, stage: rustcord_components::updates::Stage) {
     host.ui.updates.installation = Some("C:/Rustcord".into());
-    host.ui.updates.offered = Some(UpdateView {
+    host.ui.updates.offered = Some(rustcord_components::updates::UpdateView {
         version: "1.2.0".into(),
         installed: "1.1.0".into(),
         notes: "Notas.".into(),
-        stage: Stage::Offered,
+        stage,
     });
-    let titles = ["Primer aviso", "Segundo aviso", "Tercer aviso"];
-    for title in titles {
-        host.ui
-            .notify(title, Some("Detalle".into()), true, host.now);
-    }
+}
+
+#[test]
+fn an_offered_update_ends_the_header_and_its_corner_card_is_gone() {
+    use rustcord_components::updates::{ids, Stage};
+    let (mut host, _, _) = draft(2);
     let frame = layout(&mut host, WINDOW);
-    let install = region(&frame, ids::INSTALL, HitKind::Button);
-    visible(install, WINDOW);
-    assert_eq!(
-        frame
-            .press_region(center(install))
-            .map(|found| found.id.as_str()),
-        Some(ids::INSTALL),
-        "a press on «Actualizar y reiniciar» reaches it"
+    assert!(!frame.regions.iter().any(|region| region.id == ids::BUTTON));
+    offer(&mut host, Stage::Offered);
+    host.ui.notify("Aviso", None, true, host.now);
+    let frame = layout(&mut host, WINDOW);
+    let button = region(&frame, ids::BUTTON, HitKind::Button);
+    let search = region(&frame, "message-search:open", HitKind::Button);
+    assert!(
+        button.x > search.x + search.width,
+        "last of the header's tools"
     );
-    for title in titles {
-        let notice = alert(&frame, title);
-        visible(notice, WINDOW);
-        assert!(notice.intersection(install).is_none(), "{title} covers it");
+    assert!(
+        button.x + button.width <= WINDOW.width - crate::title_bar::room(&host.ui) + 0.5,
+        "clear of the window's buttons"
+    );
+    assert!(button.y + button.height <= rustcord_components::sidebar::HEADER);
+    assert_eq!(frame.hit_test(center(button)), Some(ids::BUTTON));
+    // No card, nor its buttons, anywhere.
+    for gone in [ids::INSTALL, "update:later", "update:notes"] {
+        assert!(
+            !frame.regions.iter().any(|region| region.id == gone),
+            "{gone}"
+        );
     }
-    // Put off, the notices go back over the composer.
-    host.ui.updates.later = true;
-    let frame = layout(&mut host, WINDOW);
-    let notice = alert(&frame, titles[0]);
-    for control in draft_controls(&frame, channel) {
-        assert!(notice.intersection(control).is_none());
+    let names: Vec<&str> = frame.access.iter().map(|node| node.name.as_str()).collect();
+    assert!(!names.iter().any(|name| name.contains("está disponible")));
+    // A notice still sits bottom-left, nowhere near it.
+    assert!(alert(&frame, "Aviso").intersection(button).is_none());
+}
+
+#[test]
+fn updating_from_the_header_in_a_call_asks_first() {
+    use rustcord_components::updates::{ids, Stage};
+    let mut host = Host::new();
+    let click = |host: &mut Host, id: &str| {
+        update(
+            &mut host.ui,
+            &mut host.store,
+            &UiAction::Clicked { id: id.into() },
+            host.now,
+        )
+    };
+    offer(&mut host, Stage::Offered);
+    host.open_channel("general");
+    // Out of a call it installs at once.
+    assert_eq!(click(&mut host, ids::BUTTON), vec![Intent::InstallUpdate]);
+    assert!(!host.ui.updates.voice_confirm);
+    host.vz_join("Sala común");
+    assert!(host.store.call().is_some());
+    host.open_channel("general");
+    host.click(ids::BUTTON);
+    assert!(host.ui.updates.voice_confirm, "the question shows");
+    let painted = host.painted();
+    assert!(painted
+        .iter()
+        .any(|text| text == "¿Salir del canal de voz?"));
+    let frame = host.frame();
+    for id in [ids::VOICE_CONFIRM, ids::VOICE_CANCEL] {
+        region(&frame, id, HitKind::Button);
     }
+    host.click(ids::VOICE_CANCEL);
+    assert!(!host.ui.updates.voice_confirm);
+    assert!(host.store.call().is_some(), "cancelled, the call goes on");
+    // Confirmed, it installs; installed, it starts the new version.
+    host.click(ids::BUTTON);
+    assert_eq!(
+        click(&mut host, ids::VOICE_CONFIRM),
+        vec![Intent::InstallUpdate]
+    );
+    assert!(!host.ui.updates.voice_confirm);
+    offer(&mut host, Stage::Installed);
+    assert_eq!(click(&mut host, ids::BUTTON), Vec::new());
+    assert!(host.ui.updates.voice_confirm);
+    assert_eq!(
+        click(&mut host, ids::VOICE_CONFIRM),
+        vec![Intent::RestartForUpdate]
+    );
+    // While it downloads the button waits, and asks nothing.
+    offer(&mut host, Stage::Downloading { have: 1, whole: 2 });
+    assert_eq!(click(&mut host, ids::BUTTON), Vec::new());
+    assert!(!host.ui.updates.voice_confirm);
+    let frame = host.frame();
+    let node = frame
+        .access
+        .iter()
+        .find(|node| node.id == ids::BUTTON)
+        .expect("the button shows while it downloads");
+    assert!(node.disabled);
+    assert_eq!(node.name, "Descargando la actualización");
 }
 
 #[test]
@@ -436,4 +568,51 @@ fn notices_leave_the_live_draft_reachable_at_the_minimum_desktop_size() {
     assert_eq!(host.tree.input_value(&editor_id(channel)), Some(DRAFT));
     assert_eq!(host.ui.reply_to, Some(reply));
     assert_eq!(host.ui.uploads.drafts[&channel].len(), 8);
+}
+
+#[test]
+fn the_update_button_never_crowds_the_header_into_the_window_buttons() {
+    use rustcord_components::updates::{ids, Stage};
+    let mut host = Host::new();
+    host.open_channel("general");
+    // The right edge of the header's last tool at `width`, and the search's
+    // width (a box in wide windows).
+    let last = |host: &mut Host, width: f32| {
+        let frame = layout(host, Size::new(width, 800.0));
+        let find = |id: &str| {
+            frame
+                .regions
+                .iter()
+                .find(|region| region.id == id && region.kind == HitKind::Button)
+                .map(|found| found.rect)
+        };
+        let search = find("message-search:open").expect("the search");
+        let last = find(ids::BUTTON).unwrap_or(search);
+        (last.x + last.width, search.width)
+    };
+    // From the narrowest the host lets the window get, with the system's
+    // frame and with Rustcord's buttons and edges (`frame::MIN_SIZE`): the
+    // button costs the header one tool's room (45), so the header fits with
+    // it wherever it fits in 45 less without it; and a narrow header has it
+    // in its «más» instead, as it was without it.
+    for (buttons, narrowest) in [(false, 720_u16), (true, 868)] {
+        host.ui.desktop.window_buttons = buttons;
+        let room = crate::title_bar::room(&host.ui);
+        for width in (narrowest..=1600).step_by(8) {
+            let width = f32::from(width);
+            host.ui.updates.offered = None;
+            let (plain, search) = last(&mut host, width);
+            let (less, less_search) = last(&mut host, width - 45.0);
+            offer(&mut host, Stage::Offered);
+            let (with, _) = last(&mut host, width);
+            if crate::view::narrow_header(&host.ui, width) {
+                // Folded, it ends no further than it did, or it fits.
+                assert!(with <= plain.max(width - room + 0.5), "{width} ({buttons})");
+            } else if search == less_search && less <= width - 45.0 - room + 0.5 {
+                assert!(with <= width - room + 0.5, "{width} ({buttons}): {with}");
+            }
+        }
+        let frame = layout(&mut host, Size::new(f32::from(narrowest), 800.0));
+        assert!(!frame.regions.iter().any(|region| region.id == ids::BUTTON));
+    }
 }

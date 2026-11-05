@@ -1057,11 +1057,16 @@ pub(crate) fn stage_of(
     // A channel's stage ends at
     // the window's right unless its chat shows beside it; a call's stage is
     // under its conversation's header.
-    let end = if private.is_none() && chat != Ok(true) {
+    let rightmost = private.is_none() && chat != Ok(true);
+    let end = if rightmost {
         crate::title_bar::room(ui)
     } else {
         0.0
     };
+    // The header at the window's right ends with the update's button.
+    let update = rightmost
+        .then(|| crate::updates::header_stage(ui))
+        .flatten();
     // Invitations are a server's: a conversation's call has none on its bar.
     let invite = private.is_none()
         && store
@@ -1105,6 +1110,7 @@ pub(crate) fn stage_of(
             quick: crate::quick_voice::view(ui, store, look, true),
             camera_panel: crate::quick_voice::camera_view(ui, store, look),
             end,
+            update,
             invite,
             // A conversation's call under its header stays put.
             idle: ui.voice.stage == Some(channel) && video::idle(ui, store, now),
