@@ -245,7 +245,8 @@ async fn uploads_lost_ack_retries_return_the_committed_message_and_progress_neve
         assert!(sent_bytes <= total_bytes);
         progress += 1;
         assert!(
-            progress <= 2,
+            // Admission, three quarters of the latency, and the commit.
+            progress <= 5,
             "simulation progress is coalesced, not one event per chunk"
         );
         if sent_bytes == total_bytes {
