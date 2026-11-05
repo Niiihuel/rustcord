@@ -108,8 +108,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sin motivo", "No reason"),
     ("Motivo: {reason}", "Reason: {reason}"),
     ("Revocar veto", "Revoke ban"),
-    ("Creador desconocido", "Unknown creator"),
-    ("Creada por {name}", "Created by {name}"),
     ("Copiar el enlace de {code}", "Copy the link for {code}"),
     ("Copiar enlace", "Copy link"),
     ("Revocar", "Revoke"),

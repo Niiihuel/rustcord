@@ -617,11 +617,12 @@ impl View<'_> {
             .collect();
         children.push(
             Element::row(vec![
-                line(tr!("ROLES: {count}", count = order.len()), 12.0, look.muted)
-                    .font_family(limn::FontFamily::SansBold)
+                // Discord's column titles: 14 px semibold, as written.
+                line(tr!("Roles: {count}", count = order.len()), 14.0, look.text)
+                    .font_family(limn::FontFamily::SansSemibold)
                     .flex(1.0),
-                line(t("MIEMBROS"), 12.0, look.muted)
-                    .font_family(limn::FontFamily::SansBold)
+                line(t("Miembros"), 14.0, look.text)
+                    .font_family(limn::FontFamily::SansSemibold)
                     .size(Some(232.0), None),
             ])
             .padding(12.0),
@@ -1408,19 +1409,22 @@ impl View<'_> {
         let look = self.look;
         let mut children = vec![parts::page_title(
             t("Invitaciones"),
-            Some(t("Los enlaces activos para entrar al servidor. Revocar uno hace que deje de funcionar para quien lo tenga.")),
+            Some(t(
+                "Crea un enlace de invitación que cualquiera pueda usar para unirse.",
+            )),
             look,
         )];
-        // Pausing the invitations.
+        // As Discord's: what the list is, and pausing and making them at its end.
         let mut pause = self.invites_pause();
-        let mut buttons = vec![Element::spacer().flex(1.0)];
+        let mut buttons = vec![line(t("Enlaces de invitación activos"), 14.0, look.muted)
+            .flex(1.0)
+            .centered_y()];
         if !pause.is_empty() {
             buttons.push(pause.remove(0));
         }
         buttons.extend(self.new_invite_button());
-        if buttons.len() > 1 {
-            children.push(Element::row(buttons).gap(10.0));
-        }
+        children.push(gap(0.0, 16.0));
+        children.push(Element::row(buttons).gap(8.0));
         children.extend(pause);
         if let Some(reason) = self.abilities.manage_invites.reason() {
             children.push(parts::denied(reason, look));
@@ -1443,11 +1447,9 @@ impl View<'_> {
                     .iter()
                     .map(|invite| {
                         let uses = match (invite.uses, invite.max_uses) {
-                            (Some(uses), Some(1)) => tr!("{uses} de 1 uso", uses),
-                            (Some(uses), Some(max)) => tr!("{uses} de {max} usos", uses, max),
-                            (Some(1), None) => t("1 uso").to_owned(),
-                            (Some(uses), None) => tr!("{uses} usos", uses),
-                            (None, _) => t("Usos desconocidos").to_owned(),
+                            (Some(uses), Some(max)) => format!("{uses}/{max}"),
+                            (Some(uses), None) => uses.to_string(),
+                            (None, _) => "?".to_owned(),
                         };
                         parts::invite_row(
                             &InviteLine {
@@ -1459,10 +1461,8 @@ impl View<'_> {
                                     .map(|channel| format!("#{}", channel.name)),
                                 uses,
                                 expires: invite.expires.map_or_else(
-                                    || t("No vence").to_owned(),
-                                    |when| {
-                                        tr!("Vence: {when}", when = time::stamp(when, context.wall))
-                                    },
+                                    || t("Nunca").to_owned(),
+                                    |when| time::stamp(when, context.wall),
                                 ),
                                 denied: None,
                                 copy: true,
@@ -1471,6 +1471,7 @@ impl View<'_> {
                         )
                     })
                     .collect();
+                children.push(parts::invites_heading(look));
                 children.push(Element::column(rows));
             }
         }

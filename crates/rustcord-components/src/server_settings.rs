@@ -1881,9 +1881,9 @@ pub struct InviteLine {
     pub inviter: Option<PersonLine>,
     /// Where it leads: "#general".
     pub channel: Option<String>,
-    /// "3 de 10 usos", or "Usos desconocidos".
+    /// "3", "3/10", or "?" when unknown.
     pub uses: String,
-    /// "Vence: Hoy a las 14:05", or "No vence".
+    /// When it stops working, or «Nunca».
     pub expires: String,
     /// Why it cannot be revoked, when it cannot.
     pub denied: Option<String>,
@@ -1891,53 +1891,90 @@ pub struct InviteLine {
     pub copy: bool,
 }
 
-/// A row of the invitations page, with the buttons that copy its link
-/// and revoke it.
+/// The columns of the invitations, as Discord's table at 660 wide: who
+/// made it, its code, its uses, when it ends, and its buttons.
+const INVITE_COLUMNS: [f32; 4] = [203.0, 163.0, 70.0, 140.0];
+
+/// The titles over the invitations' columns.
+pub fn invites_heading(look: &Look) -> Element {
+    let title = |label: &str, width: f32| {
+        line(label, 16.0, look.text)
+            .font_family(FontFamily::SansMedium)
+            .size(Some(width), None)
+    };
+    Element::row(vec![
+        title(t("Persona que invita"), INVITE_COLUMNS[0]),
+        title(t("Código de invitación"), INVITE_COLUMNS[1]),
+        title(t("Usos"), INVITE_COLUMNS[2]),
+        title(t("Caduca"), INVITE_COLUMNS[3]),
+    ])
+    .size(None, Some(32.0))
+}
+
+/// A row of the invitations' table, Discord's: who made it (24 px face,
+/// name over the channel), the code, the uses and the end in the
+/// monospaced face, and at the end the buttons that copy its link and
+/// revoke it.
 pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
-    let mut title = vec![strong_line(&row.code, 15.0, look.text)];
-    if let Some(channel) = &row.channel {
-        title.push(line(channel, 13.0, look.muted).flex(1.0).centered_y());
-    }
     let who = row.inviter.as_ref().map_or_else(
-        || avatar("?", look.faint, 32.0),
-        |person| person.avatar(32.0),
+        || avatar("?", look.faint, 24.0),
+        |person| person.avatar(24.0),
     );
-    let by = row.inviter.as_ref().map_or_else(
-        || t("Creador desconocido").to_owned(),
-        |person| tr!("Creada por {name}", name = person.name),
-    );
-    list_row(
-        who,
-        vec![
-            Element::row(title).gap(8.0),
-            line(by, 13.0, look.muted),
-            line(format!("{} · {}", row.uses, row.expires), 13.0, look.muted),
-        ],
-        row.copy
-            .then(|| {
-                Button::new(format!("ss:invite:{}:copy", row.code), "", look.palette())
-                    .icon(Icon::Copy)
-                    .variant(ButtonVariant::Outline)
-                    .button_size(ButtonSize::Small)
-                    .accessibility_label(tr!("Copiar el enlace de {code}", code = row.code))
-                    .tooltip(t("Copiar enlace"))
-                    .render()
-            })
-            .into_iter()
-            .chain([Button::new(
-                format!("ss:invite:{}:revoke", row.code),
-                t("Revocar"),
-                look.palette(),
-            )
-            .variant(ButtonVariant::Outline)
+    let name = row
+        .inviter
+        .as_ref()
+        .map_or_else(|| t("Desconocido").to_owned(), |person| person.name.clone());
+    let mut copy = vec![line(name, 16.0, look.text).font_family(FontFamily::SansMedium)];
+    if let Some(channel) = &row.channel {
+        copy.push(line(channel, 12.0, look.muted));
+    }
+    let mono = |value: &str, width: f32| {
+        line(value, 14.0, look.muted)
+            .font_family(FontFamily::Monospace)
+            .size(Some(width), None)
+            .centered_y()
+    };
+    let mut buttons = Vec::new();
+    if row.copy {
+        buttons.push(
+            Button::new(format!("ss:invite:{}:copy", row.code), "", look.palette())
+                .icon(Icon::Copy)
+                .variant(ButtonVariant::Ghost)
+                .button_size(ButtonSize::Small)
+                .accessibility_label(tr!("Copiar el enlace de {code}", code = row.code))
+                .tooltip(t("Copiar enlace"))
+                .render(),
+        );
+    }
+    buttons.push(
+        Button::new(format!("ss:invite:{}:revoke", row.code), "", look.palette())
+            .icon(Icon::Close)
+            .variant(ButtonVariant::Ghost)
             .button_size(ButtonSize::Small)
             .enabled(row.denied.is_none())
             .accessibility_label(tr!("Revocar la invitación {code}", code = row.code))
-            .render()])
-            .collect(),
-        78.0,
-        look,
-    )
+            .tooltip(row.denied.as_deref().unwrap_or(t("Revocar")))
+            .render(),
+    );
+    Element::column(vec![
+        Element::row(vec![
+            Element::row(vec![
+                who.centered_y(),
+                Element::column(copy).gap(2.0).flex(1.0).centered_y(),
+            ])
+            .gap(12.0)
+            .size(Some(INVITE_COLUMNS[0]), None),
+            mono(&row.code, INVITE_COLUMNS[1]),
+            mono(&row.uses, INVITE_COLUMNS[2]),
+            mono(&row.expires, INVITE_COLUMNS[3]),
+            Element::spacer().flex(1.0),
+            Element::row(buttons).gap(4.0).centered_y(),
+        ])
+        .size(None, Some(60.0)),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+    ])
 }
 
 /// A webhook or an integration of the server, as its page lists it.
@@ -3181,13 +3218,13 @@ mod tests {
 
     #[test]
     fn invitation_and_expression_rows_name_their_controls_and_say_what_is_unknown() {
-        let size = Size::new(705.0, 120.0);
+        let size = Size::new(660.0, 120.0);
         let invite = InviteLine {
             code: "Ab3dEf7h".into(),
             inviter: None,
             channel: Some("#general".into()),
-            uses: "Usos desconocidos".into(),
-            expires: "No vence".into(),
+            uses: "?".into(),
+            expires: "Nunca".into(),
             denied: None,
             copy: true,
         };
@@ -3196,11 +3233,13 @@ mod tests {
             controls(&frame),
             ["ss:invite:Ab3dEf7h:copy", "ss:invite:Ab3dEf7h:revoke"]
         );
-        let painted = texts(&frame).join(" ");
-        assert!(
-            painted.contains("Creador desconocido") && painted.contains("Usos desconocidos"),
-            "{painted}"
-        );
+        let painted = texts(&frame);
+        for text in ["Desconocido", "#general", "Ab3dEf7h", "?", "Nunca"] {
+            assert!(painted.contains(&text.to_owned()), "{text} in {painted:?}");
+        }
+        // Discord's columns: the code where the table's title says.
+        let (_, heading) = lay(invites_heading(&LOOK), size);
+        assert!(texts(&heading).contains(&"Código de invitación".to_owned()));
         let mut emoji = ExpressionLine {
             key: "emoji:9000".into(),
             name: ":ferris:".into(),

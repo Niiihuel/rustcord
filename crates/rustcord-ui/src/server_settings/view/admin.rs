@@ -6,7 +6,7 @@ use limn::{
     TextField,
 };
 use rustcord_components::server_settings::{self as parts, ItemLine, MenuAction};
-use rustcord_components::{line, strong_line, text};
+use rustcord_components::{gap, line, strong_line, text};
 use rustcord_i18n::{t, tr};
 use rustcord_model::{valid_webhook_name, ChannelId, UserId, WebhookKind};
 use rustcord_provider::{ExpressionKind, ProviderKind};
@@ -147,9 +147,9 @@ impl View<'_> {
             .as_ref()
             .is_some_and(|info| info.capabilities.create_invites)
             .then(|| {
-                parts::primary_button(
+                rustcord_components::user_settings::primary_button(
                     "ss:invite:new",
-                    t("Crear invitación"),
+                    t("Crear enlace de invitación"),
                     self.abilities.create_invites.allowed(),
                     self.look,
                 )
@@ -184,18 +184,23 @@ impl View<'_> {
                 t("PNG, JPEG, WebP o GIF. Se guarda a 128 × 128; un GIF de hasta 256 KB queda animado."),
             )
         };
-        Element::row(vec![
-            text(limits, 13.0, look.muted).flex(1.0).centered_y(),
-            parts::primary_button(
-                id,
-                label,
-                self.abilities.upload_expressions.allowed()
-                    && self.settings.advanced.picking.is_none(),
-                look,
-            )
-            .centered_y(),
+        // As Discord's: the button under the page's title, what it takes in
+        // 12 px under it, and a line before the list.
+        Element::column(vec![
+            Element::row(vec![
+                rustcord_components::user_settings::primary_button(
+                    id,
+                    label,
+                    self.abilities.upload_expressions.allowed()
+                        && self.settings.advanced.picking.is_none(),
+                    look,
+                ),
+                Element::spacer().flex(1.0),
+            ]),
+            gap(0.0, 8.0),
+            text(limits, 12.0, look.muted),
+            parts::rule(look),
         ])
-        .gap(16.0)
     }
 
     /// The webhooks and integrations of the server.

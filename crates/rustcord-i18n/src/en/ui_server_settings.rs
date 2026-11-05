@@ -43,7 +43,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Ya es el último.", "It's already the last one."),
     ("Copiar ID del rol", "Copy role ID"),
     ("Eliminar", "Delete"),
-    ("ROLES: {count}", "ROLES: {count}"),
+    ("Roles: {count}", "Roles: {count}"),
     ("MIEMBROS", "MEMBERS"),
     ("Ningún rol coincide.", "No roles match."),
     ("Más opciones", "More options"),
@@ -134,22 +134,12 @@ pub(super) const ENTRIES: super::Entries = &[
         "Showing the {count} most recent entries.",
     ),
     // Invites.
-    (
-        "Los enlaces activos para entrar al servidor. Revocar uno hace que deje de funcionar para quien lo tenga.",
-        "The active links to join the server. Revoking one makes it stop working for whoever has it.",
-    ),
     ("No hay invitaciones", "No invites"),
     (
         "Nadie creó un enlace para entrar todavía.",
         "Nobody has created a link to join yet.",
     ),
-    ("{uses} de 1 uso", "{uses} of 1 use"),
-    ("{uses} de {max} usos", "{uses} of {max} uses"),
     ("1 uso", "1 use"),
-    ("{uses} usos", "{uses} uses"),
-    ("Usos desconocidos", "Unknown uses"),
-    ("No vence", "Never expires"),
-    ("Vence: {when}", "Expires: {when}"),
     // Emoji and stickers.
     (
         "Los stickers propios del servidor, para enviar en sus canales.",

@@ -1275,13 +1275,18 @@ fn revoking_an_invitation_asks_first_and_shows_at_once() {
     host.answer();
     let invites = host.store.invites(lab).unwrap().to_vec();
     let code = invites[0].code.clone();
+    // Discord's table: who made it, the code, the uses and when it ends.
     let painted = host.painted().join("");
+    for column in [
+        "Persona que invita",
+        "Código de invitación",
+        "Usos",
+        "Caduca",
+    ] {
+        assert!(painted.contains(column), "{column} in {painted}");
+    }
     assert!(
-        painted.contains(&code) && painted.contains("Creada por"),
-        "{painted}"
-    );
-    assert!(
-        painted.contains("No vence") && painted.contains("Vence: "),
+        painted.contains(&code) && painted.contains("Nunca"),
         "{painted}"
     );
     host.click(&format!("ss:invite:{code}:revoke"));

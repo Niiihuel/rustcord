@@ -58,4 +58,11 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Te recomendamos una imagen de al menos 512x512.", "We recommend an image of at least 512x512."),
     ("Tiene un canal de reglas y otro donde el servicio avisa novedades a la moderación.", "It has a rules channel and another where the service tells the moderators what is new."),
     ("Vista general de la comunidad", "Community Overview"),
+    ("Caduca", "Expires"),
+    ("Crea un enlace de invitación que cualquiera pueda usar para unirse.", "Create an invite link anyone can use to join."),
+    ("Crear enlace de invitación", "Create invite link"),
+    ("Código de invitación", "Invite Code"),
+    ("Desconocido", "Unknown"),
+    ("Enlaces de invitación activos", "Active Invite Links"),
+    ("Persona que invita", "Inviter"),
 ];

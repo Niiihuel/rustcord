@@ -970,6 +970,8 @@ impl View<'_> {
         }
         let paused = self.server.options.invites_paused;
         let denied = self.abilities.pause_invites.reason();
+        // Discord's: the page's quiet button, its label in the danger ink
+        // while it pauses.
         let button = Button::new(
             if paused {
                 "ss:invites:resume"
@@ -981,17 +983,19 @@ impl View<'_> {
             } else {
                 t("Pausar invitaciones")
             },
-            look.palette(),
+            user_settings::veil(look),
         )
-        .icon(if paused { Icon::Play } else { Icon::Pause })
-        .variant(ButtonVariant::Outline)
+        .variant(ButtonVariant::Secondary)
+        .size(limn::ControlSize::Spacious)
+        .ink(if paused { look.text } else { look.danger })
         .enabled(denied.is_none())
         .tooltip(denied.unwrap_or(if paused {
             t("Que se pueda volver a entrar con invitaciones")
         } else {
             t("Que nadie nuevo entre con invitaciones por ahora")
         }))
-        .render();
+        .render()
+        .size(None, Some(38.0));
         let mut out = vec![button];
         if paused {
             out.push(parts::denied(
