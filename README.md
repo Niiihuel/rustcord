@@ -213,7 +213,7 @@ The build uses the system's libraries. On **Ubuntu 24.04 or Debian**, the same p
 installs, plus D-Bus and GStreamer's plugins to run the tests and play videos:
 
 ```sh
-sudo apt-get install cmake nasm clang libclang-dev pkg-config \
+sudo apt-get install build-essential cmake nasm clang libclang-dev pkg-config \
   libasound2-dev libpipewire-0.3-dev libspa-0.2-dev \
   libwayland-dev libxkbcommon-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \

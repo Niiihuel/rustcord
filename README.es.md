@@ -216,7 +216,7 @@ mismos paquetes que instala la [release](.github/workflows/release.yml), más
 D-Bus y los plugins de GStreamer para correr los tests y reproducir videos:
 
 ```sh
-sudo apt-get install cmake nasm clang libclang-dev pkg-config \
+sudo apt-get install build-essential cmake nasm clang libclang-dev pkg-config \
   libasound2-dev libpipewire-0.3-dev libspa-0.2-dev \
   libwayland-dev libxkbcommon-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
