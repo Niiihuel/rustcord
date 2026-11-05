@@ -97,16 +97,18 @@ pub fn picker_instant(date: &str, time: &str) -> Option<Timestamp> {
 }
 
 /// The entry over a server's channels: «Eventos», and how many are to
-/// come or happening when known.
+/// come or happening when known. A channel's row, as Discord's: its glyph
+/// and name where a channel's are, 16 px medium.
 pub fn entry(count: usize, look: &Look) -> Element {
     let mut parts = vec![
-        gap(8.0, 0.0),
+        gap(12.0, 0.0),
         Element::icon(Icon::Custom(CALENDAR))
             .foreground(look.dim)
+            .large_icon(20.0)
             .size(Some(20.0), Some(20.0))
             .centered_y(),
-        gap(8.0, 0.0),
-        strong_line(t("Eventos"), 15.0, look.dim)
+        gap(11.0, 0.0),
+        strong_line(t("Eventos"), 16.0, look.dim)
             .flex(1.0)
             .centered_y(),
     ];
@@ -744,6 +746,46 @@ mod tests {
     use crate::testing::{controls, frame, texts};
     use limn::Size;
     use rustcord_model::{ChannelId, EventPlace, ServerId};
+
+    /// Discord's «Eventos» is a channel's row: as high, its glyph where a
+    /// channel's is, its name as large.
+    #[test]
+    fn the_entry_is_a_channel_s_row() {
+        let size = Size::new(240.0, 60.0);
+        let glyph_and_text = |element: Element| {
+            let (_, laid) = frame(element, size);
+            let glyph = laid
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    limn::DrawCommand::Icon { rect, .. } => Some(*rect),
+                    _ => None,
+                })
+                .expect("a glyph");
+            let text = laid
+                .commands
+                .iter()
+                .find_map(|command| match command {
+                    limn::DrawCommand::Text { font_size, .. } => Some(*font_size),
+                    _ => None,
+                })
+                .expect("a name");
+            let row = laid.regions.first().expect("a row").rect;
+            (glyph.x, glyph.width, text, row.height)
+        };
+        let channel = crate::sidebar::channel(
+            crate::sidebar::ChannelRow {
+                id: "channel:1".into(),
+                name: "general".into(),
+                ..Default::default()
+            },
+            &Look::DARK,
+        );
+        assert_eq!(
+            glyph_and_text(entry(0, &Look::DARK)),
+            glyph_and_text(channel)
+        );
+    }
 
     const LOOK: Look = Look::DARK;
 
