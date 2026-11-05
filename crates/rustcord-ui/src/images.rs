@@ -220,6 +220,8 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             add(store.avatar_in(server, message.author));
         }
     }
+    // The faces in the inbox's cards in view.
+    crate::inbox::wanted(ui, store, tree, &mut add);
     // The faces and pictures of the friends page's «Activo ahora».
     crate::active_now::wanted(ui, store, &mut add);
     // The provider's GIFs and their categories, while the tab shows them.

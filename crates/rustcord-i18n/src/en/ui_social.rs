@@ -203,29 +203,46 @@ pub(super) const ENTRIES: super::Entries = &[
         "Filters · ↑↓ to choose, Enter or Tab to use, Esc to close",
     ),
     // inbox.rs
-    ("Conversación directa", "Direct message"),
-    ("Mensaje marcado en este equipo", "Message marked on this device"),
-    ("Primer no leído conocido", "First known unread"),
-    ("Primer no leído cargado · alcance parcial", "First loaded unread · partial reach"),
-    ("Sin ancla conocida · abrir recientes", "No known anchor · open recent"),
-    ("1 mención conocida", "1 known mention"),
-    ("{count} menciones conocidas", "{count} known mentions"),
-    ("No hay canales en este alcance.", "No channels in this scope."),
-    ("Marcar leído", "Mark as read"),
-    ("Canales no leídos", "Unread channels"),
-    ("Canales con menciones", "Channels with mentions"),
     ("No leídos", "Unread"),
     ("Menciones", "Mentions"),
-    (
-        "Sólo canales visibles y menciones conocidas de esta cuenta; no es un historial completo de menciones.",
-        "Only visible channels and known mentions of this account; not a complete mention history.",
-    ),
-    (
-        "Se muestran hasta 1000 canales, los más recientes primero.",
-        "Showing up to 1000 channels, newest first.",
-    ),
     ("Bandeja", "Inbox"),
-    ("No leídos y menciones por canal", "Unread and mentions by channel"),
+    (
+        "Sólo las menciones de los mensajes cargados en este equipo; no es un historial completo.",
+        "Only the mentions in messages loaded on this device; not a complete history.",
+    ),
+    (
+        "Los mensajes marcados como no leídos solo en Rustcord.",
+        "Messages marked unread in Rustcord only.",
+    ),
+    ("Se muestran los primeros {count}.", "Showing the first {count}."),
+    ("El mensaje marcado no está cargado.", "The marked message is not loaded."),
+    (
+        "Sus mensajes no leídos no están cargados.",
+        "Its unread messages are not loaded.",
+    ),
+    ("¡Ya estás al día!", "You're all caught up!"),
+    (
+        "Los mensajes no leídos de todos tus canales sin silenciar aparecerán aquí. ¡Es hora de poner el buzón en cero!",
+        "Unread messages from all your unmuted channels will show up here. Time to get to that zero inbox!",
+    ),
+    ("¡Lo lograste, llegaste al final!", "You made it through everything!"),
+    (
+        "Aquí aparecen las menciones de los mensajes cargados en este equipo; no es un historial completo.",
+        "Mentions in the messages loaded on this device show up here; not a complete history.",
+    ),
+    ("Guarda tus recuerdos favoritos", "Collect your favorite memories"),
+    (
+        "Rustcord todavía no guarda marcadores.",
+        "Rustcord doesn't keep bookmarks yet.",
+    ),
+    (
+        "Organízate y no te olvides de hacer un seguimiento",
+        "Stay organized, never forget a follow-up",
+    ),
+    (
+        "Haz clic derecho en cualquier mensaje y elige «Marcar como no leído». Aquí lo tendrás hasta que lo leas.",
+        "Right-click any message and pick “Mark unread”. It stays here until you read it.",
+    ),
     // relationships.rs
     ("No se puede", "Can't do that"),
     ("Ahora eres amigo de {name}", "You're now friends with {name}"),

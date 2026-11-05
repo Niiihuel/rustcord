@@ -173,6 +173,12 @@ struct Sweep {
 }
 
 impl Sweep {
+    /// What the store holds now is content too.
+    fn learn(&mut self, host: &Host) {
+        self.content = content(host);
+        self.joined = self.content.join("\u{0}");
+    }
+
     fn new(host: &Host) -> Self {
         let content = content(host);
         let joined = content.join("\u{0}");
@@ -191,10 +197,19 @@ impl Sweep {
             // A short one only as a whole, so a word of Rustcord's that some
             // message happens to hold is not let through.
             let piece = text.trim().trim_end_matches('…').trim();
+            // A message wrapped in a narrow card (the inbox's) breaks its
+            // lines elsewhere: its pieces are found with the spaces as one,
+            // and a short one as the start or end of a message.
+            let flat = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
             let found = if piece.chars().count() >= 16 {
-                self.joined.contains(piece)
+                self.joined.contains(piece) || flat(&self.joined).contains(&flat(piece))
             } else {
-                self.content.iter().any(|content| content.trim() == piece)
+                self.content.iter().any(|content| {
+                    let content = content.trim();
+                    content == piece
+                        || (content.len() > piece.len()
+                            && (content.ends_with(piece) || content.starts_with(piece)))
+                })
             };
             if piece.is_empty() || found {
                 continue;
@@ -360,13 +375,25 @@ fn the_simulated_interface_in_english_has_no_spanish_of_its_own() {
     for (id, screen) in [
         ("me:status", "status menu"),
         ("composer:emoji", "emoji picker"),
-        ("inbox:open", "inbox"),
-        ("inbox:mentions", "inbox: mentions"),
     ] {
         host.act_on(id);
         sweep.look(&mut host, screen);
         host.key(Key::Escape, false, false);
     }
+    // The inbox loads the messages of its cards: they are content too.
+    host.act_on("inbox:open");
+    host.frame();
+    sweep.learn(&host);
+    for tab in [
+        "inbox:unread",
+        "inbox:mentions",
+        "inbox:bookmarks",
+        "inbox:reminders",
+    ] {
+        host.act_on(tab);
+        sweep.look(&mut host, tab);
+    }
+    host.key(Key::Escape, false, false);
 
     // Threads of a busy channel, a voice room joined, a new channel.
     let gallery = host.open_channel("galería");

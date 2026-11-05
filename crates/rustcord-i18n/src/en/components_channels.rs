@@ -394,6 +394,24 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Editar canal", "Edit channel"),
     ("Abrir chat", "Open Chat"),
     ("Bandeja de entrada", "Inbox"),
+    // inbox.rs
+    ("Marcadores", "Bookmarks"),
+    ("Recordatorios", "Reminders"),
+    ("Marcar todo como leído", "Mark All as Read"),
+    (
+        "Marcar todo como leído (solo en Rustcord)",
+        "Mark All as Read (only in Rustcord)",
+    ),
+    ("Ver solicitudes de amistad", "View Friend Requests"),
+    ("Ir al mensaje", "Jump to Message"),
+    ("Ampliar", "Expand"),
+    ("Minimizar", "Collapse"),
+    ("Ver todos los mensajes sin leer", "View all unreads"),
+    ("¿Marcar todo como leído?", "Mark all as read?"),
+    (
+        "Esto marcará todos tus canales no silenciados como leídos. ¿Realmente quieres continuar?",
+        "This will mark all your unmuted channels as read. Are you sure you want to continue?",
+    ),
     // Folders.
     ("Azul", "Blue"),
     ("Ajustes de carpeta", "Folder settings"),
