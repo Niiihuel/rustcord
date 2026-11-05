@@ -167,12 +167,25 @@ impl Session {
                 sent_bytes: 0,
                 total_bytes,
             });
-            let stopped = tokio::select! {
-                biased;
-                _ = fence.cancelled() => Some(UploadError::Cancelled),
-                _ = sleep_until(Instant::from_std(scope.expires_at)) => Some(UploadError::Expired),
-                _ = sleep(latency) => None,
-            };
+            // The simulated transfer takes the latency, its bytes reported
+            // going out in coalesced quarters; all of them only once committed.
+            let mut stopped = None;
+            for quarter in 1..=4u64 {
+                stopped = tokio::select! {
+                    biased;
+                    _ = fence.cancelled() => Some(UploadError::Cancelled),
+                    _ = sleep_until(Instant::from_std(scope.expires_at)) => Some(UploadError::Expired),
+                    _ = sleep(latency / 4) => None,
+                };
+                if stopped.is_some() || quarter == 4 {
+                    break;
+                }
+                events.send_lossy(Event::UploadProgress {
+                    scope,
+                    sent_bytes: total_bytes * quarter / 4,
+                    total_bytes,
+                });
+            }
             if let Some(error) = stopped {
                 let _ = events.send(failed(scope, error)).await;
                 return;

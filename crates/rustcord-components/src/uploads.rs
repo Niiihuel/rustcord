@@ -6,8 +6,8 @@
 
 use crate::Look;
 use limn::{
-    Access, ButtonVariant, Component, ComponentPalette, Element, Icon, IconButton, RasterImage,
-    Role, Spinner,
+    Access, ButtonSizing, ButtonVariant, Color, Component, ComponentPalette, Element, Icon,
+    IconButton, Progress, RasterImage, Role, Spinner,
 };
 use rustcord_i18n::{t, tr};
 use rustcord_model::{ChannelId, PendingAttachment};
@@ -251,29 +251,106 @@ pub(crate) fn file_info(file: &PendingAttachment, width: f32, look: &Look) -> El
     )))
 }
 
-pub fn pending_uploads(
-    files: &[PendingAttachment],
-    progress: Option<(u64, u64)>,
-    width: f32,
-    look: &Look,
-) -> Element {
-    let mut rows: Vec<_> = files
+/// The files of a message that did not go, each with its size.
+pub fn pending_uploads(files: &[PendingAttachment], width: f32, look: &Look) -> Element {
+    let rows: Vec<_> = files
         .iter()
         .map(|file| file_info(file, width, look))
         .collect();
-    if let Some((sent, total)) = progress {
-        let said = if sent == total {
-            t("Esperando confirmación…").to_owned()
-        } else {
-            tr!(
-                "Enviando adjuntos: {sent} de {total}",
-                sent = crate::file_size(sent),
-                total = crate::file_size(total)
-            )
-        };
-        rows.push(crate::line(said, 12.0, look.muted).size(Some(width), None));
-    }
     Element::column(rows).gap(6.0).size(Some(width), None)
+}
+
+/// The widest the card of a message's files being sent is, as Discord's.
+const SENDING_CARD: f32 = 520.0;
+
+/// What a message being sent shows of its files until they are sent, as
+/// Discord's card: the file glyph, the name (or how many there are) and
+/// the size over a blurple bar of the bytes sent so far (empty until the
+/// provider says), and the «×» of `cancel` that stops the transfer.
+pub fn sending_uploads(
+    files: &[PendingAttachment],
+    progress: Option<(u64, u64)>,
+    progress_id: String,
+    cancel: Option<&str>,
+    width: f32,
+    look: &Look,
+) -> Element {
+    let width = width.clamp(0.0, SENDING_CARD);
+    let name = match files {
+        [file] => file.filename.clone(),
+        _ => tr!("{n} archivos", n = files.len()),
+    };
+    let size = crate::file_size(files.iter().map(|file| file.size_bytes).sum());
+    let fraction = progress.map_or(0.0, |(sent, total)| {
+        if total == 0 {
+            1.0
+        } else {
+            sent as f32 / total as f32
+        }
+    });
+    let bar = Progress::new(
+        fraction,
+        ComponentPalette {
+            text: look.accent,
+            selected: look.selected,
+            ..look.palette()
+        },
+    )
+    .id(progress_id)
+    .height(6.0)
+    .render()
+    .accessibility_label(tr!("{pct} %", pct = (fraction * 100.0).round()));
+    let mut row = vec![
+        Element::icon(Icon::File)
+            .large_icon(30.0)
+            .foreground(look.muted)
+            .centered_y(),
+        Element::column(vec![
+            Element::row(vec![
+                crate::line(&name, 16.0, look.text).shrink_to_fit(),
+                crate::line(&size, 12.0, look.muted).centered_y(),
+                Element::spacer().flex(1.0),
+            ])
+            .gap(8.0)
+            .size(None, Some(20.0)),
+            bar,
+        ])
+        .gap(8.0)
+        .flex(1.0)
+        .centered_y(),
+    ];
+    if let Some(cancel) = cancel {
+        row.push(
+            IconButton::new(
+                cancel,
+                Icon::Close,
+                ComponentPalette {
+                    hover: Color::TRANSPARENT,
+                    ..look.palette()
+                },
+            )
+            .variant(ButtonVariant::Ghost)
+            .sizing(ButtonSizing {
+                height: 24.0,
+                font_size: 14.0,
+                icon_size: 24.0,
+                horizontal_padding: 0.0,
+                inner_spacing: 0.0,
+            })
+            .tooltip(t("Cancelar envío"))
+            .ink(look.muted)
+            .hover_ink(look.text)
+            .render()
+            .centered_y(),
+        );
+    }
+    Element::panel(Element::row(row).gap(12.0))
+        .padding(16.0)
+        .size(Some(width), None)
+        .background(look.card)
+        .border(look.border, 1.0)
+        .radius(8.0)
+        .accessible(Access::new(Role::Group).name(format!("{name}, {size}")))
 }
 
 #[cfg(test)]
@@ -333,15 +410,64 @@ mod tests {
         }
     }
 
+    /// Discord's card of a message being sent: its glyph, name and size,
+    /// a blurple bar filled by the share of the bytes sent, and its «×».
     #[test]
-    fn complete_body_progress_still_waits_for_confirmation() {
-        let (_, frame) = frame(
-            pending_uploads(&[], Some((12, 12)), 320.0, &Look::DARK),
-            limn::Size::new(320.0, 300.0),
+    fn a_sending_card_fills_its_bar_by_the_bytes_sent_and_offers_its_cancel() {
+        const BAR: &str = "msg:7:upload:progress";
+        let lay = |files: &[PendingAttachment], progress, cancel| {
+            let card = sending_uploads(files, progress, BAR.into(), cancel, 700.0, &Look::DARK);
+            // The root fills the window; a row and a column keep the card's size.
+            let root = Element::column(vec![
+                Element::row(vec![card, Element::spacer().flex(1.0)]),
+                Element::spacer().flex(1.0),
+            ]);
+            frame(root, Size::new(700.0, 200.0)).1
+        };
+        let bar = |frame: &Frame| {
+            let node = frame.access.iter().find(|node| node.id == BAR).unwrap();
+            let fill = frame
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    DrawCommand::FillCornerRect { rect, color, .. }
+                    | DrawCommand::FillRect { rect, color, .. }
+                        if *color == Look::DARK.accent =>
+                    {
+                        Some(rect.width)
+                    }
+                    _ => None,
+                })
+                .fold(0.0, f32::max);
+            (node.value, fill / node.rect.width, node.rect)
+        };
+        let one = files(1);
+        let laid = lay(&one, Some((3, 12)), Some("msg:7:upload:cancel"));
+        let said = texts(&laid);
+        assert!(said.iter().any(|text| text == "fixture-1.txt"), "{said:?}");
+        assert!(said.iter().any(|text| text == "12 B"), "{said:?}");
+        assert!(controls(&laid).contains(&"msg:7:upload:cancel".to_owned()));
+        let (value, filled, track) = bar(&laid);
+        assert_eq!(value, Some(0.25));
+        assert!((filled - 0.25).abs() < 0.01, "{filled}");
+        assert!(
+            track.height == 6.0 && track.x + track.width <= SENDING_CARD - 16.0,
+            "{track:?}"
         );
-        assert!(texts(&frame)
-            .iter()
-            .any(|text| text.contains("Esperando confirmación")));
+        // Before the provider says how far it is, the bar is empty; without
+        // a way to stop the transfer there is no «×».
+        let waiting = lay(&one, None, None);
+        assert_eq!(bar(&waiting).0, Some(0.0));
+        assert!(bar(&waiting).1 < 0.01);
+        assert!(!controls(&waiting).iter().any(|id| id.ends_with("cancel")));
+        // Several files: how many, with their whole size.
+        let three = files(3);
+        let laid = lay(&three, Some((36, 36)), None);
+        let said = texts(&laid);
+        assert!(said.iter().any(|text| text == "3 archivos"), "{said:?}");
+        assert!(said.iter().any(|text| text == "36 B"), "{said:?}");
+        assert_eq!(bar(&laid).0, Some(1.0));
+        assert!((bar(&laid).1 - 1.0).abs() < 0.01);
     }
 
     /// Discord's card: a picture fitted to the card's width and never

@@ -902,25 +902,25 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
             });
         }
     }
-    let upload_progress = matches!(message.delivery, Delivery::Sending)
-        .then_some(live.upload_progress)
-        .flatten();
-    if !live.pending_files.is_empty() {
-        column.push(crate::uploads::pending_uploads(
+    if live.pending_files.is_empty() {
+        column.extend(delivery(message, width, look));
+    } else if matches!(message.delivery, Delivery::Sending) {
+        // The card says it is being sent; the real message replaces it.
+        column.push(crate::uploads::sending_uploads(
             live.pending_files,
-            upload_progress,
+            live.upload_progress,
+            action(message, "upload:progress"),
+            live.upload_cancel,
             width,
             look,
         ));
-    }
-    if let Some(state) = delivery(message, width, upload_progress, look) {
-        column.push(state);
-    }
-    if let Some(cancel) = live
-        .upload_cancel
-        .filter(|_| matches!(message.delivery, Delivery::Sending))
-    {
-        column.push(Link::new(cancel, t("Cancelar envío"), look.palette()).render());
+    } else {
+        column.push(crate::uploads::pending_uploads(
+            live.pending_files,
+            width,
+            look,
+        ));
+        column.extend(delivery(message, width, look));
     }
     for attachment in message
         .attachments
@@ -1533,29 +1533,11 @@ pub fn full_date(at: Timestamp) -> String {
 
 /// Where an unconfirmed message of the account is: sending, refused, or
 /// maybe sent, with what can be done about it.
-fn delivery(
-    message: &Message,
-    width: f32,
-    progress: Option<(u64, u64)>,
-    look: &Look,
-) -> Option<Element> {
-    if matches!(message.delivery, Delivery::Sending) && progress.is_some() {
-        return None;
-    }
+fn delivery(message: &Message, width: f32, look: &Look) -> Option<Element> {
     let palette = look.palette();
     let (glyph, ink, sentence, retry) = match &message.delivery {
         Delivery::Sent => return None,
-        Delivery::Sending => (
-            Icon::Clock,
-            look.faint,
-            if progress.is_some_and(|(sent, total)| sent == total) {
-                t("Esperando confirmación…")
-            } else {
-                t("Enviando…")
-            }
-            .to_owned(),
-            false,
-        ),
+        Delivery::Sending => (Icon::Clock, look.faint, t("Enviando…").to_owned(), false),
         Delivery::Failed { reason } => (
             Icon::ErrorCircle,
             look.danger,
@@ -4060,6 +4042,53 @@ mod tests {
             open(),
             &Look::DARK
         ))));
+    }
+
+    #[test]
+    fn files_being_sent_are_a_card_with_their_bar_and_unsent_ones_a_list_to_retry() {
+        let files = [rustcord_model::PendingAttachment {
+            token: rustcord_model::UploadToken(1),
+            filename: "foto.png".into(),
+            size_bytes: 2_048,
+        }];
+        let mut pending = (*message(1, 1, 0)).clone();
+        pending.content = "mira".into();
+        pending.delivery = Delivery::Sending;
+        let live = Live {
+            pending_files: &files,
+            upload_progress: Some((512, 2_048)),
+            upload_cancel: Some("msg:1:upload:cancel"),
+            ..Live::default()
+        };
+        let sending = laid(live_row(view(&pending, ALL), live, &Look::DARK));
+        let said = texts(&sending).join(" ");
+        assert!(
+            said.contains("foto.png") && said.contains("2.0 KB"),
+            "{said}"
+        );
+        assert!(!said.contains("Enviando…"), "the card says it: {said}");
+        let bar = sending
+            .access
+            .iter()
+            .find(|node| node.id == "msg:1:upload:progress")
+            .expect("the bar of the bytes sent");
+        assert_eq!(bar.value, Some(0.25));
+        assert!(controls(&sending).contains(&"msg:1:upload:cancel".to_owned()));
+        // Refused: no bar nor «×», the files named and what can be done.
+        pending.delivery = Delivery::Failed {
+            reason: "sin red".into(),
+        };
+        let failed = laid(live_row(view(&pending, ALL), live, &Look::DARK));
+        let said = texts(&failed).join(" ");
+        assert!(
+            said.contains("foto.png") && said.contains("Reintentar"),
+            "{said}"
+        );
+        assert!(!failed
+            .access
+            .iter()
+            .any(|node| node.id == "msg:1:upload:progress"));
+        assert!(!controls(&failed).contains(&"msg:1:upload:cancel".to_owned()));
     }
 
     #[test]

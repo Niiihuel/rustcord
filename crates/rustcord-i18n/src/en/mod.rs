@@ -74,6 +74,8 @@ mod active_now;
 mod settings_apps;
 // Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
 mod settings_look;
+// The card of the files of a message being sent.
+mod uploads_progress;
 
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
@@ -131,4 +133,6 @@ pub(crate) const ALL: &[(&str, Entries)] = &[
     ("settings_apps", settings_apps::ENTRIES),
     // Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
     ("settings_look", settings_look::ENTRIES),
+    // The card of the files of a message being sent.
+    ("uploads_progress", uploads_progress::ENTRIES),
 ];

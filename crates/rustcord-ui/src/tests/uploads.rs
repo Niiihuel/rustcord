@@ -385,6 +385,86 @@ fn a_sending_file_has_keyboard_cancellation_and_keeps_its_ambiguous_body() {
 }
 
 #[test]
+fn a_sending_file_fills_its_bar_as_its_bytes_go_and_gives_way_to_the_sent_message() {
+    let (mut host, channel) = host();
+    host.store.add_pending_attachments(
+        channel,
+        "archivo".into(),
+        None,
+        72,
+        702,
+        vec![file(1)],
+        Timestamp(10),
+    );
+    host.frame();
+    host.run(vec![Intent::ScrollToEnd(timeline_id(channel))]);
+    let pending = MessageId(u64::MAX - 72);
+    let id = format!("msg:{pending}:upload:progress");
+    let bar = |frame: &Frame| {
+        frame
+            .access
+            .iter()
+            .find(|node| node.id == id)
+            .map(|node| node.value)
+    };
+    assert_eq!(bar(&host.frame()), Some(Some(0.0)), "empty until it says");
+    let progress = |sent_bytes| Event::UploadProgress {
+        scope: rustcord_provider::UploadSendScope {
+            request: 702,
+            account: host.store.me().unwrap(),
+            channel,
+            generation: 1,
+            nonce: 72,
+            expires_at: Instant::now() + Duration::from_secs(60),
+        },
+        sent_bytes,
+        total_bytes: 12,
+    };
+    let (half, all) = (progress(6), progress(12));
+    host.event(half);
+    assert_eq!(bar(&host.frame()), Some(Some(0.5)));
+    host.event(all);
+    assert_eq!(bar(&host.frame()), Some(Some(1.0)), "sent, not confirmed");
+    let mut sent = host
+        .store
+        .timeline(channel)
+        .unwrap()
+        .get(pending)
+        .unwrap()
+        .as_ref()
+        .clone();
+    sent.id = MessageId(9_000);
+    sent.delivery = rustcord_model::Delivery::Sent;
+    sent.attachments = vec![rustcord_model::Attachment {
+        id: rustcord_model::AttachmentId(9_001),
+        filename: file(1).filename,
+        size_bytes: 12,
+        content_type: None,
+        dimensions: None,
+        preview: None,
+        download: None,
+        spoiler: false,
+        voice: None,
+        explicit: false,
+        placeholder: None,
+        description: None,
+    }];
+    host.event(Event::MessageCreated {
+        message: sent,
+        nonce: Some(72),
+    });
+    let frame = host.frame();
+    assert_eq!(bar(&frame), None, "the sent message replaces the card");
+    assert!(host
+        .store
+        .timeline(channel)
+        .unwrap()
+        .get(MessageId(9_000))
+        .is_some());
+    assert!(host.store.pending_attachments(channel, pending).is_empty());
+}
+
+#[test]
 fn an_old_admission_cannot_clear_a_new_reply_to_the_same_message() {
     let (mut host, channel) = host();
     let reply = host
