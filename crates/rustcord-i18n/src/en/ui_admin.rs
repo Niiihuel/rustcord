@@ -109,10 +109,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "PNG, JPEG, WebP o GIF. Se guarda a 128 × 128; un GIF de hasta 256 KB queda animado.",
         "PNG, JPEG, WebP or GIF. Saved at 128 × 128; a GIF up to 256 KB stays animated.",
     ),
-    (
-        "Los webhooks publican mensajes de otras aplicaciones o sitios en un canal; las integraciones conectan aplicaciones y servicios con el servidor.",
-        "Webhooks post messages from other apps or sites in a channel; integrations connect apps and services to the server.",
-    ),
     ("Nuevo webhook", "New webhook"),
     ("Editar webhook", "Edit webhook"),
     ("No hay webhooks", "No webhooks"),
@@ -124,7 +120,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sigue a otro servidor", "Follows another server"),
     ("De una aplicación", "From an app"),
     ("Creado por {name}", "Created by {name}"),
-    ("Aplicaciones y servicios", "Apps and services"),
     ("No hay integraciones", "No integrations"),
     (
         "Nadie conectó una aplicación o un servicio todavía.",

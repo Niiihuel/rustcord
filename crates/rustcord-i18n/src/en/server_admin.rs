@@ -66,4 +66,9 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Enlaces de invitación activos", "Active Invite Links"),
     ("Persona que invita", "Inviter"),
     ("Lista de baneos del servidor", "Server Ban List"),
+    ("1 webhook", "1 webhook"),
+    ("Bots y apps", "Bots and Apps"),
+    ("Crear webhook", "Create Webhook"),
+    ("Personaliza tu servidor con integraciones: los webhooks publican mensajes de otras aplicaciones o sitios en un canal, y las aplicaciones y servicios se conectan con él.", "Customize your server with integrations: webhooks post messages from other apps or sites in a channel, and apps and services connect to it."),
+    ("{count} webhooks", "{count} webhooks"),
 ];

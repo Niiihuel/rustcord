@@ -6,7 +6,7 @@ use limn::{
     TextField,
 };
 use rustcord_components::server_settings::{self as parts, ItemLine, MenuAction};
-use rustcord_components::{gap, line, strong_line, text};
+use rustcord_components::{gap, line, text};
 use rustcord_i18n::{t, tr};
 use rustcord_model::{valid_webhook_name, ChannelId, UserId, WebhookKind};
 use rustcord_provider::{ExpressionKind, ProviderKind};
@@ -209,25 +209,47 @@ impl View<'_> {
         let server = self.server.id;
         let mut children = vec![parts::page_title(
             t("Integraciones"),
-            Some(t("Los webhooks publican mensajes de otras aplicaciones o sitios en un canal; las integraciones conectan aplicaciones y servicios con el servidor.")),
+            Some(t("Personaliza tu servidor con integraciones: los webhooks publican mensajes de otras aplicaciones o sitios en un canal, y las aplicaciones y servicios se conectan con él.")),
             look,
         )];
-        // Webhooks.
+        children.push(parts::rule(look));
+        // Webhooks: Discord's card, with how many and the button that makes one.
         let webhooks_denied = self.abilities.manage_webhooks.reason();
+        let count = self.store.webhooks(server).map(<[_]>::len);
         children.push(
-            Element::row(vec![
-                strong_line("Webhooks", 16.0, look.text)
+            Element::panel(
+                Element::row(vec![
+                    rustcord_components::icon(Icon::Bolt, look.muted)
+                        .size(Some(24.0), Some(24.0))
+                        .centered_y(),
+                    Element::column(vec![
+                        line("Webhooks", 16.0, look.text).font_family(limn::FontFamily::SansMedium),
+                        line(
+                            match count {
+                                Some(1) => t("1 webhook").to_owned(),
+                                Some(count) => tr!("{count} webhooks", count),
+                                None => t("Cargando…").to_owned(),
+                            },
+                            12.0,
+                            look.muted,
+                        ),
+                    ])
+                    .gap(2.0)
                     .flex(1.0)
                     .centered_y(),
-                parts::primary_button(
-                    "ss:webhook:new",
-                    t("Nuevo webhook"),
-                    webhooks_denied.is_none(),
-                    look,
-                )
-                .centered_y(),
-            ])
-            .gap(16.0),
+                    parts::primary_button(
+                        "ss:webhook:new",
+                        t("Crear webhook"),
+                        webhooks_denied.is_none(),
+                        look,
+                    )
+                    .centered_y(),
+                ])
+                .gap(16.0)
+                .padding(16.0),
+            )
+            .radius(8.0)
+            .background(look.raised),
         );
         match (webhooks_denied, self.store.webhooks(server)) {
             (Some(reason), _) => children.push(parts::denied(reason, look)),
@@ -279,9 +301,11 @@ impl View<'_> {
                 children.push(Element::column(rows));
             }
         }
-        children.push(parts::divider(look));
-        // Integrations.
-        children.push(strong_line(t("Aplicaciones y servicios"), 16.0, look.text));
+        children.push(parts::rule(look));
+        // Integrations, Discord's «Bots y apps».
+        children.push(
+            line(t("Bots y apps"), 16.0, look.text).font_family(limn::FontFamily::SansSemibold),
+        );
         match (
             self.abilities.manage_integrations.reason(),
             self.store.integrations(server),
