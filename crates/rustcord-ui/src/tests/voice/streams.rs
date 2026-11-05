@@ -945,3 +945,54 @@ fn a_stream_focused_or_full_screen_fits_the_window_with_its_strip() {
         }
     }
 }
+
+#[test]
+fn the_wheel_over_a_modal_is_the_modals_and_never_zooms_the_stream_under_it() {
+    let mut host = Host::new();
+    let owner = host.tr_focused();
+    let level = |host: &Host| host.ui.video.zoom.map(|(_, zoom)| zoom.level);
+    let tile = host.vz_rect(&ids::stream_tile(owner.0));
+    // The pointer on the stream's picture, inside its tile.
+    let middle = limn::Point::new(tile.x + tile.width / 2.0, tile.y + tile.height / 2.0);
+    let wheel = |delta_y| limn::UiEvent::Scroll {
+        position: middle,
+        delta_y,
+    };
+    // Settings open over the stage: the wheel there goes to the tree, whose
+    // topmost scrolling area under the pointer is the settings' page.
+    let intents = crate::settings::open_settings(
+        &mut host.ui,
+        &host.store,
+        crate::settings::SettingsPage::default(),
+    );
+    host.run(intents);
+    let frame = host.frame();
+    let under = frame
+        .regions
+        .iter()
+        .rev()
+        .find(|region| region.kind == limn::HitKind::Scroll && region.rect.contains(middle))
+        .map(|region| region.id.clone())
+        .expect("a scrolling area under the pointer");
+    assert!(
+        under.starts_with("us:"),
+        "the settings', not the call's: {under}"
+    );
+    for delta in [100.0, -100.0] {
+        let taken = crate::intercept(&mut host.ui, &mut host.store, &wheel(delta), None);
+        assert!(taken.is_none(), "the tree has the wheel");
+        host.send(wheel(delta));
+        assert_eq!(
+            level(&host),
+            None,
+            "the stream under the settings stays fitted"
+        );
+    }
+    // Closed: the wheel on the stream zooms it again.
+    let intents = crate::settings::close_settings(&mut host.ui);
+    host.run(intents);
+    assert!(host.ui.settings.is_none());
+    host.frame();
+    assert!(crate::intercept(&mut host.ui, &mut host.store, &wheel(100.0), None).is_some());
+    assert_eq!(level(&host), Some(2.0));
+}

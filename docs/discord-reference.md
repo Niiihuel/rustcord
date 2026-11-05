@@ -188,6 +188,31 @@ Measured motion (20 px icons):
   hover 24 %, ink `#73c48b`). Transitions 50 ms ease-in, 150 ms ease-out on
   hover.
 
+### Picture-in-picture (stream watched off the stage)
+
+Read from the web bundle the desktop client cached and the owner's captures
+of the Windows client (2026-11-04).
+
+- 320 wide by default (200 to 960 when resized), 16:9, radius 8, ground
+  `--primary-800`. It opens at the bottom right: 80 from the window's right
+  edge and 132 from its bottom (80 from the top and the left in the other
+  corners), over the conversation, above its composer.
+- At rest only the picture shows: no title, name, glyphs, shade or edge.
+  Under the pointer the controls fade in (`opacity 0.2s ease-in-out`; the
+  top row comes down 8 and the bottom row up 8 with full motion), over a
+  shade: black at the top edge, clear from 30 % to 60 % of the height, black
+  at the bottom edge; padding 8. In the owner's capture a 1 px light edge
+  shows while hovered. Discord also hides them 1.8 s after the pointer
+  rests.
+- Top left: the back arrow, 20 px in `--primary-300` (`#c9cace` measured),
+  2 apart from the channel's name, `heading-md/normal` (16/20) white,
+  underlined under the pointer; it returns to the call.
+- Bottom left: the streamer's name, `text-md/normal` white, 8 in.
+- Bottom right, 16 apart: the viewers (eye 24 px in `--primary-300`, 4,
+  their count in white), «Abrir en otra ventana», «Dejar de ver» (screen
+  with a cut-out ×); 24 px glyphs, white under the pointer. No live badge
+  and no hang up.
+
 ## User settings
 
 Measured on 2026-11-04 in the web client (build stable 663810, es-419,

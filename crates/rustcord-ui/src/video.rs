@@ -105,6 +105,9 @@ pub struct Video {
     pub zoom: Option<(UserId, Zoom)>,
     /// The focused stream's tile as the last layout put it.
     pub tile: Option<(UserId, Rect)>,
+    /// What the last layout put over that tile and past it: a modal, a menu,
+    /// a card. The wheel and a press there are theirs, not the picture's.
+    pub covers: Vec<Rect>,
     /// A press on the zoomed picture: where, and the pan it began from.
     pub grab: Option<(Point, (f32, f32))>,
     /// The pointer moved since the last press on the stream's tile: its
@@ -1008,14 +1011,38 @@ pub(crate) fn hold(ui: &mut Ui, tree: &limn::UiTree) {
     {
         ui.video.zoom = None;
     }
-    ui.video.tile = focused.and_then(|owner| {
-        tree.frame()
-            .regions
+    let regions = &tree.frame().regions;
+    let found = focused.and_then(|owner| {
+        let at = regions
             .iter()
-            .rev()
-            .find(|region| region.id == ids::stream_tile(owner.0))
-            .map(|region| (owner, region.rect))
+            .rposition(|region| region.id == ids::stream_tile(owner.0))?;
+        Some((owner, at))
     });
+    ui.video.tile = found.map(|(owner, at)| (owner, regions[at].rect));
+    // Regions go from bottom to top: those after the tile reaching past it
+    // lie over it (a modal, a menu, a card); its own controls stay inside.
+    ui.video.covers = found.map_or_else(Vec::new, |(_, at)| {
+        let tile = regions[at].rect;
+        regions[at + 1..]
+            .iter()
+            .map(|region| region.rect)
+            .filter(|rect| !inside(*rect, tile))
+            .collect()
+    });
+}
+
+/// `rect` lies within `outer`.
+fn inside(rect: Rect, outer: Rect) -> bool {
+    rect.x >= outer.x
+        && rect.y >= outer.y
+        && rect.x + rect.width <= outer.x + outer.width
+        && rect.y + rect.height <= outer.y + outer.height
+}
+
+/// The pointer at `at` is on the focused stream's picture `tile`, with
+/// nothing laid over it there.
+fn on_picture(ui: &Ui, tile: Rect, at: Point) -> bool {
+    tile.contains(at) && !ui.video.covers.iter().any(|cover| cover.contains(at))
 }
 
 /// The zoom of `owner`'s stream: 1× unless it was zoomed while it took the stage.
@@ -1061,13 +1088,15 @@ pub(crate) fn zoom_step(ui: &mut Ui, owner: UserId, step: f32) -> Vec<Intent> {
 }
 
 /// The wheel zooms the focused stream's picture about the pointer, and a
-/// press on it, zoomed, pans it as the pointer moves. The press itself stays
-/// with the tree, so the stream's click still answers a press and release.
+/// press on it, zoomed, pans it as the pointer moves; only where nothing
+/// lies over it, so a modal or a menu over the stage keeps its wheel. The
+/// press itself stays with the tree, so the stream's click still answers a
+/// press and release.
 pub(crate) fn pointer(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
     let (owner, tile) = ui.video.tile?;
     let middle = Point::new(tile.x + tile.width / 2.0, tile.y + tile.height / 2.0);
     match *event {
-        UiEvent::Scroll { position, delta_y } if tile.contains(position) => {
+        UiEvent::Scroll { position, delta_y } if on_picture(ui, tile, position) => {
             let (picture, room) = picture_room(ui, owner)?;
             let zoom = zoom_of(ui, owner);
             // A wheel step of 100 px is one level, as the official client's.
@@ -1083,7 +1112,7 @@ pub(crate) fn pointer(ui: &mut Ui, event: &UiEvent) -> Option<Vec<Intent>> {
             ui.video.zoom = Some((owner, next));
             Some(Vec::new())
         }
-        UiEvent::PointerDown(at) if tile.contains(at) => {
+        UiEvent::PointerDown(at) if on_picture(ui, tile, at) => {
             ui.video.panned = false;
             let zoom = zoom_of(ui, owner);
             if zoom.level > ZOOM_MIN {

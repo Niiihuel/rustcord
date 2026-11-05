@@ -1,12 +1,13 @@
 //! The picture-in-picture: the stream the account watches, or its own
 //! share, floating over the window while the call's stage is not on screen
-//! (the person is reading a conversation). A click on it, or its channel's
-//! name, returns to the call; it follows the pointer while dragged and
-//! settles in the corner nearest where it is let go, where it stays until
-//! the next drag (memory only). Cameras are not shown here.
+//! (the person is reading a conversation). As Discord's, it opens at the
+//! bottom right, shows only its picture until the pointer comes over it, and
+//! goes wherever it is dragged, inside the window, where it stays until the
+//! next drag (memory only). A click on it returns to the call. Cameras are
+//! not shown here.
 
-use limn::{Element, Point, Size, UiAction};
-use rustcord_components::voice::{self as parts, ids, PipButton, PipCorner, PipGlyph, PipView};
+use limn::{Element, Point, Size, UiAction, UiTree};
+use rustcord_components::voice::{self as parts, ids, PipButton, PipGlyph, PipView};
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
 use rustcord_model::StreamPhase;
@@ -14,28 +15,28 @@ use rustcord_state::Store;
 
 use crate::{video, Intent, Ui};
 
-/// Where the picture-in-picture was last let go, in the window, and the
-/// drag in progress: where it began and where the pointer is.
+/// Where the picture-in-picture was let go, where it was last laid out, and
+/// the drag in progress: where it began and where the pointer is.
 #[derive(Debug, Default)]
 pub struct Pip {
-    dropped: Option<Point>,
+    at: Option<Point>,
+    shown: Option<Point>,
     drag: Option<(Point, Point)>,
 }
 
-/// How far the drag in progress has carried it from its corner.
-fn offset(ui: &Ui) -> Point {
+/// How far the drag in progress has carried it.
+fn carried(ui: &Ui) -> Point {
     ui.pip.drag.map_or(Point::new(0.0, 0.0), |(from, to)| {
         Point::new(to.x - from.x, to.y - from.y)
     })
 }
 
-/// The corner nearest where it was let go: top right until it is moved.
-pub(crate) fn corner(ui: &Ui, window: Size) -> PipCorner {
-    let at = ui.pip.dropped.unwrap_or(Point::new(window.width, 0.0));
-    PipCorner {
-        bottom: at.y > window.height / 2.0,
-        right: at.x > window.width / 2.0,
-    }
+/// Its top left corner in a window of `window`: where it was let go, else
+/// Discord's bottom right, carried by a drag in progress, inside the window.
+pub(crate) fn place(ui: &Ui, window: Size) -> Point {
+    let at = ui.pip.at.unwrap_or_else(|| parts::pip_home(window));
+    let by = carried(ui);
+    parts::pip_inside(Point::new(at.x + by.x, at.y + by.y), window)
 }
 
 /// What the picture-in-picture shows in a window of `window`, if anything:
@@ -56,9 +57,9 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
     if blocked {
         return None;
     }
-    let live = t("En vivo");
-    let simulated = crate::voice::simulated(store).then(|| tr!("{note} · simulada", note = live));
-    let corner = corner(ui, window);
+    // The simulation says so after the name: Discord's has no badge on it.
+    let simulated = crate::voice::simulated(store).then(|| t("Simulada").to_owned());
+    let at = place(ui, window);
     let watched = store.watching().iter().find(|watching| {
         !ui.video.windows.contains(&watching.owner)
             && !matches!(
@@ -66,36 +67,29 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
                 StreamPhase::Ended(_) | StreamPhase::Waiting | StreamPhase::Failed(_)
             )
     });
-    let leave = PipButton {
-        id: ids::LEAVE.into(),
-        hint: t("Desconectar"),
-        glyph: PipGlyph::HangUp,
-    };
     let channel = store.channel_title(call.channel);
+    let server = store.channel(call.channel).and_then(|found| found.server);
     if let Some(watching) = watched {
-        let server = store
-            .channel(watching.channel)
-            .and_then(|found| found.server);
         let frame = ui
             .video
             .streams
             .iter()
             .find(|(owner, _)| *owner == watching.owner)
             .and_then(|(_, live)| live.frame());
+        let name = store.display_name(watching.owner, server);
         return Some(PipView {
             surface: ids::stream_surface(watching.owner.0),
-            title: tr!(
-                "Pantalla de {name}",
-                name = store.display_name(watching.owner, server)
-            ),
+            title: tr!("Pantalla de {name}", name = &name),
             channel,
+            name,
             frame,
             waiting: t("Esperando video…").into(),
-            note: simulated.clone(),
+            note: simulated,
+            viewers: store.stream_viewers(watching.owner).len(),
             buttons: vec![
                 PipButton {
                     id: ids::window(watching.owner.0),
-                    hint: t("Ventana aparte"),
+                    hint: t("Abrir en otra ventana"),
                     glyph: PipGlyph::PopOut,
                 },
                 PipButton {
@@ -103,39 +97,47 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
                     hint: t("Dejar de ver"),
                     glyph: PipGlyph::StopShare,
                 },
-                leave,
             ],
-            corner,
-            offset: offset(ui),
+            at,
         });
     }
     video::sending(ui, store)?;
+    let me = store.me()?;
     Some(PipView {
         surface: ids::SCREEN_SURFACE.into(),
         title: t("Tu pantalla").into(),
         channel,
+        name: store.display_name(me, server),
         frame: ui.video.screen.live.frame(),
         waiting: t("Esperando al sistema…").into(),
         note: simulated,
-        buttons: vec![
-            PipButton {
-                id: ids::OWN_STREAM_STOP.into(),
-                hint: t("Dejar de transmitir"),
-                glyph: PipGlyph::StopShare,
-            },
-            leave,
-        ],
-        corner,
-        offset: offset(ui),
+        viewers: store.stream_viewers(me).len(),
+        buttons: vec![PipButton {
+            id: ids::OWN_STREAM_STOP.into(),
+            hint: t("Dejar de transmitir"),
+            glyph: PipGlyph::StopShare,
+        }],
+        at,
     })
 }
 
-/// The picture-in-picture over `root` in the window's corner, if it shows.
+/// The picture-in-picture over `root` at its place, if it shows.
 pub(crate) fn overlay(ui: &Ui, store: &Store, root: Element, window: Size, look: &Look) -> Element {
     let Some(view) = view(ui, store, window) else {
         return root;
     };
     Element::stack(vec![root, parts::pip(&view, look)])
+}
+
+/// After the layout: where it is, so a drag let go leaves it there.
+pub(crate) fn hold(ui: &mut Ui, tree: &UiTree) {
+    ui.pip.shown = tree
+        .frame()
+        .regions
+        .iter()
+        .rev()
+        .find(|region| region.id == ids::PIP)
+        .map(|region| Point::new(region.rect.x, region.rect.y));
 }
 
 /// Answer the picture-in-picture's clicks and drags; `None` for other parts.
@@ -156,8 +158,15 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
             }
             Some(Vec::new())
         }
+        // Where it was last drawn (inside the window), and any last step of
+        // the pointer since.
         UiAction::Dropped { id, position, .. } if id == ids::PIP => {
-            ui.pip.dropped = Some(*position);
+            if let (Some(shown), Some((_, to))) = (ui.pip.shown, ui.pip.drag) {
+                ui.pip.at = Some(Point::new(
+                    shown.x + position.x - to.x,
+                    shown.y + position.y - to.y,
+                ));
+            }
             ui.pip.drag = None;
             Some(Vec::new())
         }
