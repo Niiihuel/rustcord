@@ -1390,6 +1390,7 @@ pub fn after_layout(ui: &mut Ui, store: &mut Store, tree: &UiTree, active: bool)
     intents.extend(navigation::after_layout(ui, store, tree));
     voice_messages::after_layout(ui, store, tree);
     video::hold(ui, tree);
+    pip::hold(ui, tree);
     if active && !blocked_before && !reads::obscured(ui) {
         intents.extend(read_and_load(ui, store, tree));
     }

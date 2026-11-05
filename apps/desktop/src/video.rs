@@ -428,6 +428,48 @@ fn thumbnail_frame(frame: &Frame) -> Option<Frame> {
     })
 }
 
+/// `live` without its rate: a new count of frames a second alone asks for
+/// no frame of its own. The rate meter moves at nearly every frame while a
+/// stream plays, so counting it repainted the whole interface again after
+/// each picture; the next picture, or [`WATCH_POLL`], shows it.
+fn without_rate(live: Live) -> Live {
+    match live {
+        Live::Showing(width, height, _) => Live::Showing(width, height, None),
+        other => other,
+    }
+}
+
+/// What of the sources the interface shows and must be painted again for
+/// when it changes.
+#[allow(clippy::type_complexity)]
+fn shown(
+    ui: &Ui,
+) -> (
+    rustcord_ui::Share,
+    Live,
+    usize,
+    Vec<(UserId, Live)>,
+    Vec<(UserId, Live)>,
+    Vec<(String, String, bool)>,
+) {
+    let rates = |held: &[(UserId, Live)]| {
+        held.iter()
+            .map(|(owner, live)| (*owner, without_rate(*live)))
+            .collect()
+    };
+    (
+        rustcord_ui::Share {
+            live: without_rate(ui.video.screen.live),
+            ..ui.video.screen
+        },
+        without_rate(ui.video.camera.live),
+        ui.video.cameras.len(),
+        rates(&ui.video.streams),
+        rates(&ui.video.watched),
+        ui.video.sources.clone(),
+    )
+}
+
 /// Pixels per point that fill `area` with a frame `width` pixels wide: the
 /// interface already gave the surface the frame's shape.
 fn density(width: u32, area: Option<limn::Rect>) -> f32 {
@@ -516,14 +558,7 @@ impl Video {
         parent: &mut dyn FnMut() -> Option<rustcord_platform::file_dialogs::ParentWindow>,
     ) -> (bool, Vec<Intent>) {
         let mut intents = Vec::new();
-        let before = (
-            ui.video.screen,
-            ui.video.camera.live,
-            ui.video.cameras.len(),
-            ui.video.streams.clone(),
-            ui.video.watched.clone(),
-            ui.video.sources.clone(),
-        );
+        let before = shown(ui);
         #[cfg(any(target_os = "linux", windows))]
         {
             self.set_engines(
@@ -631,15 +666,7 @@ impl Video {
             ui.video.streams.clear();
             ui.video.watched.clear();
         }
-        let changed = before
-            != (
-                ui.video.screen,
-                ui.video.camera.live,
-                ui.video.cameras.len(),
-                ui.video.streams.clone(),
-                ui.video.watched.clone(),
-                ui.video.sources.clone(),
-            );
+        let changed = before != shown(ui);
         (changed, intents)
     }
 
@@ -1796,5 +1823,23 @@ mod tests {
         assert_eq!(meter.fps(at(1000)), Some(30));
         // A second later with no frames the rate has fallen to nothing.
         assert_eq!(meter.fps(at(2100)), Some(0));
+    }
+
+    #[test]
+    fn a_new_rate_alone_asks_for_no_frame_of_its_own_but_a_new_picture_does() {
+        let mut ui = Ui::new();
+        let owner = UserId(7);
+        ui.video.streams = vec![(owner, Live::Showing(1920, 1080, Some(59)))];
+        ui.video.screen.live = Live::Showing(1280, 720, Some(30));
+        let before = shown(&ui);
+        // The meters moved: the same pictures are shown.
+        ui.video.streams = vec![(owner, Live::Showing(1920, 1080, Some(60)))];
+        ui.video.screen.live = Live::Showing(1280, 720, Some(29));
+        assert_eq!(shown(&ui), before);
+        // Another size, or the first picture, is something new to paint.
+        ui.video.streams = vec![(owner, Live::Showing(1280, 720, Some(60)))];
+        assert_ne!(shown(&ui), before);
+        ui.video.streams = vec![(owner, Live::Waiting)];
+        assert_ne!(shown(&ui), before);
     }
 }

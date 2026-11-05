@@ -33,6 +33,8 @@ pub const MORE_VERTICAL: &str = glyph!("more-vertical");
 pub const USER_PROFILE: &str = glyph!("user-profile");
 /// The inbox: a tray, at the header's end.
 pub const INBOX: &str = glyph!("inbox");
+/// An open eye: who watches a stream, beside their count.
+pub const EYE: &str = glyph!("eye");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

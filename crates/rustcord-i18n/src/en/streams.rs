@@ -6,6 +6,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Volver a la grilla", "Back to the grid"),
     ("Acercar", "Zoom in"),
     ("Alejar", "Zoom out"),
+    ("Simulada", "Simulated"),
     ("{percent} %", "{percent}%"),
     (
         "Comienza a ver múltiples transmisiones",

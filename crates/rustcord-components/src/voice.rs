@@ -59,6 +59,8 @@ pub mod ids {
     /// The picture-in-picture outside the call's stage: a click on it or its
     /// channel's name returns to the call.
     pub const PIP: &str = "pip:return";
+    /// What is over the picture-in-picture, shown under the pointer.
+    pub const PIP_OVER: &str = "pip:over";
     /// The surface the still of the account's own stream goes on, on its card.
     pub const OWN_THUMB_SURFACE: &str = "video:own-thumb";
     /// The quality picker that opens before sharing the screen: its
@@ -1048,22 +1050,25 @@ pub struct PipView {
     pub surface: String,
     /// «Pantalla de Ana», «Tu pantalla»: its accessible name.
     pub title: String,
-    /// The voice channel's name, top left; a click on it returns to the call.
+    /// The voice channel's name, top left after the way back to the call.
     pub channel: String,
+    /// Who streams it, bottom left.
+    pub name: String,
     /// The size of the frame on the surface, once the first one is there.
     pub frame: Option<(u32, u32)>,
     /// What shows until then.
     pub waiting: String,
-    /// «Simulada» over the picture, when the provider simulates it.
+    /// «Simulada» after the name, when the provider simulates it.
     pub note: Option<String>,
-    /// Its controls at the bottom right, then «Desconectar» last.
+    /// How many watch it: the eye and the count, bottom right, when any.
+    pub viewers: usize,
+    /// Its controls at the bottom right, after the viewers.
     pub buttons: Vec<PipButton>,
-    pub corner: PipCorner,
-    /// How far a drag in progress has carried it from its corner.
-    pub offset: limn::Point,
+    /// Where its top left corner is in the window.
+    pub at: Point,
 }
 
-/// One of the picture-in-picture's round buttons.
+/// One of the picture-in-picture's buttons.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PipButton {
     pub id: String,
@@ -1076,26 +1081,81 @@ pub struct PipButton {
 pub enum PipGlyph {
     PopOut,
     StopShare,
-    HangUp,
 }
 
-/// The corner the picture-in-picture sits in.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct PipCorner {
-    pub bottom: bool,
-    pub right: bool,
-}
-
-/// The picture-in-picture's box, 16:9 at 320 across, and its gap to the
-/// window's edges; from the top, the conversation's header comes first.
+/// The picture-in-picture's box, Discord's: 16:9 at 320 across, rounded 8.
 pub const PIP_WIDTH: f32 = 320.0;
 pub const PIP_HEIGHT: f32 = 180.0;
-pub const PIP_MARGIN: f32 = 16.0;
 const PIP_RADIUS: f32 = 8.0;
+/// Where it opens, as Discord's: 80 from the window's right edge and 132
+/// from its bottom, over the conversation and above its composer.
+const PIP_RIGHT: f32 = 80.0;
+const PIP_BOTTOM: f32 = 132.0;
+/// The glyphs over it, Discord's `--primary-300`; white under the pointer.
+const PIP_GLYPH: Color = Color::rgb(0xc9, 0xca, 0xce);
+/// Discord's shade under what is over the picture: black at its top edge,
+/// clear from 30 % to 60 % of its height, black again at its bottom edge
+/// (stops every tenth of the height).
+const PIP_SHADE: [Color; 11] = [
+    Color::rgba(0, 0, 0, 255),
+    Color::rgba(0, 0, 0, 170),
+    Color::rgba(0, 0, 0, 85),
+    Color::rgba(0, 0, 0, 0),
+    Color::rgba(0, 0, 0, 0),
+    Color::rgba(0, 0, 0, 0),
+    Color::rgba(0, 0, 0, 0),
+    Color::rgba(0, 0, 0, 64),
+    Color::rgba(0, 0, 0, 128),
+    Color::rgba(0, 0, 0, 191),
+    Color::rgba(0, 0, 0, 255),
+];
 
-/// The picture-in-picture over the window, in its corner. Its channel's name
-/// is a pill at the top left, «EN VIVO» at the top right, and its buttons at
-/// the bottom right; a click on the picture returns to the call.
+/// Where the picture-in-picture opens in a window of `window`: its bottom
+/// right, Discord's distance from the edges, never past the top left.
+pub fn pip_home(window: Size) -> Point {
+    pip_inside(
+        Point::new(
+            window.width - PIP_RIGHT - PIP_WIDTH,
+            window.height - PIP_BOTTOM - PIP_HEIGHT,
+        ),
+        window,
+    )
+}
+
+/// `at` moved as little as keeps the whole box inside `window`.
+pub fn pip_inside(at: Point, window: Size) -> Point {
+    Point::new(
+        at.x.min(window.width - PIP_WIDTH).max(0.0),
+        at.y.min(window.height - PIP_HEIGHT).max(0.0),
+    )
+}
+
+/// A glyph button over the picture: 24 px, Discord's grey, white under the
+/// pointer, no fill.
+fn pip_button(id: impl Into<String>, glyph: Icon, hint: &str, look: &Look) -> Element {
+    let clear = Color::rgba(0, 0, 0, 0);
+    IconButton::new(id, glyph, filled(clear, clear, look))
+        .variant(ButtonVariant::Ghost)
+        .sizing(ButtonSizing {
+            height: 24.0,
+            font_size: 14.0,
+            icon_size: 24.0,
+            horizontal_padding: 0.0,
+            inner_spacing: 0.0,
+        })
+        .width(24.0)
+        .ink(PIP_GLYPH)
+        .hover_ink(OVER_INK)
+        .tooltip(hint)
+        .accessibility_label(hint)
+        .render()
+}
+
+/// The picture-in-picture over the window at its place, as Discord's: at
+/// rest only the picture; under the pointer, over a shade, the way back
+/// with its channel's name at the top left, the streamer's name at the
+/// bottom left and, at the bottom right, who watches and its buttons. A
+/// click on it returns to the call; it is dragged anywhere.
 pub fn pip(view: &PipView, look: &Look) -> Element {
     let picture = match view.frame {
         Some((width, height)) => {
@@ -1107,47 +1167,65 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
         }
         None => centered(line(&view.waiting, 12.0, look.muted)),
     };
-    let name = Element::panel(Element::row(vec![
-        gap(10.0, 0.0),
-        strong_line(&view.channel, 14.0, OVER_INK)
+    // Discord's back arrow, 20 across and 2 from the name, 16 on 20.
+    let back = Element::row(vec![
+        icon(Icon::ArrowLeft, PIP_GLYPH)
+            .large_icon(20.0)
+            .size(Some(20.0), Some(20.0))
+            .centered_y(),
+        gap(2.0, 0.0),
+        line(&view.channel, 16.0, OVER_INK)
+            .underline_on_hover()
             .centered_y()
             .shrink_to_fit(),
-        gap(12.0, 0.0),
-    ]))
-    .size(None, Some(OVER_BUTTON))
-    .radius(OVER_BUTTON / 2.0)
-    .background(OVER)
-    .shrink_to_fit();
-    let mut bottom = Vec::new();
+    ])
+    .size(None, Some(20.0));
+    // The name 8 in, then the viewers and the buttons 16 apart.
+    let mut bottom = vec![
+        gap(8.0, 0.0),
+        line(&view.name, 16.0, OVER_INK)
+            .centered_y()
+            .shrink_to_fit(),
+    ];
     if let Some(note) = &view.note {
-        bottom.push(caption(note));
+        bottom.push(gap(8.0, 0.0));
+        bottom.push(caption(note).centered_y());
     }
     bottom.push(Element::spacer().flex(1.0));
+    if view.viewers > 0 {
+        let count = view.viewers;
+        bottom.push(gap(16.0, 0.0));
+        bottom.push(
+            Element::row(vec![
+                icon(Icon::Custom(crate::glyphs::EYE), PIP_GLYPH)
+                    .large_icon(24.0)
+                    .size(Some(24.0), Some(24.0))
+                    .centered_y(),
+                gap(4.0, 0.0),
+                line(count.to_string(), 16.0, OVER_INK).centered_y(),
+            ])
+            .accessibility_label(tr!("Espectadores: {n}", n = count)),
+        );
+    }
     for button in &view.buttons {
-        let (glyph, fill) = match button.glyph {
-            PipGlyph::PopOut => (Icon::Custom(POP_OUT), OVER),
-            PipGlyph::StopShare => (Icon::Custom(SCREEN_STOP), OVER),
-            PipGlyph::HangUp => (Icon::HangUp, look.danger),
+        let glyph = match button.glyph {
+            PipGlyph::PopOut => Icon::Custom(POP_OUT),
+            PipGlyph::StopShare => Icon::Custom(SCREEN_STOP),
         };
-        bottom.push(over_button(
-            button.id.clone(),
-            glyph,
-            button.hint,
-            fill,
-            look,
-        ));
-        bottom.push(gap(8.0, 0.0));
+        bottom.push(gap(16.0, 0.0));
+        bottom.push(pip_button(button.id.clone(), glyph, button.hint, look));
     }
     let over = Element::column(vec![
-        Element::row(vec![
-            name,
-            Element::spacer().flex(1.0),
-            live(22.0, 10.0, look),
-        ]),
+        Element::row(vec![back, Element::spacer().flex(1.0)]),
         Element::spacer().flex(1.0),
-        Element::row(bottom),
+        Element::row(bottom).size(None, Some(24.0)),
     ])
-    .padding(8.0);
+    .padding(8.0)
+    .size(Some(PIP_WIDTH), Some(PIP_HEIGHT))
+    .vertical_gradient(PIP_SHADE)
+    .radius(PIP_RADIUS)
+    .border(OVER_EDGE, 1.0)
+    .reveal_on_hover(ids::PIP_OVER);
     let shown = Element::stack(vec![
         Element::panel(picture)
             .size(Some(PIP_WIDTH), Some(PIP_HEIGHT))
@@ -1161,36 +1239,11 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
         .radius(PIP_RADIUS)
         .hover_region()
         .draggable_in_place()
-        .shadow(look.shadow, limn::Point::new(0.0, 8.0), 24.0, 0.0)
-        .translate(view.offset)
+        .translate(view.at)
         .accessibility_label(view.title.clone());
-    // Its corner: the host puts it where the pointer let go, nearest corner.
-    let (above, below) = if view.corner.bottom {
-        (
-            Element::spacer().flex(1.0),
-            Element::spacer().size(None, Some(PIP_MARGIN)),
-        )
-    } else {
-        (
-            Element::spacer().size(None, Some(PIP_MARGIN + crate::sidebar::HEADER)),
-            Element::spacer().flex(1.0),
-        )
-    };
-    let (beside_left, beside_right) = if view.corner.right {
-        (
-            Element::spacer().flex(1.0),
-            Element::spacer().size(Some(PIP_MARGIN), None),
-        )
-    } else {
-        (
-            Element::spacer().size(Some(PIP_MARGIN), None),
-            Element::spacer().flex(1.0),
-        )
-    };
     Element::column(vec![
-        above,
-        Element::row(vec![beside_left, tile, beside_right]),
-        below,
+        Element::row(vec![tile, Element::spacer().flex(1.0)]),
+        Element::spacer().flex(1.0),
     ])
 }
 
@@ -5948,62 +6001,120 @@ mod tests {
     }
 
     #[test]
-    fn the_picture_in_picture_is_a_16_9_box_in_its_corner_with_its_channel_and_buttons() {
+    fn the_picture_in_picture_is_only_its_picture_at_rest_and_discords_controls_under_the_pointer()
+    {
+        use limn::UiEvent;
         let button = |id: String, hint, glyph| PipButton { id, hint, glyph };
+        let window = Size::new(1280.0, 800.0);
         let mut view = PipView {
             surface: ids::stream_surface(2),
             title: "Pantalla de Persona 2".into(),
             channel: "Sala común".into(),
+            name: "Persona 2".into(),
             frame: Some((1280, 720)),
             waiting: "Esperando video…".into(),
             note: None,
+            viewers: 1,
             buttons: vec![
-                button(ids::window(2), "Ventana aparte", PipGlyph::PopOut),
+                button(ids::window(2), "Abrir en otra ventana", PipGlyph::PopOut),
                 button(ids::stop_watching(2), "Dejar de ver", PipGlyph::StopShare),
-                button(ids::LEAVE.into(), "Desconectar", PipGlyph::HangUp),
             ],
-            corner: PipCorner {
-                bottom: false,
-                right: true,
-            },
-            offset: limn::Point::new(0.0, 0.0),
+            at: pip_home(window),
         };
-        let window = Size::new(1280.0, 800.0);
-        let (_, laid) = frame(pip(&view, &Look::DARK), window);
-        let shown = controls(&laid);
-        assert!(shown.contains(&ids::PIP.to_owned()), "a click returns");
-        for id in [ids::window(2), ids::stop_watching(2), ids::LEAVE.into()] {
-            assert!(shown.contains(&id), "{id} is on the box");
-        }
-        assert!(texts(&laid).iter().any(|text| text == "Sala común"));
-        assert!(texts(&laid).iter().any(|text| text == "EN VIVO"));
-        // 1280x720 fits its 320 across, and the box is 180 high.
-        assert!(laid.commands.iter().any(|command| matches!(
+        let painted = |laid: &limn::Frame| -> Vec<String> {
+            laid.commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::Text { text, color, .. } if color.a > 0 => {
+                        Some(text.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
+        };
+        let glyphs = |laid: &limn::Frame| {
+            laid.commands
+                .iter()
+                .filter(
+                    |command| matches!(command, limn::DrawCommand::Icon { tint, .. } if tint.a > 0),
+                )
+                .count()
+        };
+        let (mut tree, rest) = frame(pip(&view, &Look::DARK), window);
+        // Discord's place: 80 from the right, 132 from the bottom, 320x180.
+        let card = rect_of(&rest, ids::PIP);
+        assert_eq!(
+            (card.x, card.y, card.width, card.height),
+            (880.0, 488.0, PIP_WIDTH, PIP_HEIGHT)
+        );
+        // At rest: the picture on its ground and nothing visible over it,
+        // not even an edge.
+        assert!(rest.commands.iter().any(|command| matches!(
             command,
             limn::DrawCommand::Surface { id, rect, .. }
                 if *id == ids::stream_surface(2) && rect.width == PIP_WIDTH && rect.height == 180.0
         )));
-        let rect = |laid: &limn::Frame| {
-            laid.regions
-                .iter()
-                .rev()
-                .find(|region| region.id == ids::PIP)
-                .unwrap()
-                .rect
+        let seen = |command: &limn::DrawCommand| match command {
+            limn::DrawCommand::FillRect { color, .. }
+            | limn::DrawCommand::FillCornerRect { color, .. }
+            | limn::DrawCommand::StrokeRect { color, .. }
+            | limn::DrawCommand::StrokeCornerRect { color, .. }
+            | limn::DrawCommand::Text { color, .. }
+            | limn::DrawCommand::Icon { tint: color, .. } => color.a > 0,
+            limn::DrawCommand::FillVerticalGradient { top, bottom, .. } => {
+                top.a > 0 || bottom.a > 0
+            }
+            _ => false,
         };
-        // Top right: 16 in from the edges, the header's height and a gap under it.
-        let at = rect(&laid);
-        assert_eq!(at.x + at.width, window.width - PIP_MARGIN);
-        assert_eq!(at.y, PIP_MARGIN + crate::sidebar::HEADER);
-        // Bottom left: the same gap from the other edges, nothing under the header.
-        view.corner = PipCorner {
-            bottom: true,
-            right: false,
-        };
-        let (_, laid) = frame(pip(&view, &Look::DARK), window);
-        let at = rect(&laid);
-        assert_eq!(at.x, PIP_MARGIN);
-        assert_eq!(at.y + at.height, window.height - PIP_MARGIN);
+        let over: Vec<_> = rest
+            .commands
+            .iter()
+            .filter(|command| seen(command))
+            .filter(|command| {
+                !matches!(command, limn::DrawCommand::FillRect { color, .. } if *color == STREAM_GROUND)
+            })
+            .collect();
+        assert!(over.is_empty(), "{over:?}");
+        // Under the pointer: the way back and its channel, the streamer, the
+        // eye with the count, and its two buttons; no live badge, no hang up.
+        tree.handle_event(UiEvent::PointerMove(Point::new(
+            card.x + 160.0,
+            card.y + 90.0,
+        )));
+        let hovered = tree.layout(window);
+        let said = painted(&hovered);
+        for text in ["Sala común", "Persona 2", "1"] {
+            assert!(said.iter().any(|said| said == text), "{text} in {said:?}");
+        }
+        assert!(!said.iter().any(|said| said == "EN VIVO"));
+        let shown = controls(&hovered);
+        assert!(shown.contains(&ids::window(2)) && shown.contains(&ids::stop_watching(2)));
+        assert!(!shown.contains(&ids::LEAVE.to_owned()));
+        // The arrow, the eye and the two buttons, in Discord's grey.
+        assert_eq!(glyphs(&hovered), 4);
+        assert!(!hovered.commands.iter().any(|command| matches!(
+            command,
+            limn::DrawCommand::FillRect { color, .. }
+                | limn::DrawCommand::FillCornerRect { color, .. }
+                if *color == Look::DARK.danger
+        )));
+        // The pop out and the stop at the bottom right, 16 apart, 8 in.
+        let (out, stop) = (
+            rect_of(&hovered, &ids::window(2)),
+            rect_of(&hovered, &ids::stop_watching(2)),
+        );
+        assert_eq!((stop.width, stop.height), (24.0, 24.0));
+        assert_eq!(stop.x + stop.width, card.x + card.width - 8.0);
+        assert_eq!(stop.y + stop.height, card.y + card.height - 8.0);
+        assert_eq!(out.x + out.width + 16.0, stop.x);
+        // Nobody watching: no eye.
+        view.viewers = 0;
+        let (mut tree, _) = frame(pip(&view, &Look::DARK), window);
+        tree.handle_event(UiEvent::PointerMove(Point::new(
+            card.x + 160.0,
+            card.y + 90.0,
+        )));
+        assert_eq!(glyphs(&tree.layout(window)), 3);
         // Before the first picture: what it waits for, and no surface yet.
         view.frame = None;
         let (_, laid) = frame(pip(&view, &Look::DARK), window);
@@ -6012,6 +6123,45 @@ mod tests {
             .commands
             .iter()
             .any(|command| matches!(command, limn::DrawCommand::Surface { .. })));
+    }
+
+    #[test]
+    fn the_picture_in_picture_goes_where_it_is_put_and_never_out_of_the_window() {
+        let window = Size::new(1280.0, 800.0);
+        assert_eq!(pip_home(window), Point::new(880.0, 488.0));
+        // A smaller window: the same distances; one too small for them, as
+        // far right and down as it fits, never past 0.
+        assert_eq!(pip_home(Size::new(600.0, 400.0)), Point::new(200.0, 88.0));
+        assert_eq!(pip_home(Size::new(200.0, 100.0)), Point::new(0.0, 0.0));
+        // Anywhere inside stays; past an edge, it comes back to it.
+        assert_eq!(
+            pip_inside(Point::new(333.0, 222.0), window),
+            Point::new(333.0, 222.0)
+        );
+        assert_eq!(
+            pip_inside(Point::new(-50.0, 900.0), window),
+            Point::new(0.0, 620.0)
+        );
+        assert_eq!(
+            pip_inside(Point::new(1200.0, -10.0), window),
+            Point::new(960.0, 0.0)
+        );
+        // Laid out where it is put.
+        let view = PipView {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            channel: "Sala común".into(),
+            name: "Persona 2".into(),
+            frame: Some((1280, 720)),
+            waiting: String::new(),
+            note: None,
+            viewers: 0,
+            buttons: Vec::new(),
+            at: Point::new(333.0, 222.0),
+        };
+        let (_, laid) = frame(pip(&view, &Look::DARK), window);
+        let card = rect_of(&laid, ids::PIP);
+        assert_eq!((card.x, card.y), (333.0, 222.0));
     }
 
     #[test]

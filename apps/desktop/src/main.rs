@@ -105,6 +105,8 @@ struct Arguments {
     capture_stream_ended: bool,
     /// Like `--capture-stream-ended`, but watches someone streaming: the stage shows it live.
     capture_stream_live: bool,
+    /// `--capture-metrics`: print what the last frames cost once the capture is saved.
+    capture_metrics: bool,
     capture_rich: bool,
     /// `--capture-accounts`: a provider that remembers accounts (capture only).
     capture_accounts: bool,
@@ -335,6 +337,7 @@ fn parse_arguments(
             "--capture-signed-out" => parsed.capture_signed_out = true,
             "--capture-stream-ended" => parsed.capture_stream_ended = true,
             "--capture-stream-live" => parsed.capture_stream_live = true,
+            "--capture-metrics" => parsed.capture_metrics = true,
             "--capture-connection" => {
                 parsed.capture_connection = Some(match arguments.next().as_deref() {
                     Some("connecting") => rustcord_provider::ConnectionState::Connecting,
@@ -416,6 +419,7 @@ fn parse_arguments(
         || parsed.capture_signed_out
         || parsed.capture_stream_ended
         || parsed.capture_stream_live
+        || parsed.capture_metrics
         || parsed.capture_connection.is_some()
         || parsed.capture_splash.is_some())
         && (parsed.provider != ProviderChoice::Mock || parsed.screenshot.is_none())
@@ -991,6 +995,8 @@ struct Capture {
     stream_ended: Option<StreamEnded>,
     /// `--capture-stream-live`: the steps watch someone streaming, not someone quiet.
     stream_live: bool,
+    /// `--capture-metrics`: the frames' costs are printed with the capture.
+    metrics: bool,
     /// `--capture-accounts`: a provider that remembers accounts, once it is ready.
     accounts: bool,
     /// `--capture-signed-out`: the sign-in page, once the provider is ready.
@@ -1433,6 +1439,7 @@ impl App {
                 stream_ended: (arguments.capture_stream_ended || arguments.capture_stream_live)
                     .then_some(StreamEnded::Join),
                 stream_live: arguments.capture_stream_live,
+                metrics: arguments.capture_metrics,
                 accounts: arguments.capture_accounts,
                 signed_out: arguments.capture_signed_out,
             }),
@@ -4321,6 +4328,11 @@ impl App {
                     "rustcord: could not save {}: {error}",
                     capture.path.display()
                 ),
+            }
+            if capture.metrics {
+                for line in self.metrics.lines(self.store.loaded_messages(), None) {
+                    println!("rustcord: metrics {line}");
+                }
             }
             self.request_close(ctx, now);
         }
