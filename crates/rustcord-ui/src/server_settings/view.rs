@@ -37,6 +37,8 @@ mod automod;
 const FIELD_HEIGHT: f32 = 40.0;
 /// Between the profile's form and its preview card.
 const PROFILE_GAP: f32 = 40.0;
+/// Each of the audit log's filters, Discord's 234.
+const AUDIT_FILTER: f32 = 234.0;
 /// The banner's usual color, Discord's blurple, when none of its own is set.
 const DEFAULT_ACCENT: Rgb = Rgb(0x58_65_F2);
 
@@ -1175,7 +1177,7 @@ impl View<'_> {
         let look = self.look;
         let settings = self.settings;
         let mut children = vec![parts::page_title(
-            t("Baneos"),
+            t("Lista de baneos del servidor"),
             Some(t("Quienes fueron vetados no pueden volver a entrar al servidor hasta que se revoque el veto. Se veta desde la página Miembros.")),
             look,
         )];
@@ -1191,6 +1193,8 @@ impl View<'_> {
                 look.palette(),
             )
             .accessibility_label(t("Buscar vetos"))
+            .size(limn::ControlSize::Spacious)
+            .height(FIELD_HEIGHT)
             .render(),
         );
         match self.store.bans(self.server.id) {
@@ -1225,7 +1229,14 @@ impl View<'_> {
                 if rows.is_empty() {
                     children.push(text(t("Ningún veto coincide."), 14.0, look.muted));
                 } else {
-                    children.push(Element::column(rows));
+                    // In a card, as Discord's list.
+                    children.push(
+                        Element::panel(Element::column(rows))
+                            .radius(8.0)
+                            .background(look.raised)
+                            .border(look.border, 1.0)
+                            .clip_children(),
+                    );
                 }
                 if !list.reached_end {
                     // The search reads only what is loaded: say so.
@@ -1285,15 +1296,21 @@ impl View<'_> {
                 }),
         );
         let filter = |label: &str, select: Element| {
-            Element::column(vec![line(label, 14.0, look.muted), select]).gap(6.0)
+            Element::column(vec![
+                line(label, 16.0, look.text).font_family(limn::FontFamily::SansMedium),
+                select,
+            ])
+            .gap(8.0)
         };
-        // Title and filters share a line when it fits them; else the filters go under it.
-        let select = ((self.metrics.content - 16.0) / 2.0).min(230.0);
-        let title = strong_line(t("Registro de auditoría"), 20.0, look.text);
+        // Title and filters share a line when it fits them, the title
+        // wrapping as Discord's; else the filters go under it.
+        let select = ((self.metrics.content - 16.0) / 2.0).min(AUDIT_FILTER);
+        let title = text(t("Registro de auditoría"), 20.0, look.text)
+            .font_family(limn::FontFamily::SansSemibold);
         let filters = vec![
             filter(
                 t("Filtrar por usuario"),
-                Select::new(
+                look.select(Select::new(
                     "ss:audit:user",
                     settings.audit_user.map_or_else(
                         || t("Todos los usuarios").to_owned(),
@@ -1303,15 +1320,15 @@ impl View<'_> {
                     settings.audit_filter == Some(super::AuditFilter::User),
                     "ss:audit-filter:dismiss",
                     look.palette(),
-                )
-                .menu_palette(look.menu_palette())
+                ))
+                .size(limn::ControlSize::Spacious)
                 .accessibility_label(t("Filtrar por usuario"))
                 .width(select)
                 .render(),
             ),
             filter(
                 t("Filtrar por acción"),
-                Select::new(
+                look.select(Select::new(
                     "ss:audit:action",
                     settings
                         .audit_action
@@ -1320,15 +1337,15 @@ impl View<'_> {
                     settings.audit_filter == Some(super::AuditFilter::Action),
                     "ss:audit-filter:dismiss",
                     look.palette(),
-                )
-                .menu_palette(look.menu_palette())
+                ))
+                .size(limn::ControlSize::Spacious)
                 .accessibility_label(t("Filtrar por acción"))
                 .width(select)
                 .menu_width(300.0)
                 .render(),
             ),
         ];
-        let header = if self.metrics.content >= 2.0 * 230.0 + 16.0 + 240.0 {
+        let header = if self.metrics.content >= 2.0 * AUDIT_FILTER + 16.0 + 140.0 {
             let mut row = vec![title.flex(1.0).centered_y()];
             row.extend(filters);
             Element::row(row).gap(16.0)

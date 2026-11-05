@@ -65,4 +65,5 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Desconocido", "Unknown"),
     ("Enlaces de invitación activos", "Active Invite Links"),
     ("Persona que invita", "Inviter"),
+    ("Lista de baneos del servidor", "Server Ban List"),
 ];
