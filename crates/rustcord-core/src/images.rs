@@ -18,6 +18,9 @@ use tokio::{
 };
 
 const MAX_BYTES: usize = 1024 * 1024;
+/// An avatar, icon, emoji, sticker or decoration's file: an animated one
+/// passes 1 MiB (three measured 1.1 to 1.3 MiB), and Discord shows them.
+const ARTWORK_BYTES: usize = 4 * 1024 * 1024;
 // Stickers ignore the CDN size parameter and commonly arrive at 320 px.
 const MAX_SIDE: u32 = 512;
 const THUMBNAIL: u32 = 128;
@@ -733,7 +736,8 @@ pub(crate) fn validated_resource_url(
 
 fn byte_limit(kind: ImageKind) -> usize {
     match kind {
-        ImageKind::Artwork | ImageKind::ThumbHash => MAX_BYTES,
+        ImageKind::Artwork => ARTWORK_BYTES,
+        ImageKind::ThumbHash => MAX_BYTES,
         ImageKind::Banner => BANNER_BYTES,
         ImageKind::AttachmentPreview
         | ImageKind::Clip

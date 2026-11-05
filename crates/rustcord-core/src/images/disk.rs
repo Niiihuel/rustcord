@@ -819,7 +819,7 @@ mod tests {
         disk.write(
             ImageKind::Artwork,
             &url(20),
-            &vec![0; super::super::MAX_BYTES + 1],
+            &vec![0; super::super::ARTWORK_BYTES + 1],
         );
         assert!(disk.read(ImageKind::Artwork, &url(20)).is_none());
         // A leftover and an expired file go when the disk opens again.

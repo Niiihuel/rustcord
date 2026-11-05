@@ -133,7 +133,7 @@ fn images_are_normalized_to_small_pngs_and_decode_limits_precede_allocation() {
     assert_eq!(rgba.get_pixel(64, 64).0, [20, 80, 160, 255]);
     assert!(normalize(&png(513, 1)).is_none());
     assert!(normalize(b"invalid image").is_none());
-    assert!(normalize(&vec![0; MAX_BYTES + 1]).is_none());
+    assert!(normalize(&vec![0; ARTWORK_BYTES + 1]).is_none());
     let mut webp = Cursor::new(Vec::new());
     image::DynamicImage::new_rgba8(64, 32)
         .write_to(&mut webp, ImageFormat::WebP)
@@ -299,7 +299,8 @@ async fn response_limits_apply_to_declared_length_and_streamed_chunks() {
         server.await.unwrap();
     }
     assert_eq!(byte_limit(ImageKind::AttachmentPreview), 8 * 1024 * 1024);
-    assert_eq!(byte_limit(ImageKind::Artwork), 1024 * 1024);
+    // An animated avatar or decoration passes 1 MiB.
+    assert_eq!(byte_limit(ImageKind::Artwork), 4 * 1024 * 1024);
     // A dense screen's server banner (1024 px) passes 1 MiB.
     assert_eq!(byte_limit(ImageKind::Banner), 4 * 1024 * 1024);
 }
