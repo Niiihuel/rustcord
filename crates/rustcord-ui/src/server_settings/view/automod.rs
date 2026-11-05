@@ -162,10 +162,10 @@ impl View<'_> {
                     ))
                 })
                 .collect();
-            children.push(Element::column(rows));
+            children.push(Element::column(rows).gap(8.0));
         }
-        children.push(parts::divider(look));
-        children.push(strong_line(t("Crear una regla"), 16.0, look.text));
+        children.push(parts::rule(look));
+        children.push(parts::legend(t("Crear una regla"), None, look));
         for kind in AutoModKind::ALL {
             let count = rules
                 .iter()
