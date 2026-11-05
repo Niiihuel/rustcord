@@ -44,7 +44,7 @@ pub(crate) fn place(ui: &Ui, window: Size) -> Point {
 /// the account's own share while it goes out. Nothing while the stage shows
 /// the call, while a menu of the call or a settings page is open, or outside
 /// a call.
-pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
+pub(crate) fn view(ui: &Ui, store: &Store, window: Size, look: &Look) -> Option<PipView> {
     let call = store.call().filter(|call| call.phase.is_connected())?;
     // The call's own view is on screen: its stage, or its conversation with none.
     let blocked = crate::voice::selected(ui) == Some(call.channel)
@@ -69,6 +69,13 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
     });
     let channel = store.channel_title(call.channel);
     let server = store.channel(call.channel).and_then(|found| found.server);
+    let viewers = |owner| {
+        store
+            .stream_viewers(owner)
+            .iter()
+            .map(|viewer| crate::voice::participant(ui, store, server, *viewer, look))
+            .collect()
+    };
     if let Some(watching) = watched {
         let frame = ui
             .video
@@ -85,7 +92,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
             frame,
             waiting: t("Esperando video…").into(),
             note: simulated,
-            viewers: store.stream_viewers(watching.owner).len(),
+            viewers: viewers(watching.owner),
             buttons: vec![
                 PipButton {
                     id: ids::window(watching.owner.0),
@@ -111,7 +118,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
         frame: ui.video.screen.live.frame(),
         waiting: t("Esperando al sistema…").into(),
         note: simulated,
-        viewers: store.stream_viewers(me).len(),
+        viewers: viewers(me),
         buttons: vec![PipButton {
             id: ids::OWN_STREAM_STOP.into(),
             hint: t("Dejar de transmitir"),
@@ -123,7 +130,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size) -> Option<PipView> {
 
 /// The picture-in-picture over `root` at its place, if it shows.
 pub(crate) fn overlay(ui: &Ui, store: &Store, root: Element, window: Size, look: &Look) -> Element {
-    let Some(view) = view(ui, store, window) else {
+    let Some(view) = view(ui, store, window, look) else {
         return root;
     };
     Element::stack(vec![root, parts::pip(&view, look)])

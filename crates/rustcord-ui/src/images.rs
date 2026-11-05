@@ -306,6 +306,20 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             }
         }
     }
+    // Who watches the picture-in-picture's stream: their faces in the list
+    // its eye opens.
+    let pip = rustcord_components::voice::ids::PIP;
+    if tree.frame().regions.iter().any(|region| region.id == pip) {
+        if let Some(call) = store.call() {
+            let server = store.channel(call.channel).and_then(|found| found.server);
+            let owners = store.watching().iter().map(|watching| watching.owner);
+            for owner in owners.chain(store.me()) {
+                for viewer in store.stream_viewers(owner) {
+                    add(store.avatar_in(server, *viewer));
+                }
+            }
+        }
+    }
     // The faces in the hint of the server under the pointer, as many as
     // it shows.
     if let Some(server) = tree

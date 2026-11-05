@@ -61,6 +61,8 @@ pub mod ids {
     pub const PIP: &str = "pip:return";
     /// What is over the picture-in-picture, shown under the pointer.
     pub const PIP_OVER: &str = "pip:over";
+    /// The picture-in-picture's eye and count: who watches, in its hint.
+    pub const PIP_VIEWERS: &str = "pip:viewers";
     /// The surface the still of the account's own stream goes on, on its card.
     pub const OWN_THUMB_SURFACE: &str = "video:own-thumb";
     /// The quality picker that opens before sharing the screen: its
@@ -1065,8 +1067,9 @@ pub struct PipView {
     pub waiting: String,
     /// «Simulada» after the name, when the provider simulates it.
     pub note: Option<String>,
-    /// How many watch it: the eye and the count, bottom right, when any.
-    pub viewers: usize,
+    /// Who watches it: the eye and their count, bottom right, when any;
+    /// under the pointer, their pictures and names as the stage's list.
+    pub viewers: Vec<Participant>,
     /// Its controls at the bottom right, after the viewers.
     pub buttons: Vec<PipButton>,
     /// Where its top left corner is in the window.
@@ -1137,6 +1140,9 @@ pub fn pip_inside(at: Point, window: Size) -> Point {
 
 /// A glyph button over the picture: 24 px, Discord's grey, white under the
 /// pointer, no fill.
+/// The faces the picture-in-picture's eye shows in its hint; «+N» for the rest.
+const PIP_FACES: usize = 6;
+
 fn pip_button(id: impl Into<String>, glyph: Icon, hint: &str, look: &Look) -> Element {
     let clear = Color::rgba(0, 0, 0, 0);
     IconButton::new(id, glyph, filled(clear, clear, look))
@@ -1197,19 +1203,42 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
         bottom.push(caption(note).centered_y());
     }
     bottom.push(Element::spacer().flex(1.0));
-    if view.viewers > 0 {
-        let count = view.viewers;
+    if !view.viewers.is_empty() {
+        let count = view.viewers.len();
+        let eye = Element::row(vec![
+            icon(Icon::Custom(crate::glyphs::EYE), PIP_GLYPH)
+                .large_icon(24.0)
+                .size(Some(24.0), Some(24.0))
+                .centered_y(),
+            gap(4.0, 0.0),
+            line(count.to_string(), 16.0, OVER_INK).centered_y(),
+        ])
+        .accessibility_label(tr!("Espectadores: {n}", n = count));
         bottom.push(gap(16.0, 0.0));
+        // Who they are, in its hint: their faces, then their names.
+        let names: Vec<&str> = view
+            .viewers
+            .iter()
+            .map(|person| person.name.as_str())
+            .collect();
+        let faces = view.viewers.iter().take(PIP_FACES).map(|person| {
+            let face = limn::TooltipFace::new(person.name.clone(), person.accent);
+            match &person.image {
+                Some(image) => face.image(image.clone().cover()),
+                None => face,
+            }
+        });
         bottom.push(
-            Element::row(vec![
-                icon(Icon::Custom(crate::glyphs::EYE), PIP_GLYPH)
-                    .large_icon(24.0)
-                    .size(Some(24.0), Some(24.0))
-                    .centered_y(),
-                gap(4.0, 0.0),
-                line(count.to_string(), 16.0, OVER_INK).centered_y(),
-            ])
-            .accessibility_label(tr!("Espectadores: {n}", n = count)),
+            Tooltip::new(
+                eye.hover_region_id(ids::PIP_VIEWERS),
+                ids::PIP_VIEWERS,
+                tr!("Espectadores: {n}", n = count),
+                look.menu_palette(),
+            )
+            .faces(None, faces, count.saturating_sub(PIP_FACES))
+            .description(names.join(", "))
+            .placement(TooltipPlacement::Above)
+            .render(),
         );
     }
     for button in &view.buttons {
@@ -6076,7 +6105,7 @@ mod tests {
             frame: Some((1280, 720)),
             waiting: "Esperando video…".into(),
             note: None,
-            viewers: 1,
+            viewers: vec![person(3, false, false, false)],
             buttons: vec![
                 button(ids::window(2), "Abrir en otra ventana", PipGlyph::PopOut),
                 button(ids::stop_watching(2), "Dejar de ver", PipGlyph::StopShare),
@@ -6169,8 +6198,23 @@ mod tests {
         assert_eq!(stop.x + stop.width, card.x + card.width - 8.0);
         assert_eq!(stop.y + stop.height, card.y + card.height - 8.0);
         assert_eq!(out.x + out.width + 16.0, stop.x);
+        // Over the eye: who watches, above it, as the stage's list.
+        let eye = rect_of(&hovered, ids::PIP_VIEWERS);
+        tree.handle_event(UiEvent::PointerMove(Point::new(
+            eye.x + eye.width / 2.0,
+            eye.y + eye.height / 2.0,
+        )));
+        std::thread::sleep(Duration::from_millis(600));
+        let listed = tree.layout(window);
+        let said = painted(&listed);
+        let watcher = view.viewers[0].name.clone();
+        assert!(
+            said.iter().any(|said| said == "Espectadores: 1"),
+            "{said:?}"
+        );
+        assert!(said.iter().any(|said| said.contains(&watcher)), "{said:?}");
         // Nobody watching: no eye.
-        view.viewers = 0;
+        view.viewers = Vec::new();
         let (mut tree, _) = frame(pip(&view, &Look::DARK), window);
         tree.handle_event(UiEvent::PointerMove(Point::new(
             card.x + 160.0,
@@ -6217,7 +6261,7 @@ mod tests {
             frame: Some((1280, 720)),
             waiting: String::new(),
             note: None,
-            viewers: 0,
+            viewers: Vec::new(),
             buttons: Vec::new(),
             at: Point::new(333.0, 222.0),
         };
