@@ -1911,6 +1911,8 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
     .placement(limn::PopoverPlacement::LeftStart)
     .width(emoji::picker_size(false).0)
     .render();
+    // Discord's: 16 above the row's top, over the message before, so the
+    // last message's never runs under the composer.
     Element::column(vec![
         Element::row(vec![
             Element::spacer().flex(1.0),
@@ -1919,7 +1921,11 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
         ]),
         Element::spacer().flex(1.0),
     ])
+    .translate(limn::Point::new(0.0, -BAR_RAISE))
 }
+
+/// How far the bar rises over its row's top.
+const BAR_RAISE: f32 = 16.0;
 
 /// A quick reaction: the emoji, with its name and what a click does on hover.
 /// `what` tells the bar's from the menu's, so each has its own ID.
@@ -4237,6 +4243,15 @@ mod tests {
         let step = top("dos") - top("uno");
         assert!(step < 30.0, "the bar (34 tall) set it: {step}");
         assert!(controls(&laid).contains(&"msg:2:actions:more".to_owned()));
+        // It rises 16 over its row, as Discord's: the last message's stays
+        // clear of what is under it.
+        let more = laid
+            .regions
+            .iter()
+            .find(|region| region.id == "msg:2:actions:more")
+            .unwrap()
+            .rect;
+        assert!(more.y < top("dos") - 8.0, "{more:?} over {}", top("dos"));
     }
 
     #[test]
