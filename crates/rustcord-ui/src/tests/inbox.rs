@@ -65,10 +65,13 @@ fn messages_that_come_while_the_window_is_away_get_the_new_line() {
     let mut incoming = host.store.timeline(channel).unwrap().messages()[0]
         .as_ref()
         .clone();
+    // Someone else the account does not block: a blocked person's messages
+    // fold into «N mensajes bloqueados», with no line (and the users' order
+    // is a map's, so the first other one is anyone).
     incoming.author = host
         .store
         .users()
-        .find(|user| Some(user.id) != host.store.me())
+        .find(|user| Some(user.id) != host.store.me() && !host.store.blocked(user.id))
         .unwrap()
         .id;
     // Looked at, at its end: read as it comes, no line.
@@ -95,7 +98,8 @@ fn messages_that_come_while_the_window_is_away_get_the_new_line() {
     });
     host.frame();
     assert_eq!(host.ui.new_marker.get(&channel), Some(&away));
-    assert!(host.painted().iter().any(|text| text == "NUEVO"));
+    let painted = host.painted();
+    assert!(painted.iter().any(|text| text == "NUEVO"), "{painted:?}");
     // Back, it is read, and the line stays while it is open.
     host.active = true;
     host.tree.scroll_to_end(&timeline_id(channel));
@@ -148,10 +152,11 @@ fn inbox_mentions_list_loaded_messages_and_remove_revoked_cards_immediately() {
     mention.id = MessageId(u64::MAX / 4);
     mention.content = "mira esto, te mencionan".into();
     mention.mentions = vec![host.store.me().unwrap()];
+    // Someone else the account does not block (the users' order is a map's).
     mention.author = host
         .store
         .users()
-        .find(|user| Some(user.id) != host.store.me())
+        .find(|user| Some(user.id) != host.store.me() && !host.store.blocked(user.id))
         .unwrap()
         .id;
     host.active = false;
@@ -324,10 +329,11 @@ fn retrying_a_read_does_not_consume_a_new_mention_or_a_manual_reminder() {
     let reminder = mention.id;
     mention.id = MessageId(u64::MAX / 4);
     mention.mentions = vec![host.store.me().unwrap()];
+    // Someone else the account does not block (the users' order is a map's).
     mention.author = host
         .store
         .users()
-        .find(|user| Some(user.id) != host.store.me())
+        .find(|user| Some(user.id) != host.store.me() && !host.store.blocked(user.id))
         .unwrap()
         .id;
     host.event(Event::MessageCreated {

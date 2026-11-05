@@ -13,6 +13,10 @@ ignore = [
     # nothing calls it outside a browser. Blocked upstream: remove once davey
     # stops turning it on.
     { id = "RUSTSEC-2024-0384", reason = "unmaintained, reached only through davey -> openmls/js; blocked upstream" },
+    # pin-utils is unmaintained. The same road: openmls' `js`
+    # feature pulls fluvio-wasm-timer, which uses it; nothing calls it
+    # outside a browser. Remove with the line above.
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils unmaintained, reached only through davey -> openmls/js -> fluvio-wasm-timer; blocked upstream" },
     # zvariant and zbus_names were merged into zbus 6; no vulnerability. zbus
     # 5 stays while eframe's accessibility (accesskit) and secret-service
     # need it; move rustcord-platform to zbus 6 together with them.
