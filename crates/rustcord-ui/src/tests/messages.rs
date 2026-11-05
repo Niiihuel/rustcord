@@ -918,10 +918,17 @@ fn shift_held_widens_the_bar_whose_delete_then_asks_nothing() {
     };
     host.send(UiEvent::ModifiersChanged(shift));
     let bar = host.mg_buttons();
-    // The simulated account may not pin in #general: no pin among them.
-    for what in ["unread", "copy", "delete"] {
+    // The simulated account may not pin in #general: no pin among them;
+    // copying the text stays in the menu, and deleting takes «Más»'s place.
+    for what in ["unread", "delete"] {
         assert!(
             bar.contains(&format!("msg:{mine}:{what}")),
+            "{what} in {bar:?}"
+        );
+    }
+    for what in ["copy", "actions:more"] {
+        assert!(
+            !bar.contains(&format!("msg:{mine}:{what}")),
             "{what} in {bar:?}"
         );
     }
@@ -1093,7 +1100,7 @@ fn local_read_scope_keeps_unread_navigation_without_sending_unsupported_commands
     host.open_channel("general");
     assert!(host.mg_said("NUEVO"));
     host.click(&format!("msg:{other}:actions:more"));
-    assert!(host.mg_said("Marcar como no leído (solo en Rustcord)"));
+    assert!(host.mg_said("Marcar como no leído") && host.mg_said("Solo en Rustcord"));
     host.key(Key::Escape, false, false);
 
     let intents = host.mg_report(crate::messages::UNREAD_CLEAR);
@@ -1296,4 +1303,91 @@ fn going_elsewhere_drops_the_delete_dialog() {
         .sent
         .iter()
         .any(|command| matches!(command, Command::DeleteMessage { .. })));
+}
+
+#[test]
+fn the_menus_reaction_choices_react_and_open_the_picker() {
+    let mut host = Host::new();
+    let general = host.open_channel("general");
+    let other = host.mg_others(general);
+    host.click(&format!("msg:{other}:actions:more"));
+    // The quick reactions over its choices react at once.
+    host.click(&format!("msg:{other}:menu-quick=👍"));
+    assert!(matches!(
+        host.sent.last(),
+        Some(Command::ToggleReaction { emoji, message, .. }) if emoji == "👍" && *message == other
+    ));
+    // «Agregar reacción»'s menu: an emoji by its name, or «Ver más», the
+    // picker.
+    let intents = host.mg_report(&format!("msg:{other}:react=🔥"));
+    host.run(intents);
+    assert!(matches!(
+        host.sent.last(),
+        Some(Command::ToggleReaction { emoji, message, .. }) if emoji == "🔥" && *message == other
+    ));
+    host.mg_report(&format!("msg:{other}:other-reactions"));
+    assert_eq!(host.ui.reacting, Some(other));
+}
+
+#[test]
+fn a_refused_message_is_sent_again_or_deleted_from_its_menu() {
+    let mut host = Host::new();
+    let general = host.open_channel("general");
+    let fail = |host: &mut Host| {
+        let failure = rustcord_provider::Failure::Send {
+            channel: general,
+            nonce: host.nonce,
+        };
+        host.event(Event::Failed {
+            failure,
+            reason: "rechazado".into(),
+            ambiguous: false,
+        });
+        host.store
+            .timeline(general)
+            .unwrap()
+            .messages()
+            .last()
+            .unwrap()
+            .id
+    };
+    // It has no bar: its menu opens on a secondary click.
+    let open = |host: &mut Host, shown: MessageId| {
+        let retry = host
+            .frame()
+            .regions
+            .iter()
+            .find(|region| region.id == format!("msg:{shown}:retry"))
+            .unwrap()
+            .rect;
+        let at = Point::new(retry.x + 300.0, retry.y + retry.height / 2.0);
+        host.send(UiEvent::ContextMenu { position: at });
+        assert_eq!(host.ui.messages.context, Some((shown, at)));
+    };
+    host.type_text("¿llega?");
+    host.key(Key::Enter, false, false);
+    let shown = fail(&mut host);
+    open(&mut host, shown);
+    assert!(host.mg_said("Reenviar mensaje") && host.mg_said("Eliminar mensaje"));
+    host.click(&format!("msg:{shown}:resend"));
+    assert!(
+        matches!(host.sent.last(), Some(Command::SendMessage { content, .. }) if content == "¿llega?")
+    );
+    // Refused again and deleted: here only, without asking, its text back
+    // in the empty composer.
+    let shown = fail(&mut host);
+    open(&mut host, shown);
+    let sent = host.sent.len();
+    host.click(&format!("msg:{shown}:delete"));
+    assert_eq!(host.ui.confirm_delete, None);
+    assert_eq!(host.sent.len(), sent, "the provider never had it");
+    host.frame();
+    assert_eq!(host.tree.input_value(&editor_id(general)), Some("¿llega?"));
+    assert!(host
+        .store
+        .timeline(general)
+        .unwrap()
+        .messages()
+        .iter()
+        .all(|message| !message.delivery.is_local()));
 }

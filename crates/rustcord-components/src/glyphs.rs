@@ -37,6 +37,13 @@ pub const INBOX: &str = glyph!("inbox");
 pub const EYE: &str = glyph!("eye");
 /// An arrow down onto a line: the header's button of an update offered.
 pub const DOWNLOAD: &str = glyph!("download");
+/// A message's menu: two chain links, its link copied; «ID» in a rounded
+/// square, its ID copied; a face with a peeled corner, who reacted; a clock
+/// with a cross, its poll ended now.
+pub const LINK: &str = glyph!("link");
+pub const ID: &str = glyph!("id");
+pub const REACTIONS: &str = glyph!("reactions");
+pub const POLL_END: &str = glyph!("poll-end");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

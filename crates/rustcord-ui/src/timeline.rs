@@ -123,6 +123,8 @@ struct Rows {
     to_my_roles: HashSet<MessageId>,
     /// Shift is held: the bars over messages show their direct actions.
     shift: bool,
+    /// The window's height, which a message's menu may grow to.
+    room: f32,
 }
 
 impl Rows {
@@ -356,6 +358,7 @@ impl Rows {
             obscure_explicit: self.obscured.contains(&message.author),
             voice_left: &self.voice_left,
             shift: self.shift,
+            room: Some(self.room),
         };
         let row = live_row(
             MessageView {
@@ -849,6 +852,7 @@ pub fn timeline(
             .map(|message| message.id)
             .collect(),
         shift: ui.messages.shift_held,
+        room: height,
     });
     let list = ScrollArea::measured_list(
         timeline_id(channel),

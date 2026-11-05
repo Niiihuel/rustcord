@@ -858,7 +858,7 @@ fn message_action(
         .and_then(|timeline| timeline.get(message))
         .cloned();
     if let Some((kind, glyph)) = what.split_once('=') {
-        return matches!(kind, "quick" | "menu-quick")
+        return matches!(kind, "quick" | "menu-quick" | "react")
             .then(|| react(ui, store, channel, message, glyph));
     }
     if let Some(what) = what.strip_prefix("poll:") {
@@ -940,13 +940,31 @@ fn message_action(
             save_edit(ui, store, channel, &draft, now)
         }
         "edit-cancel" => cancel_edit(ui, channel),
+        // One that was not sent is deleted here only, as Discord's menu does.
+        "discard" | "delete" if what == "discard" || store.unsent(channel, message).is_some() => {
+            let mut intents = crate::uploads::discard(store, channel, message);
+            let text = store.discard(channel, message)?;
+            // What was written goes back to an empty composer, not lost.
+            if ui.drafts.get(&channel).is_none_or(|draft| draft.is_empty()) {
+                ui.set_draft(channel, Some(text.clone()));
+                intents.extend([
+                    Intent::SetInput {
+                        id: editor_id(channel),
+                        value: text,
+                    },
+                    Intent::Focus(editor_id(channel)),
+                ]);
+                return Some(intents);
+            }
+            intents
+        }
         "delete" if std::mem::take(&mut ui.messages.shift) => delete(ui, channel, message),
         "delete" => {
             ui.confirm_delete = Some(message);
             ui.messages.delete_tip = true;
             Vec::new()
         }
-        "react" | "react-more" => {
+        "react" | "react-more" | "other-reactions" => {
             ui.reacting = Some(message);
             open_picker(ui, react_ids::BASE)
         }
@@ -1000,31 +1018,14 @@ fn message_action(
             ui.new_marker.insert(channel, message);
             command.into_iter().map(Intent::Command).collect()
         }
-        "retry"
+        "retry" | "resend"
             if store
                 .unsent(channel, message)
                 .is_some_and(|unsent| !unsent.files.is_empty()) =>
         {
             crate::uploads::retry(ui, store, channel, message)
         }
-        "retry" => vec![Intent::Resend { channel, message }],
-        "discard" => {
-            let mut intents = crate::uploads::discard(store, channel, message);
-            let text = store.discard(channel, message)?;
-            // What was written goes back to an empty composer, not lost.
-            if ui.drafts.get(&channel).is_none_or(|draft| draft.is_empty()) {
-                ui.set_draft(channel, Some(text.clone()));
-                intents.extend([
-                    Intent::SetInput {
-                        id: editor_id(channel),
-                        value: text,
-                    },
-                    Intent::Focus(editor_id(channel)),
-                ]);
-                return Some(intents);
-            }
-            intents
-        }
+        "retry" | "resend" => vec![Intent::Resend { channel, message }],
         // Forward, copy the link, who reacted or voted, end a poll.
         other => {
             return crate::message_actions::message_action(ui, store, channel, message, other, now)
