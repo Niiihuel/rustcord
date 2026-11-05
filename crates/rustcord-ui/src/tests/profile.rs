@@ -1038,6 +1038,9 @@ fn pf_a_members_card_loads_their_profile_once_and_ignores_stale_answers() {
     host.click(&format!("{}{user}", ids::CARD_MORE));
     host.pf_act(&format!("{}{user}", ids::FULL));
     assert_eq!(host.ui.profiles.full, Some((user, Some(server))));
+    // The card scrolls inside Discord's rounded modal: its roles are lower.
+    host.frame();
+    host.tree.scroll_to_end("pp:full:card");
     let painted = host.painted();
     let name = host.store.server(server).unwrap().name.clone();
     // Its roles there, on the card beside the tabs.
