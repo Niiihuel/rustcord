@@ -5,9 +5,9 @@
 //! [`super::encode`] or [`super::decode`], which go on with OpenH264 when
 //! none starts or one fails.
 //!
-//! The plugins are found at run time: through the shell's
-//! `GST_PLUGIN_SYSTEM_PATH`, or the directories `shell.nix` compiled in
-//! (`RUSTCORD_GST_PLUGINS`) for a binary run outside it. Errors are only
+//! The plugins are found at run time: the system's own, through
+//! `GST_PLUGIN_SYSTEM_PATH`, or directories compiled in with
+//! `RUSTCORD_GST_PLUGINS` at build time. Errors are only
 //! counted: no native message, element or device name leaves here.
 
 use std::collections::VecDeque;
@@ -53,7 +53,7 @@ const H264_OUT: &str = "h264parse config-interval=-1 ! \
 /// as with OpenH264, nothing until the next key frame.
 const LIVE: &str = "compliance=flexible discard-corrupted-frames=true";
 
-/// GStreamer, once, with the plugins `shell.nix` names; `false` without it.
+/// GStreamer, once, with the system's plugins (or `RUSTCORD_GST_PLUGINS`'); `false` without it.
 pub(crate) fn ready() -> bool {
     static READY: OnceLock<bool> = OnceLock::new();
     *READY.get_or_init(|| {

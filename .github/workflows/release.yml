@@ -77,8 +77,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      # The distribution's libraries, not Nix's: the program must find them
-      # where every distribution keeps them (no /nix/store run path).
+      # The distribution's libraries: the program finds them where every
+      # distribution keeps them.
       - name: dependencias de compilación
         run: |
           sudo apt-get update

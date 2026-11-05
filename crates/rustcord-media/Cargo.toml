@@ -34,7 +34,7 @@ rtrb = "0.4.0"
 # without a command backlog or a mutex that could block the interface.
 arc-swap = "1.9.2"
 # Calls carry Opus, the codec voice services use. Bundles libopus 1.6 (built
-# with cmake, see shell.nix), so no system library is needed on any platform.
+# with cmake), so no system library is needed on any platform.
 opus = "0.4.0"
 # The same libopus bindings opus builds on (not a new library): its decoder
 # of several streams, which the safe API lacks, for a voice message with
@@ -59,7 +59,7 @@ tokio = { workspace = true }
 # The GPU's H264 encoder and decoder, OpenH264 staying as the fallback:
 # GStreamer's VA-API (Mesa, the integrated GPU) and NVENC/NVDEC (nvcodec)
 # elements. Bindings MIT/Apache-2.0; GStreamer is
-# LGPL-2.1+, linked dynamically, plugins found at run time (see shell.nix).
+# LGPL-2.1+, linked dynamically, plugins found at run time.
 # glib 0.22 is already in the tree through rustcord-login.
 gstreamer = "0.25.4"
 gstreamer-app = "0.25.2"

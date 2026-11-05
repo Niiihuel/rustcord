@@ -83,7 +83,6 @@ en [limn](https://github.com/Niiihuel/limn).
 ## Comandos
 
 ```sh
-nix-shell            # o: nix develop
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets
 cargo test --workspace

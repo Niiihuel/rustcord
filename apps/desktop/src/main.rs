@@ -526,7 +526,7 @@ fn provider_for(
             #[cfg(not(all(feature = "session-login", any(target_os = "linux", windows))))]
             {
                 let _ = (first_login, proxy);
-                Err(t("El login no oficial requiere Linux o Windows y compilar con --features session-login. En NixOS, usa nix-shell --arg withLogin true; la interfaz principal sigue siendo limn.").into())
+                Err(t("El login no oficial requiere Linux o Windows y compilar con --features session-login (en Linux, con GTK 4 y WebKitGTK 6); la interfaz principal sigue siendo limn.").into())
             }
         }
     }

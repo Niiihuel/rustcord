@@ -295,9 +295,9 @@ async fn chunked_documents_cannot_bypass_the_actual_byte_limit() {
 }
 
 #[tokio::test]
-#[ignore = "requires nix-shell --arg withDocs true and Linux user namespaces"]
+#[ignore = "requires RUSTCORD_PDF_RENDERER, RUSTCORD_PDF_SANDBOX and RUSTCORD_PDF_LIMITER at build time and Linux user namespaces"]
 async fn sandbox_counts_and_renders_only_the_requested_owned_page() {
-    let tools = render::Tools::configured().expect("build withDocs=true");
+    let tools = render::Tools::configured().expect("built with the RUSTCORD_PDF_* tools");
     let document: Arc<[u8]> = pdf().into();
     let result = render::page(document.clone(), 1, tools, Vec::new())
         .await
@@ -342,9 +342,9 @@ async fn sandbox_counts_and_renders_only_the_requested_owned_page() {
 }
 
 #[tokio::test]
-#[ignore = "requires nix-shell --arg withDocs true and Linux user namespaces"]
+#[ignore = "requires RUSTCORD_PDF_RENDERER, RUSTCORD_PDF_SANDBOX and RUSTCORD_PDF_LIMITER at build time and Linux user namespaces"]
 async fn sandbox_reads_the_text_of_each_page_for_a_search() {
-    let tools = render::Tools::configured().expect("build withDocs=true");
+    let tools = render::Tools::configured().expect("built with the RUSTCORD_PDF_* tools");
     let document: Arc<[u8]> = text_pdf().into();
     let pages = render::text(document.clone(), tools).await.unwrap();
     assert_eq!(pages.len(), 2, "{pages:?}");

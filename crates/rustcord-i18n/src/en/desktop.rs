@@ -27,8 +27,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Falta el ID público de la aplicación", "The app's public ID is missing"),
     (
-        "El login no oficial requiere Linux o Windows y compilar con --features session-login. En NixOS, usa nix-shell --arg withLogin true; la interfaz principal sigue siendo limn.",
-        "The unofficial sign-in requires Linux or Windows and building with --features session-login. On NixOS, use nix-shell --arg withLogin true; the main interface is still limn.",
+        "El login no oficial requiere Linux o Windows y compilar con --features session-login (en Linux, con GTK 4 y WebKitGTK 6); la interfaz principal sigue siendo limn.",
+        "The unofficial sign-in requires Linux or Windows and building with --features session-login (on Linux, with GTK 4 and WebKitGTK 6); the main interface is still limn.",
     ),
     ("No se pudo cambiar de proveedor", "Couldn't switch providers"),
     // The command line.
