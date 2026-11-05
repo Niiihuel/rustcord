@@ -46,7 +46,10 @@ publish = false
 # lists as Discord's) and buttons that draw their icon at their sizing's size,
 # Markdown's body leading set by the host (messages 16 on 22), a modal's title
 # at the host's size and face over its scrim (Discord's questions) and icons
-# that loop on their own (the update's arrow bobbing while it downloads).
+# that loop on their own (the update's arrow bobbing while it downloads),
+# faces the host installs at run time and strokes and shadows under text
+# (FontFamily::Custom, install_face, text_stroke, text_shadow: names'
+# fonts and effects).
 # The exact revision stays in Cargo.lock; a git dependency keeps workspace fmt
 # from rewriting third-party sources.
 limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-05", default-features = false }

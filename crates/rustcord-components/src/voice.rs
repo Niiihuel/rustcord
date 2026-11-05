@@ -669,14 +669,21 @@ fn over_button_at(
 /// [`name_tag`]); a stream's is its streamer's name behind a screen, as the
 /// official client's. Nothing on a tile too small for a name.
 fn name_pill(view: &Preview, size: Size) -> Element {
+    let screen = || vec![icon(Icon::Screen, OVER_INK).size(Some(16.0), Some(16.0))];
     let (said, marks) = match &view.stream {
-        Some(stream) => (
-            stream.name.as_str(),
-            vec![icon(Icon::Screen, OVER_INK).size(Some(16.0), Some(16.0))],
-        ),
+        Some(stream) => (stream.name.as_str(), screen()),
+        // The account's own stream in the grid: its name after the glyph.
+        None if view.card => (view.title.as_str(), screen()),
         None => (view.title.as_str(), Vec::new()),
     };
     name_tag(Some(said), marks, size).unwrap_or_else(Element::spacer)
+}
+
+/// A stream's tile before its first frame: a turning ring in its middle,
+/// which says what it waits for.
+fn loading(view: &Preview) -> Element {
+    centered(limn::Spinner::new(format!("{}:loading", view.surface), OVER_INK).render())
+        .accessible(limn::Access::default().description(view.waiting.clone()))
 }
 
 /// A small note over a picture, such as that it is simulated: it says, it
@@ -719,10 +726,10 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
         // A stream over says so, and offers to be watched again or closed.
         None => match &view.stream {
             Some(stream) if stream.over => over_picture(view, look),
-            // The account's own stream before its first frame: the screen's glyph.
-            None if view.card => {
-                centered(icon(Icon::Screen, look.faint).size(Some(48.0), Some(48.0)))
-            }
+            // A stream, or the account's own, before its first frame: it
+            // loads, turning, as the official client's tile does.
+            Some(_) => loading(view),
+            None if view.card => loading(view),
             _ => centered(line(&view.waiting, 14.0, look.muted)),
         },
     };
@@ -809,36 +816,20 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
 /// The account's own stream's card over its still: «EN VIVO», its title, who
 /// sees it and a red button to stop (Discord's card of the same).
 fn own_over(view: &Preview, title: Element, look: &Look) -> Element {
-    let stop = Button::new(
-        view.stop.0.as_str(),
-        view.stop.1,
-        filled(look.danger, lighter(look.danger, 18), look),
-    )
-    .variant(ButtonVariant::Raised)
-    .sizing(ButtonSizing {
-        height: OVER_BUTTON,
-        font_size: 14.0,
-        icon_size: 18.0,
-        horizontal_padding: 12.0,
-        inner_spacing: 6.0,
-    })
-    .radius(RadiusRole::Card)
-    .ink(OVER_INK)
-    .hover_ink(OVER_INK)
-    .render();
+    // As the official client's tile: its size, rate and «EN VIVO» at the
+    // top right, the screen's glyph and the name at the bottom left; the way
+    // to stop it at the bottom right, as an icon.
+    let stop = over_button(
+        view.stop.0.clone(),
+        Icon::Custom(SCREEN_STOP),
+        t(view.stop.1),
+        look.danger,
+        look,
+    );
     Element::column(vec![
-        Element::row(vec![live(22.0, 10.0, look), Element::spacer().flex(1.0)]),
+        Element::row(vec![Element::spacer().flex(1.0), tile_live(view, look)]),
         Element::spacer().flex(1.0),
-        Element::row(vec![title, Element::spacer().flex(1.0)]),
-        gap(0.0, 6.0),
-        Element::row(vec![
-            line(&view.note, 12.0, OVER_INK)
-                .centered_y()
-                .shrink_to_fit(),
-            Element::spacer().flex(1.0),
-            stop,
-        ])
-        .gap(8.0),
+        Element::row(vec![title, Element::spacer().flex(1.0), stop]).gap(8.0),
     ])
     .padding(12.5)
 }
@@ -927,16 +918,29 @@ fn stream_over(view: &Preview, stream: &StreamTile, title: Element, look: &Look)
     }
 }
 
-/// The note's badge at the top left. Without a note a stream is live: «EN
-/// VIVO» in the grid, as the official client's, and nothing on the stage,
-/// whose header says it.
+/// The note's badge at the top left; in the grid, the stream's size, rate
+/// and «EN VIVO» at the top right, as the official client's. On the stage
+/// its header says them.
 fn top_left(view: &Preview, big: bool, look: &Look) -> Element {
-    let shown = match view.note.as_str() {
-        "" if big => return Element::spacer().size(None, Some(0.0)),
-        "" => live(22.0, 10.0, look),
-        note => badge(note),
-    };
-    Element::row(vec![shown, Element::spacer().flex(1.0)])
+    let note = (!view.note.is_empty()).then(|| badge(&view.note));
+    // The account's own previews: the note, else «EN VIVO», at the left.
+    if view.stream.is_none() && !big {
+        let shown = note.unwrap_or_else(|| live(22.0, 10.0, look));
+        return Element::row(vec![shown, Element::spacer().flex(1.0)]);
+    }
+    if big {
+        return match note {
+            Some(note) => Element::row(vec![note, Element::spacer().flex(1.0)]),
+            None => Element::spacer().size(None, Some(0.0)),
+        };
+    }
+    // In the grid, as the official client's: its size, rate and «EN VIVO»
+    // at the top right; a note stays at the left.
+    Element::row(vec![
+        note.unwrap_or_else(Element::spacer),
+        Element::spacer().flex(1.0),
+        tile_live(view, look),
+    ])
 }
 
 /// A stream's controls at its tile's bottom right, as the official
@@ -3091,11 +3095,7 @@ pub fn stage(view: Stage, look: &Look) -> Element {
                 right.push(warning(look));
             }
         }
-        // «720p 30 FPS»; «720p» until the rate is known.
-        let quality = shown.frame.map(|(_, height)| match shown.fps {
-            Some(fps) => format!("{height}p {fps} FPS"),
-            None => format!("{height}p"),
-        });
+        let quality = quality(shown);
         // A stream that is over is no longer live.
         if !shown.stream.as_ref().is_some_and(|stream| stream.over) {
             right.push(live_pill(quality, look));
@@ -3332,6 +3332,21 @@ fn warning(look: &Look) -> Element {
 
 /// The stream's quality and «EN VIVO» as one pill: two segments that touch,
 /// round at their outer ends only; alone, «EN VIVO» is round at both.
+/// A picture's size and rate as the official client words them: «720p 30
+/// FPS»; «720p» until the rate is known, nothing before the first frame.
+fn quality(view: &Preview) -> Option<String> {
+    view.frame.map(|(_, height)| match view.fps {
+        Some(fps) => format!("{height}p {fps} FPS"),
+        None => format!("{height}p"),
+    })
+}
+
+/// [`live_pill`] at a grid tile's top right, its words in capitals as the
+/// official client's tile writes them: «720P 30 FPS | EN VIVO».
+fn tile_live(view: &Preview, look: &Look) -> Element {
+    live_pill(quality(view).map(|said| said.to_uppercase()), look)
+}
+
 fn live_pill(quality: Option<String>, look: &Look) -> Element {
     const LIVE_RED: Color = Color::rgb(0xD2, 0x2D, 0x39);
     const QUALITY_GREY: Color = Color::rgb(0x4E, 0x50, 0x58);
@@ -7754,7 +7769,12 @@ mod tests {
             painted.contains(&"¡Estás en directo!".to_owned()),
             "{painted:?}"
         );
-        assert!(painted.contains(&"Los demás ven tu pantalla.".to_owned()));
+        // As the official client's tile: its size and «EN VIVO» at the top
+        // right, in capitals.
+        assert!(
+            painted.contains(&"1080P".to_owned()) && painted.contains(&"EN VIVO".to_owned()),
+            "{painted:?}"
+        );
         // Without a frame yet, the card still stands with its button.
         let waiting = Preview {
             frame: None,

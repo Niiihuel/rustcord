@@ -86,6 +86,7 @@ struct Rows {
     edit_channel: Option<String>,
     invitation_denied: Option<String>,
     invitation_cards: HashMap<MessageId, Vec<rustcord_components::message::InvitationCard>>,
+    spotify: HashMap<MessageId, Vec<rustcord_components::message::SpotifyPlayer>>,
     vote_denied: Option<String>,
     poll_choice: Option<(MessageId, Vec<u32>)>,
     /// Why the account may not join each voice channel a card names.
@@ -94,6 +95,8 @@ struct Rows {
     revealed_files: HashSet<rustcord_model::AttachmentId>,
     voice: Option<crate::VoicePlayer>,
     voice_speed: usize,
+    /// The emoji under the pointer in a picker of reactions.
+    hovered_emoji: Option<String>,
     /// Where each voice message was left, in seconds.
     voice_left: Vec<(rustcord_model::AttachmentId, f32)>,
     can: Abilities,
@@ -323,9 +326,10 @@ impl Rows {
             voice: self
                 .voice
                 .as_ref()
-                .filter(|player| player.message == message.id)
+                .filter(|player| player.message == message.id && player.spotify.is_none())
                 .map(crate::VoicePlayer::now),
             voice_speed: self.voice_speed,
+            hovered_emoji: self.hovered_emoji.as_deref(),
             editing: self
                 .editing
                 .as_ref()
@@ -342,6 +346,7 @@ impl Rows {
                 .invitation_cards
                 .get(&message.id)
                 .map_or(&[], Vec::as_slice),
+            spotify: self.spotify.get(&message.id).map_or(&[], Vec::as_slice),
             vote_denied: self.vote_denied.as_deref(),
             poll_choice: self
                 .poll_choice
@@ -769,6 +774,11 @@ pub fn timeline(
             })
             .filter(|(_, cards)| !cards.is_empty())
             .collect(),
+        spotify: messages
+            .iter()
+            .map(|message| (message.id, crate::spotify::players(ui, message)))
+            .filter(|(_, players)| !players.is_empty())
+            .collect(),
         vote_denied: allowed.vote.reason().map(str::to_owned),
         poll_choice: ui.messages.poll_choice.clone(),
         voice_channels: messages
@@ -784,6 +794,7 @@ pub fn timeline(
         revealed_files: ui.messages.revealed_files.clone(),
         voice: ui.voice_player.clone(),
         voice_speed: ui.voice_memory.speed,
+        hovered_emoji: ui.messages.emoji_hovered.clone(),
         voice_left: ui.voice_memory.left().to_vec(),
         can: Abilities {
             react: allowed.react.allowed(),

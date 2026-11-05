@@ -29,6 +29,8 @@ mod desktop;
 
 pub mod identity;
 
+pub mod spotify;
+
 mod server_admin;
 
 mod tallies;
@@ -79,8 +81,9 @@ pub use desktop::{
     ActivitySource, ActivityVisibility, DetectableGame, LocalActivity, LocalActivityKind,
 };
 pub use identity::{
-    Badge, Connection, EffectLayer, Identity, Nameplate, Perks, Platforms, ProfileEffect,
-    RoleStyle, ServerTag, StickerPack, TextPicture, MAX_ACTIVITIES, MAX_TEXT_PICTURES,
+    Badge, BadgeDetail, Connection, EffectLayer, Identity, NameEffect, NameStyle, Nameplate, Perks,
+    Platforms, ProfileEffect, RoleStyle, ServerTag, StickerPack, TextPicture, MAX_ACTIVITIES,
+    MAX_TEXT_PICTURES,
 };
 pub use server_admin::{
     ChannelMove, JoinMethod, JoinedBy, MediaScan, MemberOrder, MemberQuery, ServerOptions,

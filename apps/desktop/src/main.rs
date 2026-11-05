@@ -11,7 +11,8 @@
 //! and `--capture-hover` to exercise the editor beside the last message, or
 //! `--capture-hover-id <id>` to hold the pointer over a control, its hint open;
 //! `--action shift` holds Shift; `--action decoding` keeps the pictures of
-//! staged files decoding, their cards' placeholder shown.
+//! staged files decoding, their cards' placeholder shown; with
+//! `--capture-rich`, `--action spotify` shows a Spotify link's player alone.
 
 // Windows: a window, not a console program; what Rustcord writes
 // to stderr goes to its log file (`log.rs`). Tests keep their console.
@@ -2054,15 +2055,13 @@ impl App {
                     kind,
                 } => {
                     // A fetched clip arrives through `poll_voice`.
+                    let simulated =
+                        self.client.info().kind == rustcord_provider::ProviderKind::Simulated;
                     let loaded = match source {
-                        Some(source) => {
-                            self.client.load_voice(request, source, size).err().map(Err)
-                        }
-                        // Only the simulation has clips without a file: its
+                        // Only the simulation has clips without a file, and it
+                        // fetches none (a capture's Spotify preview): its
                         // tones and test pattern come with Rustcord.
-                        None if self.client.info().kind
-                            == rustcord_provider::ProviderKind::Simulated =>
-                        {
+                        _ if simulated => {
                             // A WebM plays the sample in that format.
                             let webm = self.ui.voice_player.as_ref().is_some_and(|player| {
                                 self.store
@@ -2081,6 +2080,9 @@ impl App {
                             };
                             self.audio.load_voice(request, Arc::from(sample));
                             Some(Ok(()))
+                        }
+                        Some(source) => {
+                            self.client.load_voice(request, source, size).err().map(Err)
                         }
                         None => Some(Err(t("Este adjunto no tiene un archivo para reproducir."))),
                     };
@@ -2843,6 +2845,15 @@ impl App {
         }
         while let Some(result) = self.client.poll_invitation_card() {
             rustcord_ui::invitation_card_result(&mut self.ui, &self.store, result, Instant::now());
+        }
+        while let Some(found) = self.client.poll_spotify() {
+            rustcord_ui::spotify_card_result(
+                &mut self.ui,
+                found.request,
+                &found.link,
+                found.entity,
+                Instant::now(),
+            );
         }
         self.ui.messages.gifs.available = self.client.gifs_available();
         let intents = rustcord_ui::sync_gif_search(&mut self.ui, &self.store);
@@ -4115,11 +4126,16 @@ impl App {
                 self.run(ctx, intents);
             }
         }
+        // `--action spotify`: a Spotify link's player alone.
+        let spotify = self
+            .capture
+            .as_ref()
+            .is_some_and(|capture| capture.actions.iter().any(|id| id == "spotify"));
         let rich = self
             .capture
             .as_ref()
             .is_some_and(|capture| capture.rich)
-            .then(|| capture_fixture::rich(&mut self.store, &mut self.ui))
+            .then(|| capture_fixture::rich(&mut self.store, &mut self.ui, spotify))
             .flatten();
         // Plays for real on the chosen output, once the conversation has
         // settled where it opens: the capture shows it moving.
@@ -4810,6 +4826,16 @@ impl eframe::App for App {
             self.fonts_attached = false;
             ctx.request_repaint();
         }
+        // The fonts of the names painted, installed as their faces come:
+        // the next frame measures with them.
+        for (font, face) in self
+            .client
+            .load_fonts(&rustcord_ui::wanted_fonts(&laid_out))
+        {
+            if limn_egui::install_face(&ctx, font, face).is_ok() {
+                self.fonts_attached = false;
+            }
+        }
         if !self.pending_storage.closing {
             let intents = rustcord_ui::after_layout(
                 &mut self.ui,
@@ -4860,6 +4886,36 @@ impl eframe::App for App {
             );
             for (request, target) in cards {
                 self.client.preview_invitation_card(request, target);
+            }
+        }
+        // Spotify links: a capture answers from its fixture, and the
+        // simulation never reaches Spotify.
+        let simulated = self
+            .store
+            .provider
+            .as_ref()
+            .is_some_and(|info| info.kind == rustcord_provider::ProviderKind::Simulated);
+        if self.capture.is_some() || !simulated {
+            let links = rustcord_ui::wanted_spotify_cards(
+                &mut self.ui,
+                &self.store,
+                &self.tree,
+                Instant::now(),
+            );
+            for (request, link) in links {
+                if self.capture.is_some() {
+                    let entity = capture_fixture::spotify(&link);
+                    rustcord_ui::spotify_card_result(
+                        &mut self.ui,
+                        request,
+                        &link,
+                        entity,
+                        Instant::now(),
+                    );
+                    ctx.request_repaint();
+                } else {
+                    self.client.preview_spotify(request, link);
+                }
             }
         }
         rustcord_ui::follow_viewer(&mut self.ui, &self.store, &self.tree);

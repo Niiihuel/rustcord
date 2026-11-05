@@ -717,6 +717,67 @@ fn an_animated_png_keeps_its_first_frame_and_plays_its_frames() {
     assert!(still.animation.is_none(), "a plain PNG does not play");
 }
 
+/// An animated WebP of one 16 px frame per color, as Discord serves a
+/// moving avatar: VP8X and ANIM, then each still WebP's VP8L in an ANMF.
+fn animated_webp(colors: &[[u8; 4]]) -> Vec<u8> {
+    let chunk = |name: &[u8], body: &[u8]| {
+        let mut out = name.to_vec();
+        out.extend((body.len() as u32).to_le_bytes());
+        out.extend(body);
+        if body.len() % 2 == 1 {
+            out.push(0);
+        }
+        out
+    };
+    let three = |value: u32| value.to_le_bytes()[..3].to_vec();
+    let mut body = b"WEBP".to_vec();
+    // Animated, with alpha; a 16 px canvas.
+    let header = [vec![0x12, 0, 0, 0], three(15), three(15)].concat();
+    body.extend(chunk(b"VP8X", &header));
+    body.extend(chunk(b"ANIM", &[0; 6]));
+    for color in colors {
+        let mut still = Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(16, 16, image::Rgba(*color)))
+            .write_to(&mut still, ImageFormat::WebP)
+            .unwrap();
+        let still = still.into_inner();
+        let at = still.windows(4).position(|name| name == b"VP8L").unwrap();
+        // At (0, 0), 16 px, 100 ms, then the frame.
+        let frame = [
+            three(0),
+            three(0),
+            three(15),
+            three(15),
+            three(100),
+            vec![0],
+        ]
+        .concat();
+        body.extend(chunk(b"ANMF", &[frame, still[at..].to_vec()].concat()));
+    }
+    [
+        b"RIFF".to_vec(),
+        (body.len() as u32).to_le_bytes().to_vec(),
+        body,
+    ]
+    .concat()
+}
+
+#[test]
+fn an_animated_webp_plays_as_a_picture_or_a_preview_and_a_banner_stands_still() {
+    let moving = animated_webp(&[[20, 80, 160, 255], [240, 40, 20, 255]]);
+    for kind in [ImageKind::Artwork, ImageKind::AttachmentPreview] {
+        let decoded = super::normalize(&moving, kind).unwrap();
+        assert_eq!(
+            decoded.animation.as_ref().map(|a| a.frames.len()),
+            Some(2),
+            "{kind:?}"
+        );
+    }
+    // A moving banner is asked for as a preview: a banner keeps one frame.
+    let banner = super::normalize(&moving, ImageKind::Banner).unwrap();
+    assert!(banner.animation.is_none());
+}
+
 /// An explicit picture blurred
 /// past recognition, standing still.
 #[test]
@@ -1068,5 +1129,78 @@ fn dominant_color_is_the_first_of_a_median_cut_palette() {
             image::Rgba([9, 9, 9, 0])
         )),
         None
+    );
+}
+
+/// A name font's face is fetched once, from where the provider says,
+/// decoded from WOFF2 and given once; one without a face is never asked.
+#[tokio::test]
+async fn a_name_font_is_downloaded_once_and_given_as_truetype() {
+    use rustcord_provider::{mock, Provider};
+    struct Fonts(mock::MockProvider, String);
+    impl Provider for Fonts {
+        fn info(&self) -> rustcord_provider::ProviderInfo {
+            self.0.info()
+        }
+        fn connect<'a>(
+            &'a self,
+            commands: &'a mut mpsc::Receiver<rustcord_provider::Command>,
+            events: &'a rustcord_provider::EventSink,
+        ) -> rustcord_provider::BoxFuture<'a, Result<(), rustcord_provider::ProviderError>>
+        {
+            self.0.connect(commands, events)
+        }
+        fn name_font(&self, id: u16) -> Option<String> {
+            (id == 3).then(|| format!("{}/font.woff2", self.1))
+        }
+    }
+    // Mada (OFL), cut to the letters of «Rustcord»: 1 KiB of WOFF2.
+    let woff2 = include_bytes!("../../fixtures/name-font.woff2");
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let (wake, mut woken) = mpsc::channel(8);
+    let mut images = Images::new(
+        Handle::current(),
+        &[],
+        Arc::new(move || {
+            let _ = wake.try_send(());
+        }),
+    );
+    images.loopback = true;
+    images.hosted = Some(Arc::new(Fonts(
+        mock::MockProvider::new(mock::MockConfig::default()),
+        origin,
+    )));
+    assert!(images.load_fonts(&[3, 4]).is_empty());
+    let (mut socket, _) = listener.accept().await.unwrap();
+    let request = headers(&mut socket).await;
+    assert!(request.starts_with("GET /font.woff2 "));
+    assert!(!request.to_ascii_lowercase().contains("authorization:"));
+    socket
+        .write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", woff2.len()).as_bytes())
+        .await
+        .unwrap();
+    socket.write_all(woff2).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(5), woken.recv())
+        .await
+        .unwrap();
+    let ready = images.load_fonts(&[3, 4]);
+    let [(3, face)] = &ready[..] else {
+        panic!("{:?}", ready.iter().map(|(id, _)| id).collect::<Vec<_>>());
+    };
+    // A TrueType file whose tables include its outlines.
+    assert_eq!(&face[..4], &[0, 1, 0, 0]);
+    assert!(face.windows(4).any(|tag| tag == b"glyf"));
+    // Given once; neither font is asked for again.
+    assert!(images.load_fonts(&[3, 4]).is_empty());
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), listener.accept())
+            .await
+            .is_err()
+    );
+    assert!(fonts::face(b"<html>not a font</html>").is_none());
+    assert!(
+        fonts::face(&woff2[..woff2.len() / 2]).is_none(),
+        "cut short"
     );
 }

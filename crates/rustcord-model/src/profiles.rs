@@ -134,6 +134,13 @@ pub struct UserProfile {
     pub pronouns: Option<String>,
     pub banner: ProfileBanner,
     pub accent: Option<Rgb>,
+    /// Their profile's own colors, the server's first: the one under the
+    /// banner, then the one at the card's foot.
+    pub theme: Option<(Rgb, Rgb)>,
+    /// The picture and the banner shown here as they move, each after the
+    /// still one it moves for: drawn only while that one is the one shown.
+    pub moving_avatar: Option<(RemoteImage, RemoteImage)>,
+    pub moving_banner: Option<(RemoteImage, RemoteImage)>,
     /// What they set for `server` only, when reported there.
     pub nick: Option<String>,
     pub server_about: Option<String>,
@@ -315,6 +322,7 @@ mod tests {
             description: "X".into(),
             icon: None,
             link: None,
+            detail: None,
         };
         let badges = UserProfile {
             badges: Some(vec![badge; MAX_BADGES + 1]),

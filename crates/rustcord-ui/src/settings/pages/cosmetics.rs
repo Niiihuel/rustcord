@@ -1,5 +1,7 @@
 //! «Cosméticos de los perfiles»: a switch for each cosmetic people wear:
-//! avatar decorations, nameplates and profile effects. A hidden one is
+//! avatar decorations, nameplates, profile effects and name styles (the
+//! fonts, effects and colors of names, Discord's «Display Name Styles»,
+//! an accessibility setting there). A hidden one is
 //! neither drawn nor downloaded; it changes only what
 //! this device shows. Profile frames are not drawn by Rustcord yet, so they
 //! have no switch.
@@ -26,10 +28,14 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         "cosmetic:effects",
         es("efectos de perfil animaciones tarjeta cosméticos ocultar"),
     ),
+    (
+        "cosmetic:name_styles",
+        es("estilos de nombre fuente tipografía efecto colores nitro cosméticos ocultar"),
+    ),
 ];
 
 /// Each cosmetic: its key, what the switch says and what it explains.
-const SWITCHES: [(&str, &str, &str); 3] = [
+const SWITCHES: [(&str, &str, &str); 4] = [
     (
         "decorations",
         es("Decoraciones de avatar"),
@@ -45,6 +51,11 @@ const SWITCHES: [(&str, &str, &str); 3] = [
         es("Efectos de perfil"),
         es("Las animaciones sobre las tarjetas de perfil."),
     ),
+    (
+        "name_styles",
+        es("Estilos de nombre"),
+        es("La fuente, el efecto y los colores que cada persona elige para su nombre."),
+    ),
 ];
 
 /// The switch of `cosmetic` in `cosmetics`.
@@ -53,6 +64,7 @@ fn switch<'a>(cosmetics: &'a mut Cosmetics, cosmetic: &str) -> Option<&'a mut bo
         "decorations" => Some(&mut cosmetics.decorations),
         "nameplates" => Some(&mut cosmetics.nameplates),
         "effects" => Some(&mut cosmetics.effects),
+        "name_styles" => Some(&mut cosmetics.name_styles),
         _ => None,
     }
 }
@@ -102,11 +114,13 @@ pub(crate) fn kept(prefs: &Prefs) -> Vec<(&'static str, Option<String>)> {
         decorations,
         nameplates,
         effects,
+        name_styles,
     } = prefs.cosmetics;
     vec![
         ("cosmetic_decorations", Some(decorations.to_string())),
         ("cosmetic_nameplates", Some(nameplates.to_string())),
         ("cosmetic_effects", Some(effects.to_string())),
+        ("cosmetic_name_styles", Some(name_styles.to_string())),
     ]
 }
 
@@ -117,5 +131,6 @@ pub(crate) fn restore(prefs: &mut Prefs, setting: &impl Fn(&str) -> Option<Strin
         decorations: shown("cosmetic_decorations"),
         nameplates: shown("cosmetic_nameplates"),
         effects: shown("cosmetic_effects"),
+        name_styles: shown("cosmetic_name_styles"),
     };
 }

@@ -2666,6 +2666,10 @@ impl Provider for DiscordSessionProvider {
         crate::wire::sized(url, density)
     }
 
+    fn name_font(&self, id: u16) -> Option<String> {
+        crate::identity::name_font(id)
+    }
+
     fn info(&self) -> ProviderInfo {
         ProviderInfo {
             name: "Discord".into(),

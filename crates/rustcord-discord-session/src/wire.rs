@@ -169,6 +169,25 @@ pub(crate) fn cdn(path: &str, banner: bool, hash: &Value) -> Option<RemoteImage>
     })
 }
 
+/// [`cdn`]'s still picture of an animated hash (`a_`) and the same one
+/// moving, as the official client asks for it on a profile: a WebP with
+/// `animated=true`. A banner's moving one is decoded as a preview, which
+/// keeps its frames (a `Banner` keeps only the first).
+pub(crate) fn moving(path: &str, banner: bool, hash: &Value) -> Option<(RemoteImage, RemoteImage)> {
+    let still = cdn(path, banner, hash)?;
+    let hash = hash.as_str().filter(|hash| hash.starts_with("a_"))?;
+    let size = if banner { 512 } else { 128 };
+    let moving = RemoteImage {
+        url: format!("https://cdn.discordapp.com/{path}/{hash}.webp?size={size}&animated=true"),
+        kind: if banner {
+            ImageKind::AttachmentPreview
+        } else {
+            ImageKind::Artwork
+        },
+    };
+    Some((still, moving))
+}
+
 /// Discord IDs carry their creation time: milliseconds since 2015 in their top bits.
 const ID_EPOCH_MS: i64 = 1_420_070_400_000;
 

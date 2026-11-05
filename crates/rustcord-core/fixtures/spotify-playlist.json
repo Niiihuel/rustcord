@@ -1,0 +1,131 @@
+{
+ "type": "playlist",
+ "name": "Trap Hood",
+ "uri": "spotify:playlist:3U5Re9YvytJ2PUXf8mTwgY",
+ "id": "3U5Re9YvytJ2PUXf8mTwgY",
+ "title": "Trap Hood",
+ "subtitle": "Drex",
+ "coverArt": {
+  "sources": [
+   {
+    "height": null,
+    "width": null,
+    "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da8437f5d24c615290ccb9b6bd79"
+   }
+  ]
+ },
+ "isExplicit": false,
+ "duration": 0,
+ "visualIdentity": {
+  "backgroundBase": {
+   "alpha": 255,
+   "blue": 0,
+   "green": 80,
+   "red": 102
+  },
+  "textBase": {
+   "alpha": 255,
+   "blue": 255,
+   "green": 255,
+   "red": 255
+  },
+  "image": [
+   {
+    "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c00006c1137f5d24c615290ccb9b6bd79",
+    "maxHeight": 64,
+    "maxWidth": 64
+   },
+   {
+    "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000bebb37f5d24c615290ccb9b6bd79",
+    "maxHeight": 640,
+    "maxWidth": 640
+   },
+   {
+    "url": "https://image-cdn-fa.spotifycdn.com/image/ab67706c0000da8437f5d24c615290ccb9b6bd79",
+    "maxHeight": 300,
+    "maxWidth": 300
+   }
+  ]
+ },
+ "trackList": [
+  {
+   "uri": "spotify:track:15EH2glphTjcarRjAsc0EB",
+   "uid": "d4b10b9f7b8ced13",
+   "title": "Straightenin",
+   "subtitle": "Migos",
+   "isExplicit": true,
+   "isNineteenPlus": false,
+   "contentRatings": {
+    "labels": [
+     "EXPLICIT"
+    ]
+   },
+   "duration": 255023,
+   "isPlayable": true,
+   "playabilityReason": "PLAYABLE",
+   "audioPreview": {
+    "format": "MP3_96",
+    "url": "https://p.scdn.co/mp3-preview/36e4d4c60bc8fa8654a068fa5dad4434c373fc40"
+   },
+   "entityType": "track"
+  },
+  {
+   "uri": "spotify:track:4LaGu95Ui2s4vprSQYWUAZ",
+   "uid": "006d119bd9538a23",
+   "title": "Bout A Million (feat. 42 Dugg & 21 Savage)",
+   "subtitle": "Pop Smoke, 21 Savage, 42 Dugg",
+   "isExplicit": true,
+   "isNineteenPlus": false,
+   "contentRatings": {
+    "labels": [
+     "EXPLICIT"
+    ]
+   },
+   "duration": 203586,
+   "isPlayable": true,
+   "playabilityReason": "PLAYABLE",
+   "audioPreview": {
+    "format": "MP3_96",
+    "url": "https://evil.test/mp3-preview/40c46f10b2f740d47127ffd3c2439f29786e5ec1"
+   },
+   "entityType": "track"
+  },
+  {
+   "uri": "spotify:track:3QPZqYIzgEXbVouiHpu7wR",
+   "uid": "1cc0783055cc23d2",
+   "subtitle": "Pop Smoke, Anuel AA",
+   "isExplicit": true,
+   "isNineteenPlus": false,
+   "contentRatings": {
+    "labels": [
+     "EXPLICIT"
+    ]
+   },
+   "duration": 229253,
+   "isPlayable": true,
+   "playabilityReason": "PLAYABLE",
+   "audioPreview": {
+    "format": "MP3_96",
+    "url": "https://p.scdn.co/mp3-preview/fbacb01051b0f263217a704b638a26a9b71387b6"
+   },
+   "entityType": "track"
+  },
+  {
+   "uri": "spotify:track:5eJpwQyirY5EEdNadHKRAM",
+   "uid": "49972847a3803006",
+   "title": "Línea sin controles",
+   "subtitle": "Pop Smoke, Lil Tjay",
+   "isExplicit": true,
+   "isNineteenPlus": false,
+   "contentRatings": {
+    "labels": [
+     "EXPLICIT"
+    ]
+   },
+   "duration": 160560,
+   "isPlayable": true,
+   "playabilityReason": "PLAYABLE",
+   "entityType": "track"
+  }
+ ]
+}

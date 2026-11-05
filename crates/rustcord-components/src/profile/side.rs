@@ -5,7 +5,7 @@
 //! fixed under the scroll. Measures are `docs/discord-reference.md`'s
 //! «DM profile panel».
 
-use limn::{Color, Component, Element, FontFamily, ScrollArea};
+use limn::{Color, Component, CornerRadii, Element, FontFamily, ScrollArea};
 use rustcord_i18n::t;
 
 use super::{
@@ -31,6 +31,8 @@ const SIDE_HEAD: HeadSize = HeadSize {
     dot: DOT,
     height: 144.0,
 };
+/// «Ver perfil completo»'s footer, where a themed card's gradient ends.
+const FOOTER: f32 = 72.0;
 /// Items of the wishlist shown, 78 px squares.
 const WISHES_SHOWN: usize = 3;
 const TILE: f32 = 78.0;
@@ -39,13 +41,19 @@ const TILE: f32 = 78.0;
 /// it is given.
 pub fn side_panel(profile: &Profile, look: &Look) -> Element {
     // Its cards keep the popout's fill; the panel's own ground is a step
-    // lighter (Discord's #101013), and its mark's ring takes it.
-    let card_fill = raised(look, 16);
+    // lighter (Discord's #101013), and its mark's ring takes it. A themed
+    // one draws in its own colors, its edge the gradient.
+    let card_fill = profile
+        .theme
+        .map_or_else(|| raised(look, 16), |theme| theme.boxed);
     let fill = raised(look, 7);
-    let look = &Look {
-        card: fill,
-        menu: if look.canvas.r > 128 { fill } else { look.menu },
-        ..*look
+    let look = &match profile.theme {
+        Some(theme) => theme.look(look),
+        None => Look {
+            card: fill,
+            menu: if look.canvas.r > 128 { fill } else { look.menu },
+            ..*look
+        },
     };
     let width = WIDTH - 2.0 * INSET;
     // The custom status in the popout's bubble, beside the mark.
@@ -98,15 +106,29 @@ pub fn side_panel(profile: &Profile, look: &Look) -> Element {
     .flex(1.0);
     let mut inside = vec![body];
     if let Some(action) = &profile.full_action {
-        inside.push(full_button(action, look));
+        let fill = profile
+            .theme
+            .map_or((hairline(look, 31), look.hover), |theme| {
+                (theme.secondary_button[0], theme.secondary_button[1])
+            });
+        inside.push(full_button(action, fill, look));
     }
-    let card = Element::panel(Element::column(inside))
-        .padding(EDGE)
-        .radius(8.0)
-        .background(fill)
-        .border(Color::rgba(255, 255, 255, 20), 1.0)
-        .clip_children()
-        .flex(1.0);
+    let card = match profile.theme {
+        Some(theme) => theme.frame(
+            Element::column(inside),
+            BANNER,
+            FOOTER,
+            EDGE,
+            CornerRadii::same(8.0),
+        ),
+        None => Element::panel(Element::column(inside))
+            .padding(EDGE)
+            .radius(8.0)
+            .background(fill)
+            .border(Color::rgba(255, 255, 255, 20), 1.0)
+            .clip_children(),
+    }
+    .flex(1.0);
     Element::panel(Element::row(vec![card]))
         .padding(MARGIN)
         .size(Some(SIDE_WIDTH), None)
@@ -114,8 +136,8 @@ pub fn side_panel(profile: &Profile, look: &Look) -> Element {
 }
 
 /// «Ver perfil completo» under the panel's scroll: 40 tall in 16 of room,
-/// a faint fill and hairline, 16 px medium text.
-fn full_button(action: &str, look: &Look) -> Element {
+/// `fill` (at rest and under the pointer) and a hairline, 16 px medium text.
+fn full_button(action: &str, fill: (Color, Color), look: &Look) -> Element {
     let label = t("Ver perfil completo");
     let button = Element::clickable(
         action,
@@ -124,11 +146,11 @@ fn full_button(action: &str, look: &Look) -> Element {
         ))
         .size(None, Some(40.0))
         .radius(8.0)
-        .background(hairline(look, 31))
+        .background(fill.0)
         .border(hairline(look, 41), 1.0),
     )
     .radius(8.0)
-    .hover_background(look.hover)
+    .hover_background(fill.1)
     .accessible(limn::Access::new(limn::Role::Button).name(label.to_owned()));
     Element::panel(button).padding(16.0)
 }

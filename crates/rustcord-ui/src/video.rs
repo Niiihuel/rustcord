@@ -703,13 +703,17 @@ pub(crate) fn previews(ui: &Ui, store: &Store) -> Vec<Preview> {
             card: false,
         });
     } else if ui.video.screen.on {
-        // In the grid, a card with its still and no picture of its own.
+        // In the grid, a card with its still: the account's name after the
+        // screen's glyph, and what it sends, as the official client's tile.
         previews.push(Preview {
             surface: ids::OWN_THUMB_SURFACE.into(),
-            title: t("¡Estás en directo!").into(),
+            title: store.me().map_or_else(
+                || t("Tu pantalla").into(),
+                |me| store.display_name(me, ui.server),
+            ),
             waiting: t("Esperando al sistema…").into(),
             frame: ui.video.screen.live.frame(),
-            fps: None,
+            fps: ui.video.screen.sent.map(|(fps, _)| fps),
             stop: (ids::OWN_STREAM_STOP.into(), t("Dejar de transmitir")),
             note: t("Los demás ven tu pantalla.").into(),
             actions: Vec::new(),

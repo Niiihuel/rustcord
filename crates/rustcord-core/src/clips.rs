@@ -81,6 +81,8 @@ impl Clips {
             return Err(label(DocumentError::TooLarge));
         }
         let url = crate::validated_resource_url(&source.url, self.origins, false)
+            // A Spotify link's 30-second preview.
+            .or_else(|| crate::spotify::preview_url(&source.url))
             .ok_or(t("El enlace de este archivo no está disponible."))?;
         let client = self.client.clone().ok_or(label(DocumentError::Failed))?;
         let (epoch, sender, wake) = (self.epoch, self.sender.clone(), self.wake.clone());

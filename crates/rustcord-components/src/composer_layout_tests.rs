@@ -312,7 +312,8 @@ fn chosen_files_are_cards_inside_the_box_above_the_editor() {
     };
     let row = rect("composer:1:uploads");
     let editor = rect("composer:fixture");
-    assert_eq!((row.x, row.y), (11.0, 21.0));
+    // 21 into the box, which starts under the 20 of who is typing.
+    assert_eq!((row.x, row.y), (11.0, 41.0));
     assert_eq!(
         row.width,
         600.0 - 22.0,

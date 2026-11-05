@@ -97,6 +97,9 @@ pub(super) struct Draw<'a> {
     /// The account's filter hides the explicit pictures of these cards
     /// until each card is revealed.
     pub obscure_explicit: bool,
+    /// The players of the message's own Spotify links, by their card.
+    pub spotify: &'a [super::SpotifyPlayer],
+    pub message: rustcord_model::MessageId,
 }
 
 /// What the account may do with a poll, beyond reading it.
@@ -156,7 +159,14 @@ pub(super) fn cards(
                     super::PARTS_SPOILER + super::first_spoiler(forwarded, Some(first)) + CARD_TEXT,
                 ),
             };
-            card(&place, width, draw)
+            // A Spotify link plays in place of its card, as Discord shows
+            // Spotify's own player.
+            match draw.spotify.iter().find(|player| player.embed == first) {
+                Some(player) if !forwarded => {
+                    super::spotify::player(player, draw.message, width, draw.passive)
+                }
+                _ => card(&place, width, draw),
+            }
         })
         .collect()
 }

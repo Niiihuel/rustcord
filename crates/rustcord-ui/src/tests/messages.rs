@@ -1165,7 +1165,8 @@ fn both_pickers_show_nine_whole_columns_and_the_whole_search() {
                 .rect
         };
         let search = rect(&rustcord_components::emoji::ids::search(base));
-        assert!((search.width - 289.0).abs() < 1.0, "{search:?}");
+        // Across the header, as Discord's.
+        assert!(search.width > 450.0, "{search:?}");
         let grid = rect(&rustcord_components::emoji::ids::grid(base));
         let prefix = format!("{base}=");
         let cells: Vec<limn::Rect> = frame

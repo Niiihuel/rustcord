@@ -431,7 +431,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Tu transmisión", "Your stream"),
     ("Dejar de compartir", "Stop sharing"),
     ("Tu cámara", "Your camera"),
-    ("¡Estás en directo!", "You're live!"),
     ("Los demás ven tu pantalla.", "Others see your screen."),
     ("Estás en directo · {place}", "You're live · {place}"),
     ("Apagar la cámara", "Turn off camera"),

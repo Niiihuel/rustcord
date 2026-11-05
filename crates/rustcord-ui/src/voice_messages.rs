@@ -57,6 +57,8 @@ pub struct VoicePlayer {
     pub fullscreen: bool,
     /// The «Más» menu of its window is open.
     pub more: bool,
+    /// A Spotify link's preview, not a file: `attachment` means nothing.
+    pub spotify: Option<crate::spotify::SpotifyPlaying>,
 }
 
 impl VoicePlayer {
@@ -193,7 +195,9 @@ pub(crate) fn stop(ui: &mut Ui) -> Vec<Intent> {
     ui.voice_player
         .take()
         .map(|player| {
-            ui.voice_memory.remember(&player);
+            if player.spotify.is_none() {
+                ui.voice_memory.remember(&player);
+            }
             vec![Intent::StopVoice {
                 request: player.request,
             }]
@@ -207,7 +211,15 @@ pub(crate) fn refresh(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     let gone = ui.voice_player.as_ref().is_some_and(|player| {
         player.account != store.me()
             || ui.channel() != Some(player.channel)
-            || clip(ui, store, player.channel, player.message, player.attachment).is_none()
+            || match player.spotify {
+                Some(playing) => {
+                    crate::spotify::preview(ui, store, player.channel, player.message, playing)
+                        .is_none()
+                }
+                None => {
+                    clip(ui, store, player.channel, player.message, player.attachment).is_none()
+                }
+            }
     });
     let intents = if gone { stop(ui) } else { Vec::new() };
     ui.voice_memory.sync(store.me());
@@ -317,8 +329,9 @@ pub(crate) fn update(
     let Some((found, kind)) = clip(ui, store, channel, message, attachment) else {
         return Some(Vec::new());
     };
-    let current =
-        |player: &VoicePlayer| player.message == message && player.attachment == attachment;
+    let current = |player: &VoicePlayer| {
+        player.message == message && player.attachment == attachment && player.spotify.is_none()
+    };
     match verb {
         "speed" => {
             let speed = &mut ui.voice_memory.speed;
@@ -406,6 +419,7 @@ pub(crate) fn update(
         picture: false,
         fullscreen: false,
         more: false,
+        spotify: None,
     });
     intents.push(Intent::PlayVoice {
         request,
@@ -414,6 +428,44 @@ pub(crate) fn update(
         kind,
     });
     Some(intents)
+}
+
+/// Play the Spotify preview at `url`, of `playing` in `message`, in place
+/// of whatever plays; previews start at their beginning.
+pub(crate) fn play_preview(
+    ui: &mut Ui,
+    store: &Store,
+    channel: ChannelId,
+    message: MessageId,
+    playing: crate::spotify::SpotifyPlaying,
+    url: String,
+) -> Vec<Intent> {
+    let mut intents = stop(ui);
+    let request = ui.fresh_request();
+    ui.voice_player = Some(VoicePlayer {
+        account: store.me(),
+        channel,
+        message,
+        attachment: AttachmentId(0),
+        request,
+        state: VoiceState::Loading,
+        position: 0.0,
+        seek: None,
+        kind: Played::Audio,
+        duration: None,
+        volume: ui.voice_memory.volume,
+        picture: false,
+        fullscreen: false,
+        more: false,
+        spotify: Some(playing),
+    });
+    intents.push(Intent::PlayVoice {
+        request,
+        source: Some(rustcord_model::RemoteFile { url }),
+        size: 0,
+        kind: Played::Audio,
+    });
+    intents
 }
 
 /// How far Left and Right seek a video in its viewer, in seconds.

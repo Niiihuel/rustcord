@@ -8,6 +8,7 @@
 use limn::{
     Button, ButtonVariant, Color, Component, Element, FontFamily, Icon, Point, RasterImage, Tooltip,
 };
+pub use rustcord_model::NameEffect;
 
 use rustcord_i18n::{t, tr};
 
@@ -15,10 +16,19 @@ use crate::{centered, gap, icon, line, strong_line, text, Look};
 
 /// The actions these pieces report.
 pub mod ids {
-    /// A badge with a link: the prefix and its place.
+    /// A badge: the prefix of its id, then whose it is and its place
+    /// (`pp:badge={user}:{index}`, `pp:badge=side:…` beside a conversation),
+    /// so that two cards of one person keep apart.
     pub const BADGE: &str = "pp:badge=";
     /// A connected account with a page: the prefix and its place.
     pub const CONNECTION: &str = "pp:connection=";
+    /// A voice card's button and channel name: the prefix and the channel
+    /// (`pp:voice={channel}`, `pp:voice-name={channel}`; `side:` before the
+    /// channel beside a conversation).
+    pub const VOICE: &str = "pp:voice=";
+    pub const VOICE_NAME: &str = "pp:voice-name=";
+    /// A voice card's server: the prefix and the server.
+    pub const VOICE_SERVER: &str = "pp:voice-server=";
 }
 
 /// A role's mark beside a name: its picture, or its emoji.
@@ -69,6 +79,19 @@ pub struct Marks {
     pub plate: Option<Plate>,
     /// In lists: they are only on a phone, drawn instead of their dot.
     pub mobile: bool,
+    /// How their name is written, when they chose a style.
+    pub style: Option<NameStyle>,
+}
+
+/// How a name is written beyond its ink, as its owner chose: in a face the
+/// host installs as [`FontFamily::Custom`], and with an effect in colors.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct NameStyle {
+    pub font: Option<u16>,
+    pub effect: NameEffect,
+    /// The main one first; none keeps the name's ink and its role's
+    /// gradient: only the font shows.
+    pub colors: Vec<Color>,
 }
 
 /// Where someone is connected from.
@@ -198,13 +221,214 @@ pub struct ActivityButton {
     pub enabled: Result<(), String>,
 }
 
+/// What kind of place someone talks in.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VoiceKind {
+    Channel,
+    Call,
+    Stage,
+}
+
+/// Where someone is talking, as Discord's card in their profile shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VoiceCard {
+    pub kind: VoiceKind,
+    /// Who is there, the first ones; `count` says how many in all.
+    pub faces: Vec<crate::profile::Face>,
+    pub count: usize,
+    pub channel: String,
+    /// The channel, as its button's and name's ids name it.
+    pub key: String,
+    /// The server and its id, for a server's channel.
+    pub server: Option<(String, String)>,
+    /// The account is there: its button opens instead of joining.
+    pub here: bool,
+    /// The account may join: without it the card has no button.
+    pub joinable: bool,
+    /// It is the account's own card: a mark says who sees it.
+    pub own: bool,
+}
+
+/// Where each face sits in a voice card's 60 px box, as Discord's: top,
+/// left and side, for one to four people.
+const VOICE_TILES: [&[(f32, f32, f32)]; 4] = [
+    &[(15.0, 15.0, 28.0)],
+    &[(7.0, 7.0, 20.0), (25.0, 25.0, 26.0)],
+    &[(5.0, 10.0, 18.0), (15.0, 31.0, 22.0), (29.0, 5.0, 24.0)],
+    &[
+        (5.0, 5.0, 22.0),
+        (7.0, 33.0, 18.0),
+        (33.0, 7.0, 18.0),
+        (31.0, 31.0, 22.0),
+    ],
+];
+
+/// The 60 px box of a voice card's faces: up to four, ringed in the card's
+/// ground; past four, three of them and «+N» in the fourth's place (the
+/// third's from ten on), «>99» past 99.
+fn voice_faces(card: &VoiceCard, look: &Look) -> Element {
+    let count = card.count.max(card.faces.len());
+    let tiles = VOICE_TILES[count.clamp(1, 4) - 1];
+    let more = count.saturating_sub(3);
+    let counted = (count > 4).then_some(if more >= 10 { 2 } else { 0 });
+    let mut faces = card.faces.iter();
+    let items = tiles
+        .iter()
+        .enumerate()
+        .map(|(index, &(top, left, side))| {
+            let inside = if counted == Some(index) {
+                let label = if more > 99 {
+                    ">99".to_owned()
+                } else {
+                    format!("+{more}")
+                };
+                Element::panel(centered(line(label, (side * 0.45).round(), look.text)))
+                    .size(Some(side), Some(side))
+                    .radius(side / 2.0)
+                    .background(look.menu)
+            } else {
+                match faces.next() {
+                    Some(face) => {
+                        crate::avatar_with_image(&face.name, face.accent, side, face.image.clone())
+                    }
+                    None => gap(side, side),
+                }
+            };
+            // A 2 px ring of the card's ground keeps each face apart.
+            let tile = Element::panel(inside)
+                .padding(2.0)
+                .radius(side / 2.0 + 2.0)
+                .background(look.raised);
+            Element::column(vec![
+                Element::row(vec![tile, Element::spacer().flex(1.0)]),
+                Element::spacer().flex(1.0),
+            ])
+            .translate(Point::new(left - 2.0, top - 2.0))
+        })
+        .collect();
+    Element::panel(Element::stack(items))
+        .size(Some(60.0), Some(60.0))
+        .radius(8.0)
+        .background(look.card)
+        .border(Look::alpha(look.text, 20), 1.0)
+}
+
+/// Someone's place in voice, `width` wide: its heading (with who may see it
+/// on the account's own card), its faces beside the channel's glyph and
+/// name and its server, and «Abrir voz» or «Unirse al chat de voz».
+pub fn voice_card(card: &VoiceCard, width: f32, look: &Look) -> Element {
+    let (heading, glyph, open, join, visible) = match card.kind {
+        VoiceKind::Channel => (
+            t("En el canal de voz"),
+            Icon::Volume,
+            t("Abrir voz"),
+            t("Unirse al chat de voz"),
+            t("Solo visible para quienes tienen acceso a este canal"),
+        ),
+        VoiceKind::Call => (
+            t("En una llamada"),
+            Icon::Phone,
+            t("Abrir llamada"),
+            t("Unirse a la llamada"),
+            t("Solo visible para quienes tienen acceso a este chat"),
+        ),
+        VoiceKind::Stage => (
+            t("En un escenario"),
+            Icon::Custom(crate::glyphs::STAGE),
+            t("Abrir escenario"),
+            t("Unirse al escenario"),
+            t("Solo visible para quienes tienen acceso a este canal"),
+        ),
+    };
+    let mut head = vec![line(heading, 14.0, look.text)
+        .font_family(FontFamily::SansMedium)
+        .centered_y()];
+    if card.own {
+        let id = format!("pp:voice-visible={}", card.key);
+        head.push(
+            Tooltip::new(
+                icon(Icon::InfoCircle, look.muted)
+                    .size(Some(14.0), Some(14.0))
+                    .centered_y(),
+                id,
+                visible,
+                look.menu_palette(),
+            )
+            .render(),
+        );
+    }
+    let name = Element::clickable(
+        format!("{}{}", ids::VOICE_NAME, card.key),
+        Element::row(vec![
+            icon(glyph, look.text)
+                .size(Some(16.0), Some(16.0))
+                .centered_y(),
+            strong_line(card.channel.clone(), 14.0, look.text).centered_y(),
+        ])
+        .gap(4.0),
+    )
+    .underline_on_hover();
+    let mut lines = vec![name];
+    if let Some((server, id)) = &card.server {
+        lines.push(
+            Element::clickable(
+                format!("{}{id}", ids::VOICE_SERVER),
+                line(
+                    tr!("en {server}", server = server.as_str()),
+                    14.0,
+                    look.text,
+                ),
+            )
+            .underline_on_hover(),
+        );
+    }
+    let mut body = vec![
+        Element::row(head).gap(4.0),
+        Element::row(vec![
+            voice_faces(card, look),
+            Element::column(lines).gap(2.0).flex(1.0).centered_y(),
+        ])
+        .gap(8.0),
+    ];
+    if card.joinable {
+        let label = if card.here { open } else { join };
+        body.push(action(
+            &format!("{}{}", ids::VOICE, card.key),
+            label,
+            Ok(()),
+            width - 16.0,
+            look,
+        ));
+    }
+    Element::panel(Element::column(body).gap(8.0))
+        .padding(8.0)
+        .radius(8.0)
+        .background(look.raised)
+        .accessible(limn::Access::new(limn::Role::Group).name(heading))
+}
+
 /// A badge on a profile.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BadgeChip {
+    /// Its id, under [`ids::BADGE`]: what its hint answers to, and what
+    /// clicking it reports when it leads somewhere.
+    pub id: String,
     pub description: String,
     pub image: Option<RasterImage>,
-    /// It leads somewhere: clicking it reports [`ids::BADGE`] and its place.
     pub link: bool,
+    /// What its hint says once its provider's catalog is read.
+    pub hint: Option<BadgeHint>,
+}
+
+/// A badge's hint as Discord's: its tier under its name and a line on how
+/// far along, under its artwork.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BadgeHint {
+    pub eyebrow: Option<String>,
+    pub title: String,
+    pub body: Option<String>,
+    /// Larger than the badge; its picture is shown until it loads.
+    pub art: Option<RasterImage>,
 }
 
 /// A connected account in the full profile.
@@ -231,6 +455,8 @@ pub struct CardIdentity {
     pub role_marks: Vec<Option<RoleMark>>,
     /// The effect drawn over the card.
     pub effect: Option<CardEffect>,
+    /// Where they are talking, first among the cards.
+    pub voice: Option<VoiceCard>,
     /// The pictures its texts name, drawn in place of their tokens.
     pub pictures: Vec<TextPicture>,
 }
@@ -453,6 +679,106 @@ pub fn inked(name: Element, ink: Color, gradient: &[Color]) -> Element {
         .chain(gradient.iter().copied())
         .collect();
     name.foreground_gradient(stops)
+}
+
+/// `name`, a line of text `size` px high, in `ink` and its role's
+/// `gradient`, or as `style` says: in its font, and with its colors in its effect,
+/// as Discord's draws them (`docs/discord-reference.md`, «Display name
+/// styles»). Each color is first pushed to read on the conversation's
+/// ground, a toon's on #333. Prism and gummy move there; here they hold
+/// still in their gradient, and gradients run from the left to the right.
+pub fn styled(
+    name: Element,
+    size: f32,
+    (ink, gradient): (Color, &[Color]),
+    style: Option<&NameStyle>,
+    look: &Look,
+) -> Element {
+    let Some(style) = style else {
+        return inked(name, ink, gradient);
+    };
+    let name = match style.font {
+        Some(font) => name.font_family(FontFamily::Custom(font)),
+        None => name,
+    };
+    let (ground, ratio) = match style.effect {
+        NameEffect::Toon => (Color::rgb(0x33, 0x33, 0x33), 3.0),
+        NameEffect::Gradient | NameEffect::Glow | NameEffect::Prism => (look.canvas, 2.5),
+        _ => (look.canvas, 3.0),
+    };
+    let colors: Vec<Color> = style
+        .colors
+        .iter()
+        .map(|color| readable(*color, ground, ratio))
+        .collect();
+    let Some(&main) = colors.first() else {
+        return inked(name, ink, gradient);
+    };
+    let white = Color::rgb(255, 255, 255);
+    match style.effect {
+        NameEffect::Solid => name.foreground(main),
+        NameEffect::Neon => name
+            .foreground(white)
+            .text_stroke(
+                1.0 + 0.04 * size,
+                shade(main, |saturation, lightness| {
+                    ((saturation * 1.2).min(1.0), (lightness + 0.1).min(0.6))
+                }),
+            )
+            .text_shadow(Point::new(0.0, 0.0), 4.0 + 0.12 * size, main),
+        // shortcut: its fill is the main color, where Discord's runs light
+        // bands down the letters; a vertical text gradient would draw them.
+        NameEffect::Toon => name.foreground(main).text_stroke(
+            1.6 + 0.04 * size,
+            shade(main, |saturation, lightness| {
+                (saturation, (0.4 * lightness).max(0.12))
+            }),
+        ),
+        NameEffect::Pop => name
+            .foreground(white)
+            .text_stroke(
+                1.2 + 0.04 * size,
+                shade(main, |saturation, lightness| (saturation, 0.2 * lightness)),
+            )
+            .text_shadow(Point::new(0.0, 0.08 * size), 0.0, main),
+        // A prism's colors come round to the first, as its cycle does.
+        NameEffect::Prism => {
+            let stops: Vec<Color> = colors.iter().copied().chain([main]).collect();
+            name.foreground(main).foreground_gradient(stops)
+        }
+        NameEffect::Gradient | NameEffect::Glow | NameEffect::Gummy => {
+            name.foreground(main).foreground_gradient(colors)
+        }
+    }
+}
+
+/// `color` with its HSL saturation and lightness changed by `change`.
+fn shade(color: Color, change: impl Fn(f32, f32) -> (f32, f32)) -> Color {
+    let (hue, saturation, lightness) = crate::profile::theme::hsl(color);
+    let (saturation, lightness) = change(saturation, lightness);
+    crate::profile::theme::from_hsl(hue, saturation, lightness)
+}
+
+/// `color`, its lightness moved 5 % at a time, ten times at most, away from
+/// `ground` until they contrast `ratio` to 1, as Discord readies a name's
+/// colors.
+fn readable(color: Color, ground: Color, ratio: f32) -> Color {
+    use crate::profile::theme::{from_hsl, hsl};
+    let lighter = hsl(ground).2 <= 0.5;
+    let (hue, saturation, mut lightness) = hsl(color);
+    let mut shown = color;
+    for _ in 0..10 {
+        if crate::look::contrast(shown, ground) >= ratio {
+            break;
+        }
+        lightness = match lighter {
+            true if lightness < 0.95 => lightness + 0.05,
+            false if lightness > 0.05 => lightness - 0.05,
+            _ => break,
+        };
+        shown = from_hsl(hue, saturation, lightness);
+    }
+    shown
 }
 
 /// What follows a name: the role's mark and the server tag, in that order.
@@ -881,8 +1207,7 @@ pub fn badge_items(badges: &[BadgeChip], size: f32, most: usize, look: &Look) ->
     let mut items: Vec<Element> = badges
         .iter()
         .take(most)
-        .enumerate()
-        .map(|(index, badge)| {
+        .map(|badge| {
             let face = match &badge.image {
                 Some(image) => Element::raster_image(image.clone()).size(Some(size), Some(size)),
                 None => Element::panel(line(badge.description.clone(), 11.0, look.text))
@@ -890,16 +1215,15 @@ pub fn badge_items(badges: &[BadgeChip], size: f32, most: usize, look: &Look) ->
                     .radius(4.0)
                     .background(look.raised),
             };
-            let id = format!("{}{index}", ids::BADGE);
             let face = if badge.link {
-                Element::clickable(id.clone(), face)
+                Element::clickable(badge.id.clone(), face)
                     .radius(4.0)
                     .hover_background(look.hover)
                     .accessible(limn::Access::new(limn::Role::Link).name(badge.description.clone()))
             } else {
                 face.accessible(limn::Access::default().description(badge.description.clone()))
             };
-            limn::Tooltip::new(face, id, badge.description.clone(), look.menu_palette()).render()
+            badge_hint(face, badge, look)
         })
         .collect();
     let hidden = badges.len().saturating_sub(most);
@@ -907,6 +1231,49 @@ pub fn badge_items(badges: &[BadgeChip], size: f32, most: usize, look: &Look) ->
         items.push(line(format!("+{hidden}"), 14.0, look.muted).centered_y());
     }
     items
+}
+
+/// A badge's hint as Discord's: its artwork over its name, its tier in
+/// large capitals and how far along, centered on a card 200 wide; its
+/// description in place of the three until its catalog is read.
+fn badge_hint(face: Element, badge: &BadgeChip, look: &Look) -> Element {
+    let quiet = |text: String| limn::TextSpan::new(text, look.muted, 14.0, FontFamily::SansMedium);
+    let (eyebrow, title, body, art) = match &badge.hint {
+        Some(hint) => (
+            hint.eyebrow.clone(),
+            hint.title.to_uppercase(),
+            hint.body.clone(),
+            hint.art.as_ref().or(badge.image.as_ref()),
+        ),
+        None => (None, badge.description.clone(), None, badge.image.as_ref()),
+    };
+    let shape = crate::look::HINT.shape.map(|shape| limn::TooltipShape {
+        padding_x: 16.0,
+        padding_y: 16.0,
+        ..shape
+    });
+    let mut hint = Tooltip::new(face, badge.id.clone(), "", look.menu_palette())
+        .centered()
+        .max_width(200.0);
+    if let Some(shape) = shape {
+        hint = hint.shape(shape);
+    }
+    if let Some(art) = art {
+        hint = hint.picture(art.clone(), limn::Size::new(168.0, 64.0));
+    }
+    hint.lines(
+        eyebrow
+            .map(quiet)
+            .into_iter()
+            .chain([limn::TextSpan::new(
+                title,
+                look.text,
+                18.0,
+                FontFamily::SansBold,
+            )])
+            .chain(body.map(quiet)),
+    )
+    .render()
 }
 
 /// The services' logos as Discord's web client serves them (their light
@@ -948,7 +1315,7 @@ const LOGOS: &[(&str, &[u8])] = logos![
 ];
 
 /// `service`'s logo, made once.
-fn logo(service: &str) -> Option<RasterImage> {
+pub(crate) fn logo(service: &str) -> Option<RasterImage> {
     use base64::Engine as _;
     use sha2::Digest as _;
     static MADE: std::sync::OnceLock<Vec<(&'static str, RasterImage)>> = std::sync::OnceLock::new();
@@ -1083,6 +1450,99 @@ mod tests {
             "x",
         )
         .unwrap()
+    }
+
+    /// The first run's ink and face, and the effects under it, of `style`
+    /// on a name 16 px high drawn on `look`.
+    fn drawn(
+        style: Option<NameStyle>,
+        gradient: &[Color],
+        look: &Look,
+    ) -> (Color, FontFamily, Vec<limn::TextEffect>) {
+        let name = crate::strong_line("Camila", 16.0, look.text);
+        let element = styled(name, 16.0, (look.text, gradient), style.as_ref(), look);
+        let (_, frame) = frame(element, Size::new(300.0, 40.0));
+        let run = frame.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::Text {
+                color, font_family, ..
+            } => Some((*color, *font_family)),
+            _ => None,
+        });
+        let effects = frame
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::TextEffect { effect, .. } => Some(*effect),
+                _ => None,
+            })
+            .collect();
+        let (color, face) = run.unwrap();
+        (color, face, effects)
+    }
+
+    #[test]
+    fn a_name_style_writes_its_font_and_effect_over_the_ink() {
+        use limn::TextEffect::{Shadow, Stroke};
+        let look = Look::DARK;
+        let white = Color::rgb(255, 255, 255);
+        let purple = Color::rgb(0x69, 0x1D, 0xED);
+        let style = |font, effect, colors: &[Color]| {
+            Some(NameStyle {
+                font,
+                effect,
+                colors: colors.to_vec(),
+            })
+        };
+        // Neon: white letters in its font, outlined and glowing in the color.
+        let (ink, face, effects) = drawn(style(Some(3), NameEffect::Neon, &[purple]), &[], &look);
+        assert_eq!((ink, face), (white, FontFamily::Custom(3)));
+        let [Shadow {
+            offset,
+            blur,
+            color: glow,
+        }, Stroke { width, color: edge }] = effects[..]
+        else {
+            panic!("{effects:?}");
+        };
+        assert_eq!(offset, Point::new(0.0, 0.0));
+        assert!((blur - (4.0 + 0.12 * 16.0)).abs() < 0.01 && (width - 1.64).abs() < 0.01);
+        assert!(
+            crate::look::contrast(glow, look.canvas) >= 3.0,
+            "lightened to read"
+        );
+        assert_ne!(edge, glow, "the edge is a lighter, more saturated shade");
+        // Pop: white over a dark edge and a hard shadow 0.08 em down.
+        let (ink, _, effects) = drawn(style(None, NameEffect::Pop, &[purple]), &[], &look);
+        assert_eq!(ink, white);
+        assert!(
+            matches!(effects[..], [Shadow { offset, blur, .. }, Stroke { .. }]
+            if blur == 0.0 && (offset.y - 1.28).abs() < 0.01)
+        );
+        // Toon: a dark edge round the color, on #333 rather than the ground.
+        let (_, face, effects) = drawn(style(None, NameEffect::Toon, &[purple]), &[], &look);
+        assert_eq!(face, FontFamily::SansMedium, "no font: the name's own face");
+        assert!(matches!(effects[..], [Stroke { width, .. }] if (width - 2.24).abs() < 0.01));
+        // A dark color is lightened until it reads 3 to 1; on a light look,
+        // a pale one darkened.
+        let night = Color::rgb(0x20, 0x10, 0x40);
+        let (ink, _, effects) = drawn(style(None, NameEffect::Solid, &[night]), &[], &look);
+        assert!(effects.is_empty() && ink != night);
+        assert!(crate::look::contrast(ink, look.canvas) >= 3.0);
+        let light = Look::LIGHT;
+        let pale = Color::rgb(0xF0, 0xE0, 0xFF);
+        let (ink, ..) = drawn(style(None, NameEffect::Solid, &[pale]), &[], &light);
+        assert!(crate::look::contrast(ink, light.canvas) >= 3.0);
+        // Only a font, as in a server: the name keeps its role's ink.
+        let role = Color::rgb(0xE0, 0x6C, 0x75);
+        let (ink, face, effects) = drawn(style(Some(17), NameEffect::Solid, &[]), &[], &look);
+        assert_eq!((ink, face), (look.text, FontFamily::Custom(17)));
+        assert!(effects.is_empty());
+        let (with_role, ..) = drawn(None, &[role], &look);
+        let (without, ..) = drawn(None, &[], &look);
+        assert_ne!(
+            with_role, without,
+            "no style: the role's gradient as before"
+        );
     }
 
     #[test]
@@ -1612,14 +2072,18 @@ mod tests {
         let badges = badges(
             &[
                 BadgeChip {
+                    id: "pp:badge=7:0".into(),
                     description: "HypeSquad".into(),
                     image: Some(image()),
                     link: true,
+                    hint: None,
                 },
                 BadgeChip {
+                    id: "pp:badge=7:1".into(),
                     description: "Sin dibujo".into(),
                     image: None,
                     link: false,
+                    hint: None,
                 },
             ],
             &Look::DARK,
@@ -1644,15 +2108,110 @@ mod tests {
         );
         let ids = crate::testing::controls(&frame);
         assert!(
-            ids.contains(&"pp:badge=0".to_owned()) && ids.contains(&"pp:connection=0".to_owned())
+            ids.contains(&"pp:badge=7:0".to_owned()) && ids.contains(&"pp:connection=0".to_owned())
         );
         assert!(
-            !ids.contains(&"pp:badge=1".to_owned()),
+            !ids.contains(&"pp:badge=7:1".to_owned()),
             "a badge without a link"
         );
         let shown = texts(&frame);
         for expected in ["RUST", "Sin dibujo", "GitHub", "ada", "Escritorio", "Móvil"] {
             assert!(shown.iter().any(|text| text == expected), "{expected}");
         }
+    }
+
+    #[test]
+    fn a_badge_hint_shows_its_art_over_its_tier_as_discord_does() {
+        let chip = |hint| BadgeChip {
+            id: "pp:badge=7:0".into(),
+            description: "Antigüedad".into(),
+            image: Some(image()),
+            link: true,
+            hint,
+        };
+        let shown = |chip: BadgeChip| {
+            let (mut tree, _) = frame(badges(&[chip], &Look::DARK), Size::new(400.0, 400.0));
+            tree.set_reduced_motion(true);
+            assert!(tree.focus("pp:badge=7:0"));
+            let frame = tree.layout(Size::new(400.0, 400.0));
+            let pictures: Vec<limn::Rect> = frame
+                .commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::RasterImage { rect, .. } => Some(*rect),
+                    _ => None,
+                })
+                .collect();
+            (texts(&frame), pictures)
+        };
+        let (lines, pictures) = shown(chip(Some(BadgeHint {
+            eyebrow: Some("Antigüedad de la cuenta".into()),
+            title: "Flor".into(),
+            body: Some("5 años, 10 meses".into()),
+            art: None,
+        })));
+        for line in ["Antigüedad de la cuenta", "FLOR", "5 años, 10 meses"] {
+            assert!(lines.iter().any(|text| text == line), "{line} in {lines:?}");
+        }
+        // The badge's own picture stands in for its art, 64 high.
+        assert!(
+            pictures.iter().any(|rect| rect.height == 64.0),
+            "{pictures:?}"
+        );
+        // Before its catalog: its description, under its picture.
+        let (lines, _) = shown(chip(None));
+        assert!(lines.iter().any(|text| text == "Antigüedad"), "{lines:?}");
+    }
+
+    #[test]
+    fn a_voice_card_says_where_and_joins_or_opens() {
+        let face = |name: &str| crate::profile::Face {
+            name: name.into(),
+            accent: Look::DARK.accent,
+            image: None,
+        };
+        let card = |count: usize, here: bool, joinable: bool| VoiceCard {
+            kind: VoiceKind::Channel,
+            faces: ["Ada", "Bruno", "Darío", "Elena"]
+                .iter()
+                .take(count.min(4))
+                .map(|name| face(name))
+                .collect(),
+            count,
+            channel: "Sala común".into(),
+            key: "5".into(),
+            server: Some(("Taller".into(), "1".into())),
+            here,
+            joinable,
+            own: false,
+        };
+        let shown = |card: VoiceCard| {
+            let (_, frame) = frame(
+                voice_card(&card, 268.0, &Look::DARK),
+                Size::new(300.0, 300.0),
+            );
+            (texts(&frame), crate::testing::controls(&frame))
+        };
+        let (lines, controls) = shown(card(3, false, true));
+        for line in [
+            "En el canal de voz",
+            "Sala común",
+            "en Taller",
+            "Unirse al chat de voz",
+        ] {
+            assert!(lines.iter().any(|text| text == line), "{line} in {lines:?}");
+        }
+        for id in ["pp:voice=5", "pp:voice-name=5", "pp:voice-server=1"] {
+            assert!(controls.contains(&id.to_owned()), "{id} in {controls:?}");
+        }
+        // Where the account is: it opens. Past four people, «+N».
+        let (lines, _) = shown(card(6, true, true));
+        assert!(
+            lines.iter().any(|text| text == "Abrir voz") && lines.iter().any(|text| text == "+3"),
+            "{lines:?}"
+        );
+        // Without leave to join, no button.
+        let (_, controls) = shown(card(2, false, false));
+        assert!(!controls.contains(&"pp:voice=5".to_owned()), "{controls:?}");
     }
 }

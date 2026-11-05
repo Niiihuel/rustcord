@@ -8,12 +8,13 @@ use std::time::Duration;
 
 use limn::UiAction;
 use rustcord_components::identity::{
-    ActivityButton, ActivityCard, ActivityKind, ActivityTime, BadgeChip, CardEffect, CardIdentity,
-    ConnectionRow, Marks, Plate, Platform, RoleMark, SpotifyCard, TagChip, TextPicture,
+    ActivityButton, ActivityCard, ActivityKind, ActivityTime, BadgeChip, BadgeHint, CardEffect,
+    CardIdentity, ConnectionRow, Marks, NameEffect, NameStyle, Plate, Platform, RoleMark,
+    SpotifyCard, TagChip, TextPicture, VoiceCard, VoiceKind,
 };
 use rustcord_components::voice::GameMark;
 use rustcord_components::Look;
-use rustcord_i18n::t;
+use rustcord_i18n::{t, tr};
 use rustcord_model::{Activity, RemoteImage, Role, ServerId, Timestamp, UserId};
 use rustcord_provider::Command;
 use rustcord_state::{Applied, Store};
@@ -36,7 +37,33 @@ pub(crate) fn identity(
     if !shown.nameplates {
         identity.nameplate = None;
     }
+    if !shown.name_styles {
+        identity.name_style = None;
+    }
     identity
+}
+
+/// How `identity` writes its owner's name: in `full`, or only in its font,
+/// in their role's color, as in a server's conversation and member list,
+/// where Discord shows neither its effect nor its colors.
+fn name_style(identity: &rustcord_model::Identity, full: bool) -> Option<NameStyle> {
+    let style = identity.name_style.as_ref()?;
+    Some(NameStyle {
+        font: style.font,
+        effect: if full {
+            style.effect
+        } else {
+            NameEffect::Solid
+        },
+        colors: match full {
+            true => style
+                .colors
+                .iter()
+                .map(|color| crate::themes::color_of(*color))
+                .collect(),
+            false => Vec::new(),
+        },
+    })
 }
 
 /// The effect of `user`'s profile in `server`, unless effects are hidden.
@@ -70,6 +97,7 @@ pub(crate) fn marks(
 ) -> Marks {
     let identity = identity(ui, store, server, user);
     let top = server.and_then(|server| store.top_role(user, server));
+    let style = name_style(&identity, server.is_none());
     Marks {
         decoration: ui.picture(identity.decoration.as_ref()),
         gradient: top
@@ -105,6 +133,7 @@ pub(crate) fn marks(
             chosen: ui.profile == Some(user),
         }),
         mobile: store.presence(user).platforms.mobile_only(),
+        style,
     }
 }
 
@@ -334,15 +363,34 @@ pub(crate) fn card(
         .map(|badges| {
             badges
                 .iter()
-                .map(|badge| BadgeChip {
+                .enumerate()
+                .map(|(index, badge)| BadgeChip {
+                    id: format!(
+                        "{}{user}:{index}",
+                        rustcord_components::identity::ids::BADGE
+                    ),
                     description: badge.description.clone(),
                     image: ui.picture(badge.icon.as_ref()),
                     link: badge.link.is_some(),
+                    hint: badge.detail.as_ref().map(|detail| BadgeHint {
+                        eyebrow: detail.eyebrow.clone(),
+                        title: detail.title.clone(),
+                        body: detail.body.clone().or_else(|| {
+                            detail.obtained.map(|date| {
+                                tr!(
+                                    "Obtenida el {fecha}",
+                                    fecha = rustcord_components::time::short_date(date)
+                                )
+                            })
+                        }),
+                        art: ui.picture(detail.art.as_ref()),
+                    }),
                 })
                 .collect()
         })
         .unwrap_or_default();
     CardIdentity {
+        voice: voice_card(ui, store, user, look),
         // Nothing of it until all of its pictures arrived, as the official
         // client waits; then what shows at this moment of it.
         effect: effect(ui, store, user, server)
@@ -361,6 +409,8 @@ pub(crate) fn card(
             role: None,
             plate: None,
             mobile: false,
+            // A card shows the whole style, in a server too.
+            style: name_style(&identity(ui, store, server, user), true),
             ..marks(ui, store, server, user, look)
         },
         // An ignored person's activity is hidden from every card.
@@ -651,7 +701,14 @@ pub(crate) fn wanted(ui: &Ui, store: &Store, add: &mut dyn FnMut(Option<&RemoteI
     {
         for badge in badges {
             add(badge.icon.as_ref());
+            // shortcut: every badge's hint art comes with the card, not on
+            // hover as the official client loads it; load it on hover if
+            // profiles with many badges show in the image budget.
+            add(badge.detail.as_ref().and_then(|detail| detail.art.as_ref()));
         }
+    }
+    for person in voice_people(store, user) {
+        add(store.avatar_in(server, person));
     }
     face_marks(ui, store, server, user, false, add);
     if let Some(effect) = effect(ui, store, user, server) {
@@ -773,6 +830,106 @@ fn activity_action(id: &str) -> Option<(UserId, usize, ActivityAction)> {
     Some((user, index, action))
 }
 
+/// The voice channel or call `user` is in, as the official client shows it
+/// on their card: not while they appear offline, nor where the account
+/// cannot see.
+fn voice_card(ui: &Ui, store: &Store, user: UserId, look: &Look) -> Option<VoiceCard> {
+    use rustcord_model::{ChannelKind, Status};
+    if matches!(
+        store.presence(user).status,
+        Status::Offline | Status::Invisible
+    ) {
+        return None;
+    }
+    let channel = store.channel(store.voice_state_of(user)?.channel)?;
+    let server = channel.server;
+    let people = store.voice_in(channel.id);
+    Some(VoiceCard {
+        kind: match channel.kind {
+            ChannelKind::Stage => VoiceKind::Stage,
+            _ if server.is_none() => VoiceKind::Call,
+            _ => VoiceKind::Channel,
+        },
+        faces: people
+            .iter()
+            .take(4)
+            .map(|state| rustcord_components::profile::Face {
+                name: store.display_name(state.user, server),
+                accent: store
+                    .user(state.user)
+                    .map_or(look.faint, |found| look.ink(found.accent)),
+                image: ui.picture(store.avatar_in(server, state.user)),
+            })
+            .collect(),
+        count: people.len(),
+        channel: match server {
+            Some(_) => channel.name.clone(),
+            None => store.channel_title(channel.id),
+        },
+        key: channel.id.0.to_string(),
+        server: server.and_then(|id| Some((store.server(id)?.name.clone(), id.0.to_string()))),
+        here: store.call().is_some_and(|call| call.channel == channel.id),
+        joinable: store
+            .abilities(channel.id)
+            .is_some_and(|abilities| abilities.join_voice.allowed()),
+        own: store.me() == Some(user),
+    })
+}
+
+/// The people in voice with `user`, whose faces their card shows.
+pub(crate) fn voice_people(store: &Store, user: UserId) -> Vec<UserId> {
+    store
+        .voice_state_of(user)
+        .map(|state| {
+            store
+                .voice_in(state.channel)
+                .iter()
+                .take(4)
+                .map(|state| state.user)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A voice card's button or channel joins its place, or opens it when the
+/// account is there; its server opens the server. The card closes, as the
+/// official client's popout does.
+pub(crate) fn voice_clicked(
+    ui: &mut Ui,
+    store: &mut Store,
+    action: &UiAction,
+    now: std::time::Instant,
+) -> Option<Vec<Intent>> {
+    use rustcord_components::identity::ids;
+    let UiAction::Clicked { id } = action else {
+        return None;
+    };
+    let number =
+        |rest: &str| -> Option<u64> { rest.strip_prefix("side:").unwrap_or(rest).parse().ok() };
+    if let Some(server) = id.strip_prefix(ids::VOICE_SERVER).and_then(number) {
+        ui.profile = None;
+        return Some(crate::open_server(ui, store, Some(ServerId(server))));
+    }
+    let channel = id
+        .strip_prefix(ids::VOICE)
+        .or_else(|| id.strip_prefix(ids::VOICE_NAME))
+        .and_then(number)
+        .map(rustcord_model::ChannelId)?;
+    ui.profile = None;
+    let here = store.call().is_some_and(|call| call.channel == channel);
+    let private = store.channel(channel)?.server.is_none();
+    Some(match (private, here) {
+        (true, true) => crate::open(ui, store, None, channel),
+        (true, false) => crate::private_calls::start(ui, store, channel, now),
+        (false, true) => crate::voice::show(ui, store, channel),
+        (false, false) => {
+            let mut intents = crate::voice::connect(ui, store, channel, now);
+            intents.extend(crate::voice::show(ui, store, channel));
+            intents
+        }
+    })
+}
+
 /// A badge's or a connected account's link on the profile shown, or a button
 /// or Spotify track of an activity on a card.
 pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Vec<Intent>> {
@@ -783,12 +940,27 @@ pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Ve
     if let Some((user, index, what)) = activity_action(id) {
         return Some(activity_pressed(ui, store, user, index, what));
     }
-    let (user, server) = shown(ui, store)?;
-    let loaded = store.profile(user, server);
-    let link = if let Some(index) = id.strip_prefix(ids::BADGE) {
+    let link = if let Some(badge) = id.strip_prefix(ids::BADGE) {
+        // Whose badge it is says the id; where it is seen, the card shown.
+        let (user, index) = badge
+            .strip_prefix("side:")
+            .unwrap_or(badge)
+            .split_once(':')?;
+        let user = UserId(user.parse().ok()?);
+        let server = shown(ui, store)
+            .filter(|(shown, _)| *shown == user)
+            .and_then(|(_, server)| server);
         let index: usize = index.parse().ok()?;
-        loaded?.badges.as_ref()?.get(index)?.link.clone()
+        store
+            .profile(user, server)?
+            .badges
+            .as_ref()?
+            .get(index)?
+            .link
+            .clone()
     } else {
+        let (user, server) = shown(ui, store)?;
+        let loaded = store.profile(user, server);
         let index = id.strip_prefix(ids::CONNECTION)?;
         let index: usize = index.parse().ok()?;
         loaded?.connections.as_ref()?.get(index)?.link.clone()
@@ -842,10 +1014,20 @@ pub(crate) fn on_applied(ui: &mut Ui, store: &Store, applied: &Applied) -> Vec<I
 /// What may play now: the decoration and nameplate of whoever is under the
 /// pointer, in the member list, a message or a voice tile, and of whoever's
 /// card is open, as the official client animates them on hover (
-/// only the profile shown played); then the profile shown: its
-/// decoration and its effect's layers.
+/// only the profile shown played); then the profile shown and the one
+/// beside a direct conversation: the picture and banner that move, and the
+/// shown one's decoration and its effect's layers.
 pub(crate) fn playing(ui: &Ui, store: &Store) -> Vec<RemoteImage> {
     let mut playing = Vec::new();
+    // The picture and banner of the profile beside a direct conversation.
+    if let Some(user) = crate::profile::side_user(ui, store) {
+        playing.extend(
+            crate::profile::moving_pictures(ui, store, user, None)
+                .into_iter()
+                .flatten()
+                .cloned(),
+        );
+    }
     for user in [ui.profiles.hovered, ui.profile].into_iter().flatten() {
         let identity = identity(ui, store, ui.server, user);
         playing.extend(identity.decoration);
@@ -855,6 +1037,13 @@ pub(crate) fn playing(ui: &Ui, store: &Store) -> Vec<RemoteImage> {
         return playing;
     };
     playing.extend(identity(ui, store, server, user).decoration);
+    // Its picture and banner, while they move for the ones shown.
+    playing.extend(
+        crate::profile::moving_pictures(ui, store, user, server)
+            .into_iter()
+            .flatten()
+            .cloned(),
+    );
     // Only the layers showing: one that comes back starts over, as the
     // official client restarts it.
     if let Some(effect) = effect(ui, store, user, server) {

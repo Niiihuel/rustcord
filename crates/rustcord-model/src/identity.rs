@@ -92,6 +92,9 @@ pub struct Identity {
     /// The tag of a server they show beside their name.
     #[serde(default)]
     pub tag: Option<ServerTag>,
+    /// How their name is written: a font, an effect and its colors.
+    #[serde(default)]
+    pub name_style: Option<NameStyle>,
 }
 
 impl Identity {
@@ -102,8 +105,50 @@ impl Identity {
             decoration: over.decoration.clone().or_else(|| self.decoration.clone()),
             nameplate: over.nameplate.clone().or_else(|| self.nameplate.clone()),
             tag: over.tag.clone().or_else(|| self.tag.clone()),
+            name_style: over.name_style.clone().or_else(|| self.name_style.clone()),
         }
     }
+}
+
+/// Colors of a [`NameStyle`] kept, at most.
+pub const MAX_NAME_COLORS: usize = 8;
+
+/// How someone chose to write their name: in a font of their service, with
+/// an effect in their colors.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NameStyle {
+    /// The provider's number for the font
+    /// (`Provider::name_font` says where its face is); `None` writes it
+    /// in the interface's own.
+    #[serde(default)]
+    pub font: Option<u16>,
+    #[serde(default)]
+    pub effect: NameEffect,
+    /// The effect's colors, the main one first; none takes the name's own.
+    #[serde(default)]
+    pub colors: Vec<Rgb>,
+}
+
+/// What a [`NameStyle`] does with its colors.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NameEffect {
+    /// The first color.
+    #[default]
+    Solid,
+    /// From the first color to the last.
+    Gradient,
+    /// White, outlined and glowing in the color.
+    Neon,
+    /// Outlined in a dark shade, filled in light ones.
+    Toon,
+    /// White, outlined in a dark shade over a hard shadow in the color.
+    Pop,
+    /// A gradient, as its service draws it.
+    Glow,
+    /// The colors as a rainbow.
+    Prism,
+    /// Letters in the colors.
+    Gummy,
 }
 
 /// Artwork behind a name in a list, on a ground of its colors.
@@ -165,6 +210,23 @@ pub struct Badge {
     pub icon: Option<RemoteImage>,
     /// Where it leads, when its provider gives an HTTPS address.
     pub link: Option<String>,
+    /// What its provider's catalog of badges adds for its hint, once read.
+    pub detail: Option<BadgeDetail>,
+}
+
+/// A badge as its provider's catalog describes it: its tier under its name,
+/// how far along, and larger artwork.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BadgeDetail {
+    /// The badge's name over its tier's: "Antigüedad de la cuenta".
+    pub eyebrow: Option<String>,
+    /// Its tier, or its name when it has none: "Flor".
+    pub title: String,
+    /// What the service says of it: "5 años, 10 meses".
+    pub body: Option<String>,
+    /// When it was earned, said when the service says nothing else.
+    pub obtained: Option<Timestamp>,
+    pub art: Option<RemoteImage>,
 }
 
 /// An account elsewhere that someone connected to their profile.
@@ -405,6 +467,10 @@ mod tests {
                 tag: "Rustcord".into(),
                 badge: None,
             }),
+            name_style: Some(NameStyle {
+                font: Some(3),
+                ..Default::default()
+            }),
         };
         let member = Identity {
             decoration: Some(image("server")),
@@ -413,6 +479,12 @@ mod tests {
         let shown = account.with(&member);
         assert_eq!(shown.decoration, Some(image("server")));
         assert_eq!(shown.tag, account.tag);
+        assert_eq!(shown.name_style, account.name_style);
+        let styled = Identity {
+            name_style: Some(NameStyle::default()),
+            ..Default::default()
+        };
+        assert_eq!(account.with(&styled).name_style, styled.name_style);
         assert_ne!(shown, Identity::default());
         assert!(Platforms {
             mobile: true,

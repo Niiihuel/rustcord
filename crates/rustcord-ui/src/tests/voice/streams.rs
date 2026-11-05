@@ -769,7 +769,11 @@ fn the_own_card_and_a_stream_watched_take_the_stage_one_at_a_time() {
     host.run(started);
     assert!(host.vz_shows(ids::OWN_STREAM_STOP));
     assert!(!host.vz_shows(ids::STOP_SCREEN));
-    assert!(host.vz_texts().contains(&"¡Estás en directo!".to_owned()));
+    // The card names the account, after the screen's glyph.
+    let me = host
+        .store
+        .display_name(host.store.me().unwrap(), host.ui.server);
+    assert!(host.vz_texts().contains(&me));
     // A click on the card: its stream takes the stage, live, and the card goes.
     host.click(ids::OWN_STREAM);
     assert!(host.ui.video.own_focus);
@@ -780,7 +784,7 @@ fn the_own_card_and_a_stream_watched_take_the_stage_one_at_a_time() {
     assert!(!host.ui.video.own_focus);
     assert_eq!(host.ui.video.spotlight, Some(owners[0]));
     // In the strip it is a small card: its title, no picture and no button.
-    assert!(host.vz_texts().contains(&"¡Estás en directo!".to_owned()));
+    assert!(host.vz_texts().contains(&me));
     assert!(!host.vz_shows(ids::OWN_STREAM_STOP) && !host.vz_shows(ids::STOP_SCREEN));
     // Its own grid again once the watched one lets go of the stage.
     host.click(&ids::stream_tile(owners[0].0));

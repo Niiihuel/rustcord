@@ -305,6 +305,8 @@ pub struct Cosmetics {
     pub nameplates: bool,
     /// Effects over profile cards.
     pub effects: bool,
+    /// The fonts, effects and colors of names.
+    pub name_styles: bool,
 }
 
 impl Default for Cosmetics {
@@ -313,6 +315,7 @@ impl Default for Cosmetics {
             decorations: true,
             nameplates: true,
             effects: true,
+            name_styles: true,
         }
     }
 }
@@ -1711,6 +1714,7 @@ mod tests {
                 decorations: false,
                 nameplates: true,
                 effects: false,
+                name_styles: false,
             },
             registered_games: vec![crate::games::RegisteredGame {
                 executable: "bin/juego".into(),

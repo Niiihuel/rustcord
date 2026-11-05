@@ -538,7 +538,7 @@ fn hidden_cosmetics_are_neither_drawn_nor_asked_for() {
     host.click("us:jump=cosmetics");
     host.frame();
     let from = host.sent.len();
-    for cosmetic in ["decorations", "nameplates", "effects"] {
+    for cosmetic in ["decorations", "nameplates", "effects", "name_styles"] {
         let id = format!("us:cosmetic:{cosmetic}");
         assert!(
             host.tree
@@ -569,6 +569,7 @@ fn hidden_cosmetics_are_neither_drawn_nor_asked_for() {
             decorations: false,
             nameplates: false,
             effects: false,
+            name_styles: false,
         }
     );
     assert_eq!(host.sent.len(), from, "nothing reaches the provider");

@@ -509,6 +509,29 @@ styles of the popout, its CSS rules and the behaviour of its chunk.
 - Entry: after ~70 ms of hover it scales 0.95 → 1 with a slight spring
   (overshoot 1.006) while fading 0 → 1 in ~70 ms.
 
+### A badge's hint
+
+Read from the web bundle the desktop client cached and measured on the
+owner's capture (2026-11-05).
+
+- With the badge directory on, every badge's hint is a card: the badge's
+  artwork (`complex_icon_static_url`, else `simple_icon_url`, else the
+  badge's icon) 64 high, then centered lines 4 apart: an eyebrow 14 medium
+  in the subtle text (the badge's `name`, when it has a tier), the title in
+  the display face (the tier's `name`, «Nitro {tier}» for Nitro's, else the
+  name or the badge's description), and `info_label` (or «Obtenida el …»
+  from `tier_obtained_at`/`obtained_at`) 14 medium, subtle. About 200 wide,
+  padding 16; the usual caret and fill.
+- The catalog: `GET /users/{id}/badges` (`@me` for the account), read with
+  the profile and again on hover after an hour; `badges[]` has `badge_id`
+  (1 Nitro, 2 partner, …, 17 gifting, 18 account age, 19 streaming, 20 game
+  time, 21 game variety, 22 staff), `name`, `tiers[]` (`key`, `name`, icons),
+  `current_tier`, `info_label`, `obtained_at`, `tier_obtained_at`. A
+  profile's badge `id` maps to it by the client's table, else by its name in
+  capitals (`account_age` → 18).
+- Rustcord draws the title in its bold face, in capitals, at 18 (no display
+  face), and the still artwork (not `complex_icon_animated_url`).
+
 ## Context menus
 
 - Fill `#121214`, radius 8, border 1 px at 20 %, shadow `0 12 24` black
@@ -679,6 +702,70 @@ it, which matches «Profile popout»), 1440×757:
   (`app-icons/{id}/{hash}.png`), and `GET /wishlists/{id}?source=user_profile`
   its `wishlist_items` (`sku_id`, `sku_name`, `collectibles_item` with
   `thumbnailPreviewSrc`).
+
+## Voice card in a profile
+
+Read from the web bundle and its styles (2026-11-05) and the owner's captures.
+
+- Among the current activities, first: «En el canal de voz», «En una llamada»
+  (a DM or group) or «En un escenario», 14 medium; on the account's own card
+  an info mark with «Solo visible para quienes tienen acceso a este
+  canal/chat».
+- A 60 px box (1 px border) of faces ringed 2 px in the card's ground; tiles
+  (top, left, side): one (15,15,28); two (7,7,20) (25,25,26); three (5,10,18)
+  (15,31,22) (29,5,24); four (5,5,22) (7,33,18) (33,7,18) (31,31,22). Past
+  four, «+(n−3)» in the first tile (the third from ten on), «>99» past 99.
+  The full profile's box is 100.
+- Beside it, 8 apart: the channel's glyph and name (joins and opens it),
+  «en {server}» (opens the server), and for a server's channel its status or
+  «Establece un estado para el canal» with a pencil when the account may set
+  it (not in Rustcord yet: it has no channel status).
+- A 32 high secondary button: «Abrir voz/llamada/escenario» where the account
+  is, else «Unirse al chat de voz», «Unirse a la llamada», «Unirse al
+  escenario»; none without leave to connect. It joins (and opens) and closes
+  the popout.
+- Shown unless they appear offline, their profile is private, or a stream
+  card stands for that call.
+
+## Profile theme colors (Nitro)
+
+Read from the web client (2026-11-05).
+
+- Source: `guild_member_profile.theme_colors ?? user_profile.theme_colors`
+  in `GET /users/{id}/profile`, two ints (primary, then accent). Discord
+  falls back to colors of the avatar; Rustcord only uses chosen ones.
+- Dark card when the primary's `1 − (.299R + .587G + .114B)/255` > 0.5.
+- Outer box: `linear-gradient(primary at the banner's foot, secondary at
+  calc(100% − footer))`; its padding is the visible frame: popout 2 (banner
+  105, footer the 62 of the message field), DM panel 2 (inside 300, banner
+  105, footer 72), full profile 4 (banner 210; Rustcord keeps its 140).
+- Inside, a veil rounded the outer radius less the padding: black at 60 %
+  (dark) or white at 60 % (light), boxes (activity, game, voice cards,
+  badges) at 45 %, the note at 30 %, each mixed a third toward the darker
+  color at HSL s 1 l 0.05 (dark) or the lighter at s 1 l 0.9 (light). Role
+  pills: the primary at 50 %, a white 20 % border.
+- A banner without a picture is the primary → secondary gradient.
+- Every text color is mixed 25 % toward the lighter color at s 1 l 0.95
+  (l 0.8 for hues 200–300) on a dark card, or the darker at l 0.15 (0.25)
+  on a light one.
+- «Enviar mensaje»: the primary, its lightness moved until white on it
+  reads 7 to 10 : 1 (Discord moves it with chroma.js); hover and press mixed
+  90 / 80 % with black (dark) or white (light). Other buttons white at
+  8 / 16 / 12 % (dark) or 72 / 92 / 84 % (light).
+- Rustcord: the mark's ring is the veil over the primary, opaque; the
+  bubble keeps an opaque fill; menus opened from the card take the veil's
+  color; the account's own popout keeps the app's colors.
+
+## Moving avatars and banners
+
+- An animated hash (`a_…`): `avatars/{id}/a_….webp?size=128&animated=true`
+  and `banners/{id}/a_….webp?size=512&animated=true` (a server's own under
+  `guilds/{guild}/users/{id}/…`); still ones stay `.png` everywhere else.
+- Discord moves the avatar while the window is focused and it is hovered or
+  motion is not reduced, the banner while the profile shows (with GIFs on).
+  Rustcord moves both on the popout, the DM panel and the full profile
+  while shown, never with motion reduced, and with «Animar GIF» off only
+  under the pointer; it does not look at the window's focus.
 
 ## Voice and account panel
 
@@ -1155,3 +1242,40 @@ the account owns.
   activity alerts between them.
 - «Activa la comunidad»: a picture, «¿Estás creando una comunidad?» and a
   brand button «Activa la comunidad».
+
+## Display name styles
+
+Read on 2026-11-05 from the web client's stylesheet and bundle (Nitro's
+`display_name_styles: {font_id, effect_id, colors}`; a member's replaces the
+user's). Rustcord's drawing is in `rustcord-components`' `identity::styled`.
+
+- Fonts, by `font_id`: 3 Sakura (letter spacing .04em), 4 Jellybean, 6
+  Modern (.01em), 7 Medieval (.02em), 8 8Bit (.02em), 10 Vampyre (.01em), 11
+  gg sans (the default), 12 Tempo (.03em), 13 Monkey Bars, 14 Mainframe
+  (.03em), 15 Headbang, 16 Journal, 17 Pricedown; 1, 2, 5 and 9 are retired
+  and draw as the default. One WOFF2 file each under `discord.com/assets`
+  (the table is in `rustcord-discord-session`'s `identity.rs`).
+- Effects, by `effect_id`: 1 solid, 2 gradient, 3 neon, 4 toon, 5 pop, 6
+  glow (drawn exactly as gradient: same class), 7 prism, 8 gummy.
+- Each color is first pushed to a contrast against `--background-base-low`
+  (3; 2.5 for gradient, glow and prism; toon against `#333`): its HSL
+  lightness moves 0.05 at a time, at most ten times, up on a dark ground
+  (luminance ≤ 0.5), down on a light one.
+- Shades of the main color: light 1 l×1.2, light 2 l×1.6, dark 1 l×0.6, dark
+  2 l×0.2; toon's edge l = max(0.12, 0.4 l); neon's edge s = min(1, 1.2 s),
+  l = min(0.6, l + 0.1).
+- Gradient: `linear-gradient(to bottom right)`, stop i at 10 + 80·i/(n−1) %.
+- Neon: white fill, a stroke of 1px + .04em in neon's edge, a glow
+  `0 0 (4px + .12em)` in the main color.
+- Toon: a stroke of 1.6px + .04em in toon's edge; the fill runs down the
+  letters white, light 2 (8 %), light 1 (15 %), main (25 %), light 2 (45 %),
+  main (55 %), white (75 %), light 2 (83 %), light 1 (90 %), main.
+- Pop: white fill, a stroke of 1.2px + .04em in dark 2, over a copy 0.08em
+  lower in light 1 and the main color (a gradient to the bottom left).
+- Prism: its colors repeat left to right and scroll; gummy squishes each
+  letter in turn. Rustcord draws both still, as a gradient.
+- Shown in full on profiles (popout, DM panel, full profile) and on DM
+  authors; in a server's chat and member list only the font, in the role's
+  color («colors and effects will not appear in servers»). The
+  accessibility setting `displayNameStylesEnabled` (on by default) hides
+  them all.

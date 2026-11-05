@@ -17,9 +17,9 @@ use rustcord_i18n::t;
 use std::collections::HashSet;
 
 use rustcord_model::{
-    Activity, ActivityKind, Badge, Connection, Identity, ImageKind, Nameplate, Party, Perks,
-    Platforms, RemoteImage, Rgb, RoleStyle, ServerId, ServerTag, StickerPack, Timestamp,
-    MAX_ACTIVITIES,
+    Activity, ActivityKind, Badge, BadgeDetail, Connection, Identity, ImageKind, NameEffect,
+    NameStyle, Nameplate, Party, Perks, Platforms, RemoteImage, Rgb, RoleStyle, ServerId,
+    ServerTag, StickerPack, Timestamp, MAX_ACTIVITIES,
 };
 use rustcord_provider::{
     Command, GifAttribution, GifCategory, GifItem, GifPage, GifQuery, MAX_GIF_CATEGORIES,
@@ -362,6 +362,71 @@ fn tag(value: &Value) -> Option<ServerTag> {
     })
 }
 
+/// The faces of the display-name fonts (`display_name_styles.font_id`),
+/// as the web client's stylesheet names them (`@font-face` of Sakura,
+/// Jellybean, Modern, Medieval, 8Bit, Vampyre, Tempo, Monkey Bars,
+/// Mainframe, Headbang, Journal and Pricedown, mapped to their numbers by its
+/// bundle's font classes), each a WOFF2 file of `discord.com/assets`. 11
+/// is gg sans, the interface's own; 1, 2, 5 and 9 are retired and fall
+/// back to it, as there.
+const NAME_FONTS: [(u16, &str); 12] = [
+    (3, "33d4f12a85e1f736"),
+    (4, "e6f5f44abb520735"),
+    (6, "c560709c3470bb66"),
+    (7, "52b541f86401a5b6"),
+    (8, "69c735ca5c604de7"),
+    (10, "8f20cb550d739cea"),
+    (12, "27b34a77ba5d693e"),
+    (13, "45ef50dce38a931a"),
+    (14, "4841dace333e9054"),
+    (15, "c00df4f25667809b"),
+    (16, "aa59ae54ce7e540a"),
+    (17, "a7bafac436428e6c"),
+];
+
+/// Where the face of display-name font `id` is (see [`NAME_FONTS`]).
+pub(crate) fn name_font(id: u16) -> Option<String> {
+    let (_, file) = NAME_FONTS.iter().find(|(font, _)| *font == id)?;
+    Some(format!("https://discord.com/assets/{file}.woff2"))
+}
+
+/// How someone writes their name (`display_name_styles`): a font Rustcord
+/// has a face for, an effect (`effect_id`, 1 to 8; another is solid) and
+/// its colors.
+fn name_style(value: &Value) -> Option<NameStyle> {
+    let style = value.as_object()?;
+    let font = style
+        .get("font_id")
+        .and_then(Value::as_u64)
+        .and_then(|id| u16::try_from(id).ok())
+        .filter(|id| name_font(*id).is_some());
+    let effect = match style.get("effect_id").and_then(Value::as_u64) {
+        Some(2) => NameEffect::Gradient,
+        Some(3) => NameEffect::Neon,
+        Some(4) => NameEffect::Toon,
+        Some(5) => NameEffect::Pop,
+        Some(6) => NameEffect::Glow,
+        Some(7) => NameEffect::Prism,
+        Some(8) => NameEffect::Gummy,
+        _ => NameEffect::Solid,
+    };
+    let colors = style
+        .get("colors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_u64)
+        .filter(|color| *color <= 0xFF_FFFF)
+        .take(rustcord_model::identity::MAX_NAME_COLORS)
+        .map(|color| Rgb(color as u32))
+        .collect();
+    Some(NameStyle {
+        font,
+        effect,
+        colors,
+    })
+}
+
 /// The marks of a user or a member object. A field it does not carry, or
 /// carries broken, is none: a bad mark never fails the account.
 pub(crate) fn identity(value: &Value) -> Identity {
@@ -373,6 +438,7 @@ pub(crate) fn identity(value: &Value) -> Identity {
         decoration: decoration(&value["avatar_decoration_data"]),
         nameplate: nameplate(&value["collectibles"]["nameplate"]),
         tag: tag(primary),
+        name_style: name_style(&value["display_name_styles"]),
     }
 }
 
@@ -604,11 +670,125 @@ pub(crate) fn badges(account: &Value, server: &Value) -> Option<Vec<Badge>> {
                                 && !link.chars().any(|c| c.is_control() || c.is_whitespace())
                         })
                         .map(str::to_owned),
+                    detail: None,
                 })
             })
             .take(rustcord_model::identity::MAX_BADGES)
             .collect(),
     )
+}
+
+/// The path of `user`'s catalog of badges, `@me` for the account's own, as
+/// the official client asks for it.
+pub(crate) fn badges_path(user: rustcord_model::UserId, own: bool) -> String {
+    if own {
+        "/users/@me/badges".to_owned()
+    } else {
+        format!("/users/{}/badges", user.0)
+    }
+}
+
+/// The catalog's kind of a profile's badge, as the official client maps it:
+/// its own names first, then the kind's name in lowercase.
+fn catalog_kind(id: &str) -> Option<u64> {
+    let kind = match id {
+        "premium" => 1,
+        id if id.starts_with("premium_tenure_") => 1,
+        "partner" => 2,
+        "certified_moderator" => 3,
+        "hypesquad" => 4,
+        "hypesquad_house_1" => 5,
+        "hypesquad_house_2" => 6,
+        "hypesquad_house_3" => 7,
+        "bug_hunter_level_1" => 8,
+        "bug_hunter_level_2" => 9,
+        "verified_developer" => 10,
+        "early_supporter" => 11,
+        id if id.starts_with("guild_booster_lvl") => 12,
+        "legacy_username" => 13,
+        "quest_completed" => 14,
+        "april_fools_2026" => 15,
+        "orb_profile_badge" | "orb_profile" => 16,
+        "gifting" => 17,
+        "account_age" => 18,
+        "streaming" => 19,
+        "game_time" => 20,
+        "game_variety" => 21,
+        "staff" | "staff_hidden" | "staff_personal" => 22,
+        _ => return None,
+    };
+    Some(kind)
+}
+
+/// Whether any of `badges` is in the catalog, which is then worth reading.
+pub(crate) fn has_catalog(badges: &[Badge]) -> bool {
+    badges.iter().any(|badge| catalog_kind(&badge.id).is_some())
+}
+
+/// A catalog's artwork, only from Discord's CDN.
+fn badge_art(value: &Value) -> Option<RemoteImage> {
+    let url = value.as_str().filter(|url| url.len() <= 256)?;
+    let rest = url.strip_prefix("https://cdn.discordapp.com/")?;
+    let clean = !rest.is_empty()
+        && !rest.contains("..")
+        && rest.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'.' | b'_' | b'-' | b'/' | b'?' | b'=' | b'&')
+        });
+    // Larger than an icon and not always square: kept at its shape.
+    clean.then(|| shaped(url.to_owned(), ImageKind::AttachmentPreview))
+}
+
+/// What `GET /users/{id}/badges` (`answer`) says of each of `badges`, as the
+/// official client's hint shows it: the badge's name over its current
+/// tier's (Nitro's tier after «Nitro»), its `info_label` or when it was
+/// earned, and its artwork, the badge's or else its tier's.
+pub(crate) fn badge_catalog(answer: &Value, badges: &mut [Badge]) {
+    let Some(entries) = answer["badges"].as_array() else {
+        return;
+    };
+    for badge in badges {
+        let Some(kind) = catalog_kind(&badge.id) else {
+            continue;
+        };
+        let Some(entry) = entries
+            .iter()
+            .find(|entry| entry["badge_id"].as_u64() == Some(kind))
+        else {
+            continue;
+        };
+        let current = entry["current_tier"].as_str();
+        let tier = current.and_then(|key| {
+            entry["tiers"]
+                .as_array()?
+                .iter()
+                .find(|tier| tier["key"].as_str() == Some(key))
+        });
+        let tier_name = tier.and_then(|tier| line(&tier["name"]));
+        let name = line(&entry["name"]).unwrap_or_else(|| badge.description.clone());
+        let (eyebrow, title) = match tier_name {
+            _ if kind == 1 => (
+                None,
+                tier_name.map_or_else(|| "Nitro".to_owned(), |tier| format!("Nitro {tier}")),
+            ),
+            Some(tier) => (Some(name), tier),
+            None => (None, name),
+        };
+        let earned = current
+            .map(|key| &entry["tier_obtained_at"][key])
+            .filter(|value| value.is_string())
+            .unwrap_or(&entry["obtained_at"]);
+        let art = ["complex_icon_static_url", "simple_icon_url"]
+            .iter()
+            .find_map(|key| badge_art(&entry[*key]).or_else(|| badge_art(&tier?[*key])));
+        badge.detail = Some(BadgeDetail {
+            eyebrow,
+            title,
+            body: line(&entry["info_label"]),
+            obtained: crate::wire::timestamp(earned).ok(),
+            art,
+        });
+    }
 }
 
 /// The standard packs of `GET /sticker-packs`. A pack that carries a
@@ -1163,6 +1343,42 @@ mod tests {
     }
 
     #[test]
+    fn display_name_styles_are_read_with_the_fonts_rustcord_has_a_face_for() {
+        let user = json!({"display_name_styles":
+            {"font_id": 3, "effect_id": 3, "colors": [0x69_1D_ED, 0x0100_0000, -1, 0xFF]}});
+        assert_eq!(
+            identity(&user).name_style,
+            Some(NameStyle {
+                font: Some(3),
+                effect: NameEffect::Neon,
+                colors: vec![Rgb(0x69_1D_ED), Rgb(0xFF)],
+            }),
+            "what is not a color goes"
+        );
+        assert_eq!(
+            name_font(3).as_deref(),
+            Some("https://discord.com/assets/33d4f12a85e1f736.woff2")
+        );
+        // gg sans, a retired font and an unknown effect: the interface's face, solid.
+        for font in [11, 1, 9, 99_999] {
+            let style = identity(&json!({"display_name_styles":
+                {"font_id": font, "effect_id": 42, "colors": []}}))
+            .name_style
+            .unwrap();
+            assert_eq!(style, NameStyle::default(), "font {font}");
+        }
+        assert!(identity(&json!({"display_name_styles": null}))
+            .name_style
+            .is_none());
+        let many = identity(&json!({"display_name_styles": {"colors": vec![1; 64]}}));
+        assert_eq!(many.name_style.unwrap().colors.len(), 8);
+        // A member's style replaces the account's, as the provider's identity merges.
+        let member = identity(&json!({"display_name_styles": {"font_id": 17, "effect_id": 5}}));
+        let shown = identity(&user).with(&member).name_style.unwrap();
+        assert_eq!((shown.font, shown.effect), (Some(17), NameEffect::Pop));
+    }
+
+    #[test]
     fn roles_perks_badges_and_connections_follow_the_service() {
         let role = role_style(
             9,
@@ -1240,6 +1456,71 @@ mod tests {
         assert_eq!(
             (label("twitter"), label("bungie")),
             ("X".into(), "bungie".into())
+        );
+    }
+
+    #[test]
+    fn the_catalog_names_a_badge_by_its_tier_and_says_how_far_along() {
+        let mut found = badges(
+            &json!([{"id": "account_age", "description": "Antigüedad"},
+                {"id": "premium_tenure_60_month_v2", "description": "Suscriptor"},
+                {"id": "hypesquad_house_1", "description": "HypeSquad"},
+                {"id": "made_up", "description": "Otra"}]),
+            &Value::Null,
+        )
+        .unwrap();
+        let answer = json!({"badges": [
+            {"badge_id": 18, "name": "Antigüedad de la cuenta", "current_tier": "t5",
+                "info_label": "5 años, 10 meses",
+                "tiers": [{"key": "t4", "name": "Brote"}, {"key": "t5", "name": "Flor",
+                    "complex_icon_static_url": "https://cdn.discordapp.com/badge-icons/flor.png"}]},
+            {"badge_id": 1, "name": "Nitro", "current_tier": "gold",
+                "tiers": [{"key": "gold", "name": "Oro"}],
+                "tier_obtained_at": {"gold": "2021-01-05T10:00:00+00:00"},
+                "complex_icon_static_url": "https://evil.example/oro.png"},
+            {"badge_id": 5, "name": "HypeSquad Bravery", "obtained_at": "2019-05-12T00:00:00+00:00",
+                "simple_icon_url": "https://cdn.discordapp.com/badge-icons/../x.png"}]});
+        badge_catalog(&answer, &mut found);
+        let age = found[0].detail.as_ref().unwrap();
+        assert_eq!(
+            (
+                age.eyebrow.as_deref(),
+                age.title.as_str(),
+                age.body.as_deref()
+            ),
+            (
+                Some("Antigüedad de la cuenta"),
+                "Flor",
+                Some("5 años, 10 meses")
+            )
+        );
+        assert_eq!(
+            age.art.as_ref().unwrap().url,
+            "https://cdn.discordapp.com/badge-icons/flor.png"
+        );
+        // Nitro's tier after its name, earned when its tier was; art only
+        // from Discord's CDN.
+        let nitro = found[1].detail.as_ref().unwrap();
+        assert_eq!(
+            (nitro.eyebrow.as_deref(), nitro.title.as_str()),
+            (None, "Nitro Oro")
+        );
+        assert!(nitro.obtained.is_some() && nitro.art.is_none());
+        let house = found[2].detail.as_ref().unwrap();
+        assert_eq!(
+            (house.eyebrow.as_deref(), house.title.as_str()),
+            (None, "HypeSquad Bravery")
+        );
+        assert!(house.obtained.is_some() && house.art.is_none() && house.body.is_none());
+        assert!(found[3].detail.is_none(), "not in the catalog");
+        assert!(has_catalog(&found) && !has_catalog(&found[3..]));
+        assert_eq!(
+            badges_path(rustcord_model::UserId(7), false),
+            "/users/7/badges"
+        );
+        assert_eq!(
+            badges_path(rustcord_model::UserId(7), true),
+            "/users/@me/badges"
         );
     }
 

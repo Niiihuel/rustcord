@@ -1209,6 +1209,7 @@ mod rich;
 mod search;
 mod server_menu;
 mod server_settings;
+mod spotify;
 mod stage;
 mod threads;
 mod update_settings;

@@ -41,6 +41,7 @@ mod save_as;
 mod search;
 mod server_menu;
 mod server_settings;
+mod spotify;
 // Administration (19).
 mod gif_favorites;
 mod person_menu;
@@ -124,7 +125,7 @@ pub use gifs::{gif_result, sync_gif_search, GifPickerState};
 pub use identity::activity_tick;
 // The «Activo ahora» column's timers and minutes.
 pub use active_now::tick as active_now_tick;
-pub use images::{playable_images, wanted_images};
+pub use images::{playable_images, wanted_fonts, wanted_images};
 pub use interactions::interaction_tick;
 pub use invitation_cards::{invitation_card_result, wanted_invitation_cards};
 pub use invitations::{
@@ -137,6 +138,7 @@ pub use providers::{origin, provider_changed, ProviderOption, Providers, UNOFFIC
 pub use save_as::{
     attachment_download, save_finished, save_progress, save_saving, SaveAs, SavePhase,
 };
+pub use spotify::{spotify_card_result, wanted_spotify_cards, SpotifyPlaying};
 
 pub use call_sounds::sound_folder_chosen;
 pub use save_as::save_exists;
@@ -659,6 +661,7 @@ pub struct Ui {
     pub(crate) invitation_input: Option<invitations::InvitationInput>,
     pub(crate) invitation_join: invitations::InvitationJoinState,
     pub(crate) invitation_cards: invitation_cards::InvitationCards,
+    pub(crate) spotify_cards: spotify::SpotifyCards,
     pub theme: Theme,
     pub reduced_motion: bool,
     pub show_metrics: bool,
@@ -1390,6 +1393,7 @@ pub fn after_layout(ui: &mut Ui, store: &mut Store, tree: &UiTree, active: bool)
     profile::hold_author_card(ui, tree);
     profile::hold_scroll_close(ui, tree);
     identity::hold_hovered(ui, store, tree);
+    intents.extend(messages::hold_hovered_emoji(ui, tree));
     intents.extend(emoji_card::hold(ui, store, tree));
     intents.extend(identity::after_layout(ui, store));
     intents.extend(reads::reveal(ui, store));
@@ -1549,7 +1553,10 @@ fn answer_action(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant
     if let Some(intents) = challenges::update(ui, action) {
         return intents;
     }
-    // A badge's or connected account's link on the profile shown.
+    // A profile's voice card, then a badge's or connected account's link.
+    if let Some(intents) = identity::voice_clicked(ui, store, action, now) {
+        return intents;
+    }
     if let Some(intents) = identity::update(ui, store, action) {
         return intents;
     }

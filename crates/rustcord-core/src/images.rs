@@ -61,6 +61,8 @@ const ANIMATIONS_BYTES: usize = 64 * 1024 * 1024;
 mod animation;
 pub use animation::{Animation, AnimationFrame};
 pub(crate) mod disk;
+/// The faces of name fonts, with the pictures' client and disk.
+mod fonts;
 /// Animated vector (Lottie) stickers.
 mod lottie;
 mod thumbhash;
@@ -215,6 +217,7 @@ pub(crate) struct Images {
     /// The account's pictures kept from earlier runs, read before asking
     /// the network and written once a download proved to be a picture.
     pub(crate) disk: disk::DiskCache,
+    fonts: fonts::Fonts,
 }
 
 impl Images {
@@ -258,6 +261,7 @@ impl Images {
             retry_at: None,
             hosted: None,
             prepared: None,
+            fonts: fonts::Fonts::default(),
         }
     }
 
@@ -576,6 +580,8 @@ impl Images {
         #[cfg(test)]
         let loopback = loopback || self.loopback;
         validated_resource_url(&source.url, self.origins, loopback)
+            // A Spotify link's cover, whichever provider carried the link.
+            .or_else(|| crate::spotify::image_url(&source.url))
     }
 
     /// Failed or currently backed-off visible sources. No transport error or
@@ -683,6 +689,7 @@ impl Images {
         self.cooldowns.clear();
         self.retry_at = None;
         while self.results.try_recv().is_ok() {}
+        self.fonts.clear();
     }
 
     pub fn next_retry(&self) -> Option<Instant> {

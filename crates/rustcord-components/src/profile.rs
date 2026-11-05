@@ -30,7 +30,9 @@ use crate::{centered, emoji, gap, icon, line, strong_line, text, time, Look};
 /// The actions these pieces report. Those that name a message, a status or
 /// a device are built with the helpers or the prefixes here.
 mod side;
+pub(crate) mod theme;
 pub use side::{side_panel, SIDE_WIDTH};
+pub use theme::ProfileTheme;
 
 pub mod ids {
     /// The account's popout, opened from its panel.
@@ -202,6 +204,11 @@ const INSET: f32 = 16.0;
 /// hangs 36 px below it; its 6 px ring is cut into the banner, so the ring's
 /// box starts at (10, 55).
 const CARD_RADIUS: f32 = 8.0;
+/// A themed popout's frame, the gradient around its veil, and its footer's
+/// height, where the gradient ends; the full profile's frame.
+const POPOUT_FRAME: f32 = 2.0;
+const POPOUT_FOOTER: f32 = 62.0;
+const FULL_FRAME: f32 = 4.0;
 const HEAD: f32 = 140.0;
 const MARK_TOP: f32 = 61.0;
 /// The status dot of a card's mark: 16 px, in a 28 px disc of the ground.
@@ -408,8 +415,14 @@ fn marked(child: Element, size: f32, status: Status, look: &Look, ground: Color)
 pub struct Profile {
     pub name: String,
     pub image: Option<limn::RasterImage>,
+    /// Its picture moves: drawn on the surface the host plays `image` on.
+    pub avatar_playing: bool,
     /// A decoded wide image; a missing or loading banner retains the accent.
     pub banner: Option<limn::RasterImage>,
+    /// The banner moves, as `avatar_playing`.
+    pub banner_playing: bool,
+    /// The profile's own colors: its card framed and tinted in them.
+    pub theme: Option<ProfileTheme>,
     /// Without a picture, the banner's color: the profile's accent when it
     /// has one, else the mark's dominant color. `None` paints `raised`.
     pub banner_tint: Option<Color>,
@@ -556,8 +569,9 @@ pub struct NoteField {
     pub denied: Option<String>,
 }
 
-/// «Nota»: a field only the account sees, saved with Enter.
-fn note_section(note: &NoteField, look: &Look) -> Element {
+/// «Nota»: a field only the account sees, saved with Enter; on a themed
+/// card, on its note's veil.
+fn note_section(note: &NoteField, profile: &Profile, look: &Look) -> Element {
     let placeholder = if note.loading {
         t("Cargando la nota…")
     } else {
@@ -566,7 +580,7 @@ fn note_section(note: &NoteField, look: &Look) -> Element {
     // Discord's note reads as its placeholder until it is written: no fill,
     // no outline but the focus's.
     let palette = ComponentPalette {
-        raised: Color::TRANSPARENT,
+        raised: profile.theme.map_or(Color::TRANSPARENT, |theme| theme.note),
         border: Color::TRANSPARENT,
         muted: look.dim,
         ..look.menu_palette()
@@ -770,6 +784,14 @@ fn raised(look: &Look, alpha: u8) -> Color {
     )
 }
 
+/// The fill of a box on `profile`'s card: [`raised`] at `alpha`, or on a
+/// themed card its boxes' veil.
+fn boxed(profile: &Profile, look: &Look, alpha: u8) -> Color {
+    profile
+        .theme
+        .map_or_else(|| raised(look, alpha), |theme| theme.boxed)
+}
+
 /// Discord's hairlines inside a popout: its grey at `alpha` of 255 (41 is
 /// its 16 %, 51 its 20 %, 61 its 24 %).
 fn hairline(look: &Look, alpha: u8) -> Color {
@@ -956,26 +978,48 @@ fn bubbled_head(
     layers
 }
 
+/// The surface the host plays `image`'s animation on, filling its box.
+fn moving(image: &limn::RasterImage) -> Element {
+    Element::surface(
+        crate::message::animation_surface(image.sha256()),
+        image.alt(),
+    )
+    .surface_fit(limn::SurfaceFit::Cover)
+}
+
 /// A head of `size`: the banner, the mark ringed in the popout's ground with
 /// its status and decoration. Its height is fixed, the mark drawn past it.
+/// Each picture moves while it plays; a themed banner without one is its
+/// two colors, and the ring the card's veil over the primary.
 fn sized_head(profile: &Profile, size: HeadSize, look: &Look) -> Element {
     let banner = Element::panel(match &profile.banner {
+        Some(image) if profile.banner_playing => moving(image).size(None, Some(size.banner)),
         Some(image) => Element::raster_image(image.clone().cover()).size(None, Some(size.banner)),
         None => Element::spacer(),
     })
-    .size(None, Some(size.banner))
-    .background(profile.banner_tint.unwrap_or(look.raised))
+    .size(None, Some(size.banner));
+    let banner = match &profile.theme {
+        Some(theme) => banner.vertical_gradient([theme.primary, theme.secondary]),
+        None => banner.background(profile.banner_tint.unwrap_or(look.raised)),
+    }
     .clip_children();
-    let face = crate::avatar_with_image(
-        &profile.name,
-        profile.accent,
-        size.avatar,
-        profile.image.clone(),
-    );
+    let face = match &profile.image {
+        Some(image) if profile.avatar_playing => Element::stack(vec![
+            crate::avatar_with_image(&profile.name, profile.accent, size.avatar, None),
+            moving(image)
+                .size(Some(size.avatar), Some(size.avatar))
+                .radius(size.avatar / 2.0),
+        ])
+        .size(Some(size.avatar), Some(size.avatar)),
+        image => {
+            crate::avatar_with_image(&profile.name, profile.accent, size.avatar, image.clone())
+        }
+    };
+    let rim = profile.theme.map_or(ground(look), |theme| theme.ring);
     let ring = Element::panel(face)
         .padding(size.ring)
         .radius(size.avatar / 2.0 + size.ring)
-        .background(ground(look));
+        .background(rim);
     // A column keeps the banner its height: a stack child would take the head's.
     let mut layers = vec![
         Element::column(vec![banner]),
@@ -994,10 +1038,10 @@ fn sized_head(profile: &Profile, size: HeadSize, look: &Look) -> Element {
     // in the popout's ground so it reads over the picture.
     if profile.presence {
         let side = size.dot + 12.0;
-        let mark = Element::panel(status_mark(profile.status, look, size.dot, ground(look)))
+        let mark = Element::panel(status_mark(profile.status, look, size.dot, rim))
             .padding(6.0)
             .radius(side / 2.0)
-            .background(ground(look));
+            .background(rim);
         layers.push(at(
             size.left + size.avatar - side,
             size.top + size.avatar - side,
@@ -1065,16 +1109,27 @@ fn tag(label: &str, look: &Look) -> Element {
     .background(look.accent)
 }
 
+/// The display name in `face`, `size` px, as its owner styled it.
+fn shown_name(profile: &Profile, face: FontFamily, size: f32, look: &Look) -> Element {
+    crate::identity::styled(
+        Element::truncated_text(profile.name.clone())
+            .font_family(face)
+            .font_size(size)
+            .foreground(look.text),
+        size,
+        (look.text, &[]),
+        profile.identity.marks.style.as_ref(),
+        look,
+    )
+}
+
 /// The name, 20 px (24 in the full profile), and the handle with the
 /// pronouns under it, then what they share with the account. The
 /// account's own card offers to copy the handle; someone else's card, with
 /// `note`, the icon of the account's note on them, which opens their full
 /// profile where it is written, as the official popout does.
 fn names(profile: &Profile, copy: bool, note: Option<&str>, size: f32, look: &Look) -> Element {
-    let mut top = vec![Element::truncated_text(profile.name.clone())
-        .font_family(FontFamily::SansBold)
-        .font_size(size)
-        .foreground(look.text)
+    let mut top = vec![shown_name(profile, FontFamily::SansBold, size, look)
         .shrink_to_fit()
         .centered_y()];
     if let (Some(action), Some(field)) = (note, &profile.note) {
@@ -1192,18 +1247,30 @@ fn member_since(entries: &[Since], look: &Look) -> Element {
 /// presence gives.
 fn activity_parts(profile: &Profile, width: f32, look: &Look) -> Vec<Element> {
     let identity = &profile.identity;
+    let voice = identity
+        .voice
+        .as_ref()
+        .map(|card| crate::identity::voice_card(card, width, look));
     if identity.activities.is_empty() {
-        return profile
-            .activity
-            .iter()
-            .map(|activity| text(activity.clone(), 13.0, look.text))
+        return voice
+            .into_iter()
+            .chain(
+                profile
+                    .activity
+                    .iter()
+                    .map(|activity| text(activity.clone(), 13.0, look.text)),
+            )
             .collect();
     }
     vec![Element::column(
-        identity
-            .activities
-            .iter()
-            .map(|card| crate::identity::activity_card(card, width, look))
+        voice
+            .into_iter()
+            .chain(
+                identity
+                    .activities
+                    .iter()
+                    .map(|card| crate::identity::activity_card(card, width, look)),
+            )
             .collect(),
     )
     .gap(8.0)]
@@ -1277,7 +1344,7 @@ fn card_menu(
 /// (`full`), «…» leaves out «Ver perfil completo», which is where it is.
 fn person_buttons(
     profile: &Profile,
-    button: fn(&str, Icon, &str, &Look) -> Element,
+    button: &dyn Fn(&str, Icon, &str, &Look) -> Element,
     placement: PopoverPlacement,
     full: bool,
     look: &Look,
@@ -1335,7 +1402,7 @@ fn person_buttons(
 fn banner_buttons(profile: &Profile, right: f32, look: &Look) -> Option<Element> {
     let buttons = person_buttons(
         profile,
-        banner_button,
+        &banner_button,
         PopoverPlacement::BottomEnd,
         false,
         look,
@@ -1354,18 +1421,19 @@ fn banner_buttons(profile: &Profile, right: f32, look: &Look) -> Option<Element>
 }
 
 /// A square button of the full profile, as Discord's: 32 px, 8 px corners,
-/// a faint fill and hairline, its tooltip the label.
-fn full_button(id: &str, glyph: Icon, label: &str, look: &Look) -> Element {
+/// `fill` (at rest and under the pointer) and a hairline, its tooltip the
+/// label.
+fn full_button(id: &str, glyph: Icon, label: &str, fill: (Color, Color), look: &Look) -> Element {
     let square = Element::panel(centered(
         icon(glyph, look.text).size(Some(16.0), Some(16.0)),
     ))
     .size(Some(32.0), Some(32.0))
     .radius(8.0)
-    .background(hairline(look, 31))
+    .background(fill.0)
     .border(hairline(look, 41), 1.0);
     let button = Element::clickable(id, square)
         .radius(8.0)
-        .hover_background(look.hover)
+        .hover_background(fill.1)
         .accessible(limn::Access::new(limn::Role::Button).name(label.to_owned()));
     Tooltip::new(button, id, label, look.menu_palette()).render()
 }
@@ -1470,7 +1538,11 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
         .full_action
         .as_ref()
         .map(|action| action.replacen(ids::FULL, ids::FULL_NOTE, 1));
-    let width = WIDTH - 2.0 * INSET;
+    // A themed card draws in its own colors, inside its frame.
+    let themed = profile.theme.map(|theme| (theme, theme.look(look)));
+    let look = themed.as_ref().map_or(look, |(_, look)| look);
+    let edge = if themed.is_some() { POPOUT_FRAME } else { 0.0 };
+    let width = WIDTH - 2.0 * (INSET + edge);
     let mut body = vec![card_names(profile, note.as_deref(), false, look)];
     if let Some(notice) = &profile.notice {
         body.push(card_notice(notice, look));
@@ -1480,16 +1552,20 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     }
     body.extend(card_mutuals(profile, look));
     body.extend(card_about(profile, width, look));
-    body.extend(game_card(profile, 12.0, raised(look, 16), look));
+    body.extend(game_card(profile, 12.0, boxed(profile, look, 16), look));
     body.extend(card_roles(profile, look));
     // Without a full profile to open (the account's own), the field stays.
     if let Some(note) = profile.note.as_ref().filter(|_| note.is_none()) {
-        body.push(note_section(note, look));
+        body.push(note_section(note, profile, look));
     }
     // Discord's spacing: the name 12 under the head, its parts 12 apart, 16
     // around the field at the bottom.
+    let head = HeadSize {
+        width: WIDTH - 2.0 * edge,
+        ..CARD_HEAD
+    };
     let mut parts = vec![
-        card_head(profile, bubble, look),
+        sized_card_head(profile, head, 12.0, bubble, look),
         ScrollArea::new(
             ids::card_body(&profile.handle),
             Element::column(vec![
@@ -1507,11 +1583,16 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
         .render()
         .flex(1.0),
     ];
-    if let Some(footer) = card_footer(profile, look) {
-        parts.push(footer);
-    }
+    let footer = card_footer(profile, look);
+    let below = if footer.is_some() { POPOUT_FOOTER } else { 0.0 };
+    parts.extend(footer);
+    let card = Element::column(parts).hover_region();
+    let card = match &themed {
+        Some((theme, _)) => theme.frame(card, BANNER, below, edge, CornerRadii::same(CARD_RADIUS)),
+        None => card,
+    };
     crate::identity::with_effect(
-        Element::column(parts).hover_region(),
+        card,
         WIDTH,
         profile.identity.effect.as_ref(),
         Some(ids::CARD_EFFECT),
@@ -1577,10 +1658,7 @@ fn names_sized(
     size: f32,
     look: &Look,
 ) -> Element {
-    let mut top = vec![Element::truncated_text(profile.name.clone())
-        .font_family(FontFamily::SansSemibold)
-        .font_size(size)
-        .foreground(look.text)
+    let mut top = vec![shown_name(profile, FontFamily::SansSemibold, size, look)
         .shrink_to_fit()
         .centered_y()];
     // The mark of an app right after its name, as Discord's.
@@ -1642,7 +1720,7 @@ fn names_sized(
             ]))
             .padding(1.0)
             .radius(8.0)
-            .background(raised(look, 20))
+            .background(boxed(profile, look, 20))
             .border(hairline(look, 61), 1.0)
             .centered_y(),
         );
@@ -1895,6 +1973,7 @@ fn card_roles(profile: &Profile, look: &Look) -> Option<Element> {
                     .role_removals
                     .get(index)
                     .and_then(|removal| removal.as_deref()),
+                profile.theme.map(|theme| theme.role),
                 look,
             )
         })
@@ -1931,12 +2010,13 @@ fn card_roles(profile: &Profile, look: &Look) -> Option<Element> {
 
 /// A role of a card: Discord's 24 px outlined chip with its 12 px color dot,
 /// its picture or emoji and its name, and the «×» that takes it away when
-/// `remove` names the action.
+/// `remove` names the action. A themed card's `pill` fills and outlines it.
 fn card_role(
     name: &str,
     color: Color,
     mark: Option<&crate::identity::RoleMark>,
     remove: Option<&str>,
+    pill: Option<(Color, Color)>,
     look: &Look,
 ) -> Element {
     let mut inside = vec![gap(2.0, 0.0), parts::color_dot(color, 12.0).centered_y()];
@@ -1954,10 +2034,13 @@ fn card_role(
         )),
         None => inside.push(gap(8.0, 0.0)),
     }
-    Element::panel(Element::row(inside).gap(4.0).centered_y())
+    let chip = Element::panel(Element::row(inside).gap(4.0).centered_y())
         .size(None, Some(24.0))
-        .radius(8.0)
-        .border(hairline(look, 51), 1.0)
+        .radius(8.0);
+    match pill {
+        Some((fill, outline)) => chip.background(fill).border(outline, 1.0),
+        None => chip.border(hairline(look, 51), 1.0),
+    }
 }
 
 /// A 24 px square button with an icon of 12 px: its tooltip is `hint`, and
@@ -2067,18 +2150,36 @@ const FULL_HEAD: HeadSize = HeadSize {
 /// sections, at least `height` tall so it reaches the panel's foot.
 fn full_card(full: &FullProfile, height: f32, look: &Look) -> Element {
     let profile = &full.profile;
-    let width = FULL_CARD - 2.0 * FULL_HEAD.left;
+    // A themed card draws in its own colors, inside its frame.
+    let themed = profile.theme.map(|theme| (theme, theme.look(look)));
+    let look = themed.as_ref().map_or(look, |(_, look)| look);
+    let edge = if themed.is_some() { FULL_FRAME } else { 0.0 };
+    let head = HeadSize {
+        width: FULL_CARD - 2.0 * edge,
+        ..FULL_HEAD
+    };
+    let width = head.width - 2.0 * FULL_HEAD.left;
     let mut buttons = Vec::new();
     if let Some(action) = &profile.message_action {
-        buttons.push(
-            Button::new(action.clone(), t("Enviar mensaje"), look.accent_palette())
-                .icon(Icon::Chat)
-                .render(),
-        );
+        let button = match &themed {
+            Some((theme, _)) => Button::new(
+                action.clone(),
+                t("Enviar mensaje"),
+                theme.button_palette(look),
+            )
+            .variant(ButtonVariant::Raised),
+            None => Button::new(action.clone(), t("Enviar mensaje"), look.accent_palette()),
+        };
+        buttons.push(button.icon(Icon::Chat).render());
     }
+    let fill = profile
+        .theme
+        .map_or((hairline(look, 31), look.hover), |theme| {
+            (theme.secondary_button[0], theme.secondary_button[1])
+        });
     buttons.extend(person_buttons(
         profile,
-        full_button,
+        &|id, glyph, label, look| full_button(id, glyph, label, fill, look),
         PopoverPlacement::BottomStart,
         true,
         look,
@@ -2122,12 +2223,12 @@ fn full_card(full: &FullProfile, height: f32, look: &Look) -> Element {
         ));
     }
     if let Some(note) = &profile.note {
-        body.push(note_section(note, look));
+        body.push(note_section(note, profile, look));
     }
     let bubble =
         custom_status(profile).map(|(custom, emoji)| bubble(custom, emoji, false, None, look));
     let content = Element::column(vec![
-        Element::stack(bubbled_head(profile, FULL_HEAD, bubble, look)).size(Some(FULL_CARD), None),
+        Element::stack(bubbled_head(profile, head, bubble, look)).size(Some(head.width), None),
         Element::row(vec![
             gap(FULL_HEAD.left, 0.0),
             Element::column(vec![
@@ -2141,14 +2242,22 @@ fn full_card(full: &FullProfile, height: f32, look: &Look) -> Element {
             gap(FULL_HEAD.left, 0.0),
         ]),
     ]);
-    crate::identity::with_effect(
-        Element::panel(content)
-            .size(Some(FULL_CARD), None)
-            .min_size(FULL_CARD, height)
+    let card = match &themed {
+        Some((theme, _)) => theme.frame(
+            content,
+            head.banner,
+            0.0,
+            edge,
+            CornerRadii::top(FULL_RADIUS),
+        ),
+        None => Element::panel(content)
             .background(ground(look))
             .border(look.border, 1.0)
             .corner_radii(CornerRadii::top(16.0))
             .clip_children(),
+    };
+    crate::identity::with_effect(
+        card.size(Some(FULL_CARD), None).min_size(FULL_CARD, height),
         FULL_CARD,
         profile.identity.effect.as_ref(),
         None,
@@ -3723,8 +3832,11 @@ mod tests {
         Profile {
             identity: Default::default(),
             image: None,
+            avatar_playing: false,
             banner: None,
+            banner_playing: false,
             banner_tint: None,
+            theme: None,
             name: "Ada".into(),
             handle: "ada".into(),
             accent: Color::rgb(90, 120, 200),
@@ -4098,9 +4210,11 @@ mod tests {
     fn a_card_name_shows_six_badges_and_counts_the_rest() {
         let badges = (0..8)
             .map(|n| crate::identity::BadgeChip {
+                id: format!("pp:badge=7:{n}"),
                 description: format!("Insignia {n}"),
                 image: None,
                 link: true,
+                hint: None,
             })
             .collect();
         let profile = Profile {
@@ -4112,8 +4226,8 @@ mod tests {
         };
         let (_, laid) = frame(card(&profile, &LOOK), Size::new(WIDTH, 900.0));
         let shown = controls(&laid);
-        assert!(shown.contains(&"pp:badge=5".to_owned()), "{shown:?}");
-        assert!(!shown.contains(&"pp:badge=6".to_owned()), "{shown:?}");
+        assert!(shown.contains(&"pp:badge=7:5".to_owned()), "{shown:?}");
+        assert!(!shown.contains(&"pp:badge=7:6".to_owned()), "{shown:?}");
         assert!(texts(&laid).contains(&"+2".to_owned()));
     }
 
@@ -5245,5 +5359,148 @@ mod tests {
         assert_eq!(tiles[0].x, inner + INSET + 8.0);
         assert_eq!(tiles[2].x + 78.0, inner + WIDTH - INSET - 8.0);
         assert!(controls(&laid).contains(&format!("{}10", ids::FULL_WISHLIST)));
+    }
+
+    /// The vertical gradients painted: where, and their two ends.
+    fn gradients(laid: &limn::Frame) -> Vec<(limn::Rect, Color, Color)> {
+        laid.commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::FillVerticalGradient { rect, top, bottom } => {
+                    Some((*rect, *top, *bottom))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether `laid` fills something in `color`.
+    fn fills(laid: &limn::Frame, color: Color) -> bool {
+        laid.commands.iter().any(|command| {
+            matches!(command,
+                limn::DrawCommand::FillRect { color: fill, .. }
+                | limn::DrawCommand::FillCornerRect { color: fill, .. } if *fill == color)
+        })
+    }
+
+    #[test]
+    fn a_themed_profile_is_framed_in_its_gradient_on_each_surface() {
+        let theme = ProfileTheme::new(Rgb(0x2B_6C_B0), Rgb(0x9F_7A_EA));
+        let themed = Profile {
+            theme: Some(theme),
+            full_action: Some(format!("{}10", ids::FULL)),
+            ..ada()
+        };
+        let full = |profile: Profile| FullProfile {
+            connections: Default::default(),
+            profile,
+            server: None,
+            friends_since: None,
+            mutual_servers: Mutual::Unknown,
+            mutual_friends: Mutual::Unknown,
+            tab: FullTab::Activity,
+            loading: false,
+            recent: Vec::new(),
+        };
+        let window = Size::new(1000.0, 900.0);
+        let surfaces = |profile: &Profile| {
+            [
+                (
+                    card(profile, &LOOK),
+                    Size::new(WIDTH, 800.0),
+                    POPOUT_FRAME,
+                    BANNER,
+                ),
+                (
+                    side_panel(profile, &LOOK),
+                    Size::new(SIDE_WIDTH, 800.0),
+                    2.0,
+                    BANNER,
+                ),
+                (
+                    full_profile(Element::spacer(), &full(profile.clone()), window, &LOOK),
+                    window,
+                    FULL_FRAME,
+                    FULL_HEAD.banner,
+                ),
+            ]
+        };
+        let plain = Profile {
+            full_action: themed.full_action.clone(),
+            ..ada()
+        };
+        for (element, size, ..) in surfaces(&plain) {
+            assert!(gradients(&frame(element, size).1).is_empty(), "unthemed");
+        }
+        for (element, size, edge, banner) in surfaces(&themed) {
+            let laid = frame(element, size).1;
+            let found = gradients(&laid);
+            let blend = |(_, top, bottom): &&(limn::Rect, Color, Color)| {
+                (*top, *bottom) == (theme.primary, theme.secondary)
+            };
+            // The banner without a picture, and the frame from its foot down.
+            let mut banners: Vec<_> = found.iter().filter(blend).collect();
+            banners.sort_by(|a, b| a.0.y.total_cmp(&b.0.y));
+            assert_eq!(banners.len(), 2, "{found:?}");
+            assert_eq!(banners[0].0.height, banner);
+            assert!(
+                (banners[1].0.y - banners[0].0.y - banner).abs() < 1.0,
+                "{banners:?}"
+            );
+            // `edge` of the frame shows beside the banner.
+            assert!((banners[1].0.width - banners[0].0.width - 2.0 * edge).abs() < 1.0);
+            assert!(fills(&laid, theme.veil), "the veil over it");
+        }
+        // Its «Enviar mensaje» in the primary made legible.
+        let laid = frame(
+            full_profile(Element::spacer(), &full(themed.clone()), window, &LOOK),
+            window,
+        )
+        .1;
+        assert!(fills(&laid, theme.button[0]));
+        assert!(!fills(&laid, LOOK.accent), "{:?}", LOOK.accent);
+    }
+
+    #[test]
+    fn moving_pictures_play_on_their_surfaces() {
+        let raster = |digit: &str| {
+            limn::RasterImage::new(
+                digit.repeat(64),
+                limn::RasterImageFormat::Png,
+                3,
+                std::sync::Arc::from("AAAA"),
+                "Imagen",
+            )
+            .unwrap()
+        };
+        let (face, banner) = (raster("c"), raster("d"));
+        let surfaces = |playing: bool| {
+            let profile = Profile {
+                image: Some(face.clone()),
+                banner: Some(banner.clone()),
+                avatar_playing: playing,
+                banner_playing: playing,
+                ..ada()
+            };
+            let (_, laid) = frame(card(&profile, &LOOK), Size::new(WIDTH, 800.0));
+            laid.commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::Surface { id, rect, .. } => Some((id.clone(), *rect)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(surfaces(false).is_empty(), "still, they are pictures");
+        let playing = surfaces(true);
+        let at = |image: &limn::RasterImage| {
+            playing
+                .iter()
+                .find(|(id, _)| *id == crate::message::animation_surface(image.sha256()))
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{playing:?}"))
+        };
+        assert_eq!((at(&banner).width, at(&banner).height), (WIDTH, BANNER));
+        assert_eq!((at(&face).width, at(&face).height), (AVATAR, AVATAR));
     }
 }

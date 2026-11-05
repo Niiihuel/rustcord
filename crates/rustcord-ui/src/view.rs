@@ -53,8 +53,6 @@ fn members_from(ui: &Ui, narrow: bool) -> f32 {
 }
 /// From the conversation column's left and right edges to the composer.
 const COMPOSER_MARGIN: f32 = 11.5;
-/// A quiet strip outside the scroll viewport: message hover stops here.
-const COMPOSER_CLEARANCE: f32 = 8.0;
 /// Above the first row of the column of channels.
 const LIST_TOP: f32 = 2.0;
 /// The notices' list over the foot of the column of channels, and the one
@@ -827,7 +825,8 @@ fn conversation(
     if let Some(slowmode) = channel_list::slowmode(store, channel, look) {
         conversation_column.push(slowmode);
     }
-    conversation_column.push(gap(0.0, COMPOSER_CLEARANCE));
+    // The line of who is typing, over the composer's box, is the quiet strip
+    // where message hover stops.
     conversation_column.push(Element::row(vec![
         gap(COMPOSER_MARGIN, 0.0),
         region(

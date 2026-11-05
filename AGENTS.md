@@ -40,7 +40,9 @@ en [limn](https://github.com/Niiihuel/limn).
   (botones, menús, modales) y los comandos de aplicación, y el socket local
   `discord-ipc` y la detección de juegos, estos dos apagados por defecto,
   cada uno con su interruptor, y la ruta no documentada de la actividad
-  reciente del perfil (`/content-inventory/users/{id}/outbox`, 2026-11-04).
+  reciente del perfil (`/content-inventory/users/{id}/outbox`, 2026-11-04)
+  y la del catálogo de insignias con sus niveles (`/users/{id}/badges`,
+  2026-11-05).
   Puede presentarse como el cliente web de
   Discord en un navegador (2026-10-19): user agent, `X-Super-Properties`,
   huella y propiedades del Identify, una sola identidad coherente en REST,
@@ -61,9 +63,26 @@ en [limn](https://github.com/Niiihuel/limn).
   copian. Los logos de los servicios de las conexiones tal como el cliente
   web de Discord los sirve, en su versión clara (`assets/connections`,
   2026-11-04); son marcas de sus dueños, sólo para nombrar cada conexión.
-  No abarca código, otros recursos, perfiles,
+  Todos los diseños de perfil y de Nitro (2026-11-05), con las fuentes de
+  los estilos de nombre que el cliente web de Discord sirve desde
+  `discord.com/assets`: Rustcord las descarga en tiempo de ejecución y sólo
+  cuando se muestra un nombre que las usa, las guarda sólo en la caché
+  local (cifrada con las imágenes de la cuenta) y nunca las incluye en el
+  repositorio. No abarca código, otros recursos, perfiles,
   cachés, credenciales, datos de sesión ni contenidos de servidores o
   cuentas ajenas.
+- Reproductor de Spotify nativo (2026-11-05): un enlace de
+  `open.spotify.com` (pista, álbum, lista, episodio, programa o artista)
+  que se muestra en una conversación se dibuja con limn como el reproductor
+  incrustado de Spotify, nunca con una WebView. Para eso Rustcord pide los
+  datos públicos de ese reproductor (la página `open.spotify.com/embed/…`
+  o su oEmbed), sólo de los enlaces a la vista, y carga sus portadas y sus
+  muestras de 30 segundos sólo de los servidores de Spotify; sin cuenta,
+  token ni credenciales de Spotify (el token anónimo de esa página no se
+  lee). Sólo se reproducen las muestras; la reproducción completa y
+  «Guardar en Spotify» abren el enlace, preguntando antes de salir. El logo
+  de `assets/connections/spotify.png` nombra el servicio en esa tarjeta
+  (aprobado por el dueño el 2026-11-05).
 - Pulsar para hablar global (2026-10-26): en Windows, gancho de bajo nivel de
   teclado y de ratón (`WH_KEYBOARD_LL` y `WH_MOUSE_LL`) que nunca consume la
   entrada (siempre `CallNextHookEx`), sólo compara cada evento con la

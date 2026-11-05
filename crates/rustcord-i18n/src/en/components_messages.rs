@@ -323,4 +323,15 @@ pub(super) const ENTRIES: super::Entries = &[
         "{count} personas hicieron súper reacciones con {code}",
         "{count} people super reacted with {code}",
     ),
+    // message/spotify.rs
+    ("Explícito", "Explicit"),
+    ("Abrir en Spotify", "Open in Spotify"),
+    ("Guardar en Spotify", "Save on Spotify"),
+    ("Muestra", "Preview"),
+    ("Cargando muestra", "Loading preview"),
+    ("Pausar muestra", "Pause preview"),
+    ("Reproducir muestra", "Play preview"),
+    ("Pista anterior", "Previous track"),
+    ("Pista siguiente", "Next track"),
+    ("{title} en Spotify", "{title} on Spotify"),
 ];

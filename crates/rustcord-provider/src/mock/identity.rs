@@ -8,9 +8,9 @@
 
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{
-    Activity, ActivityKind, ChannelId, Identity, ImageKind, Message, Nameplate, Party, Perks,
-    Platforms, RemoteImage, Rgb, RoleStyle, ServerId, ServerTag, Sticker, StickerId, StickerPack,
-    Timestamp, UserId,
+    Activity, ActivityKind, ChannelId, Identity, ImageKind, Message, NameEffect, NameStyle,
+    Nameplate, Party, Perks, Platforms, RemoteImage, Rgb, RoleStyle, ServerId, ServerTag, Sticker,
+    StickerId, StickerPack, Timestamp, UserId,
 };
 
 use super::{Session, World, ME};
@@ -288,6 +288,18 @@ pub(super) fn badges(user: UserId) -> Vec<rustcord_model::Badge> {
         description: format!("{description} {}", t("(simulada)")),
         icon: Some(picture(&format!("insignias/{id}"))),
         link: Some(format!("https://simulacion.invalid/insignias/{id}")),
+        detail: None,
+    };
+    // A tiered one, as a catalog of badges describes it.
+    let tiered = rustcord_model::Badge {
+        detail: Some(rustcord_model::BadgeDetail {
+            eyebrow: Some("Antigüedad de la cuenta".into()),
+            title: "Flor".into(),
+            body: Some(format!("5 años, 10 meses {}", t("(simulada)"))),
+            obtained: None,
+            art: Some(picture("insignias/antiguedad")),
+        }),
+        ..badge("antiguedad", "Antigüedad de la cuenta")
     };
     match user.0 {
         10 => vec![
@@ -296,7 +308,7 @@ pub(super) fn badges(user: UserId) -> Vec<rustcord_model::Badge> {
             badge("variedad", "Variedad de juegos"),
             badge("tiempo", "Tiempo de juego"),
             badge("transmision", "Transmitiendo"),
-            badge("antiguedad", "Antigüedad de la cuenta"),
+            tiered,
             badge("valentia", "Valentía"),
             badge("alias", "Alias original"),
         ],
@@ -442,6 +454,12 @@ pub(super) fn effect(user: UserId) -> Option<rustcord_model::ProfileEffect> {
     })
 }
 
+/// The colors of a made-up person's profile: Ada's, her nameplate's blue
+/// under the banner to its violet at the foot.
+pub(super) fn theme(user: UserId) -> Option<(Rgb, Rgb)> {
+    (user.0 == 10).then_some((Rgb(0x2B_6C_B0), Rgb(0x9F_7A_EA)))
+}
+
 /// The accounts elsewhere a made-up person shows, linked nowhere real.
 pub(super) fn connections(user: UserId) -> Vec<rustcord_model::Connection> {
     let account =
@@ -488,9 +506,18 @@ impl World {
                         )),
                     }),
                     tag: Some(tag(1, "RUST")),
+                    name_style: None,
                 },
+                // A simulated style: neon in two colors, in a font the
+                // simulation has no face for (`name_font`), so drawn in
+                // the interface's own.
                 Some(2) => Identity {
                     tag: Some(tag(2, "LIMN")),
+                    name_style: Some(NameStyle {
+                        font: Some(1),
+                        effect: NameEffect::Neon,
+                        colors: vec![Rgb(0x69_1D_ED), Rgb(0xE4_5E_FF)],
+                    }),
                     ..Default::default()
                 },
                 Some(5) => Identity {

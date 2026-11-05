@@ -17,8 +17,8 @@ use rustcord_components::identity::Plate;
 use rustcord_components::look::activity_line;
 use rustcord_components::profile::{
     self as parts, ids, CardMenu, ClearAfter, CustomStatusDialog, EditorErrors, EditorPictures,
-    EditorScope, Face, Friendship, FullProfile, FullTab, Mutual, OwnPopout, Profile, Relation,
-    Since,
+    EditorScope, Face, Friendship, FullProfile, FullTab, Mutual, OwnPopout, Profile, ProfileTheme,
+    Relation, Since,
 };
 use rustcord_components::server_settings::{hex, parse_hex, UnsavedBar};
 use rustcord_components::time::short_date;
@@ -389,7 +389,20 @@ pub fn card_of(
             date: short_date(joined),
         });
     }
+    // The moving picture and banner once loaded, else the still ones.
+    let [moving_avatar, moving_banner] =
+        moving_pictures(ui, store, user, server).map(|moving| ui.picture(moving));
+    let playing = |image: &Option<limn::RasterImage>| {
+        image
+            .as_ref()
+            .is_some_and(|image| ui.animated.contains(image.sha256()))
+    };
     Some(Profile {
+        avatar_playing: playing(&moving_avatar),
+        banner_playing: playing(&moving_banner),
+        theme: loaded
+            .and_then(|loaded| loaded.theme)
+            .map(|(primary, secondary)| ProfileTheme::new(primary, secondary)),
         restriction: server
             .and_then(|server| store.restriction_of(server, user))
             .map(|restriction| restriction_label(restriction, wall)),
@@ -397,10 +410,12 @@ pub fn card_of(
         mutual: loaded.and_then(mutual_summary),
         full_action: (store.me() != Some(user)).then(|| format!("{}{user}", ids::FULL)),
         note: crate::account::note_field(ui, store, user),
-        image: ui.picture(store.avatar_in(server, user)),
-        banner: banner(account, loaded)
-            .and_then(|source| ui.images.get(source))
-            .cloned(),
+        image: moving_avatar.or_else(|| ui.picture(store.avatar_in(server, user))),
+        banner: moving_banner.or_else(|| {
+            banner(account, loaded)
+                .and_then(|source| ui.images.get(source))
+                .cloned()
+        }),
         // Without a picture the banner takes the profile's accent, else the
         // avatar's dominant color, as the official popout does; a letter
         // avatar's color is the account's own.
@@ -513,18 +528,34 @@ pub(crate) fn request_side(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
 /// The profile beside the direct conversation open, `parts::SIDE_WIDTH`
 /// wide; `None` while hidden or elsewhere.
 pub(crate) fn side_panel(ui: &Ui, store: &Store, look: &Look) -> Option<Element> {
-    let card = card_of(ui, store, None, side_user(ui, store)?, look)?;
+    let mut card = card_of(ui, store, None, side_user(ui, store)?, look)?;
+    // A popout can show the same person: this card's controls answer apart.
+    let prefix = rustcord_components::identity::ids::BADGE;
+    for badge in &mut card.identity.badges {
+        badge.id.insert_str(prefix.len(), "side:");
+    }
+    if let Some(voice) = card.identity.voice.as_mut() {
+        voice.key.insert_str(0, "side:");
+        if let Some((_, server)) = voice.server.as_mut() {
+            server.insert_str(0, "side:");
+        }
+    }
     Some(parts::side_panel(&card, look))
 }
 
-/// The pictures the profiles show beyond a face and its marks: the games
-/// and wishlist of `user`'s profile in `server`.
+/// The pictures the profiles show beyond a face and its marks: the moving
+/// picture and banner, and the games and wishlist of `user`'s profile in
+/// `server`.
 pub(crate) fn wanted(
+    ui: &Ui,
     store: &Store,
     user: UserId,
     server: Option<ServerId>,
     add: &mut dyn FnMut(Option<&rustcord_model::RemoteImage>),
 ) {
+    for moving in moving_pictures(ui, store, user, server) {
+        add(moving);
+    }
     let Some(loaded) = store.profile(user, server) else {
         return;
     };
@@ -769,6 +800,33 @@ fn server_face(ui: &Ui, server: &rustcord_model::Server, look: &Look) -> Face {
         accent: look.ink(server.accent),
         image: ui.image(&server.icon),
     }
+}
+
+/// The picture and the banner of `user`'s profile in `server` that move, as
+/// a profile shows them: each only while it moves for the still one shown
+/// and motion is not reduced.
+pub(crate) fn moving_pictures<'a>(
+    ui: &Ui,
+    store: &'a Store,
+    user: UserId,
+    server: Option<ServerId>,
+) -> [Option<&'a rustcord_model::RemoteImage>; 2] {
+    let loaded = store.profile(user, server);
+    let shown = |pair: Option<&'a (_, _)>, still: Option<&rustcord_model::RemoteImage>| {
+        pair.filter(|(of, _)| Some(of) == still && !ui.reduced_motion)
+            .map(|(_, moving)| moving)
+    };
+    let banner = store.user(user).and_then(|account| banner(account, loaded));
+    [
+        shown(
+            loaded.and_then(|loaded| loaded.moving_avatar.as_ref()),
+            store.avatar_in(server, user),
+        ),
+        shown(
+            loaded.and_then(|loaded| loaded.moving_banner.as_ref()),
+            banner,
+        ),
+    ]
 }
 
 /// The banner a card shows: the server's, else the profile's, else the
@@ -1911,7 +1969,13 @@ pub fn user_panel(ui: &Ui, store: &Store, look: &Look, wall: Timestamp) -> Eleme
                 });
             parts::own_popout(
                 &OwnPopout {
-                    profile,
+                    // shortcut: the account's own popout keeps the app's
+                    // colors, where Discord's takes its theme too; frame it
+                    // as `parts::card` does if that is missed.
+                    profile: Profile {
+                        theme: None,
+                        ..profile
+                    },
                     until,
                     custom_denied: custom_denied(store),
                     edit_denied: edit_denied(store),

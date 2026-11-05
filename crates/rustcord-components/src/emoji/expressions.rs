@@ -42,10 +42,11 @@ pub struct ExpressionView<'a> {
 
 pub(super) fn tabs(base: &str, selected: PickerTab, look: &Look) -> Element {
     let mut items = Vec::new();
+    // In Discord's order: GIF, Stickers, Emojis.
     for (tab, id, label) in [
-        (PickerTab::Emoji, "emoji", t("Emojis")),
-        (PickerTab::Stickers, "stickers", "Stickers"),
         (PickerTab::Gif, "gif", "GIF"),
+        (PickerTab::Stickers, "stickers", "Stickers"),
+        (PickerTab::Emoji, "emoji", t("Emojis")),
     ] {
         let palette = limn::ComponentPalette {
             raised: look.selected,
@@ -328,6 +329,7 @@ mod tests {
     fn media_tab_padding_does_not_collapse_button_hit_areas() {
         for tab in [PickerTab::Stickers, PickerTab::Gif] {
             let view = PickerView {
+                hovered: None,
                 base: "picker",
                 query: "",
                 recent: &[],

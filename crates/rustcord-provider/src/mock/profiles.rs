@@ -125,6 +125,7 @@ impl World {
                 games: Some(super::identity::games(user)),
                 wishlist: Some(super::identity::wishlist(user)),
                 effect: super::identity::effect(user).filter(|_| effect),
+                theme: super::identity::theme(user),
                 about,
                 pictures: pictures.unwrap_or_default(),
                 ..Default::default()
@@ -298,6 +299,7 @@ mod tests {
         assert!(profile.answers(UserId(10), Some(ServerId(1))));
         assert!(profile.created.is_some() && profile.mutual_servers.is_some());
         assert!(profile.effect.is_some(), "the effect she wears");
+        assert!(profile.theme.is_some(), "and her profile's colors");
         // With effects hidden on this device, none is read.
         let hidden = provider.manage(Command::LoadProfile {
             request: 5,
@@ -315,7 +317,8 @@ mod tests {
             effect: true,
         });
         assert!(matches!(&own[..], [Event::ProfileLoaded { profile, .. }]
-            if profile.mutual_servers.is_none() && profile.mutual_friends.is_none()));
+            if profile.mutual_servers.is_none() && profile.mutual_friends.is_none()
+                && profile.theme.is_none()));
     }
 }
 

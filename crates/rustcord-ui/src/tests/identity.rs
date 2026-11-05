@@ -3,7 +3,7 @@
 //! profile, and the picker with the plan's limits, the packs and the
 //! provider's own GIFs. The simulation answers; nothing reaches a service.
 
-use rustcord_components::identity::{ActivityTime, Platform, RoleMark};
+use rustcord_components::identity::{ActivityTime, NameEffect, Platform, RoleMark};
 use rustcord_components::Look;
 use rustcord_model::{
     Activity, ActivityKind, Perks, Platforms, Presence, Status, Sticker, StickerId, StickerPack,
@@ -324,15 +324,49 @@ fn marks_follow_the_member_and_their_roles_and_badges_open_their_links() {
         crate::profile::card_of(&host.ui, &host.store, Some(server), ada, &Look::DARK).unwrap();
     assert_eq!(card.identity.badges.len(), 8);
     assert!(card.identity.badges[0].link);
+    // Each badge's id says whose it is, so that two cards keep apart; the
+    // tiered one's hint is its catalog's.
+    assert_eq!(card.identity.badges[0].id, format!("pp:badge={ada}:0"));
+    let tiered = card.identity.badges[5]
+        .hint
+        .as_ref()
+        .expect("the tiered badge's hint");
+    assert_eq!(
+        (tiered.eyebrow.as_deref(), tiered.title.as_str()),
+        (Some("Antigüedad de la cuenta"), "Flor")
+    );
     let intents = update(
         &mut host.ui,
         &mut host.store,
         &limn::UiAction::Clicked {
-            id: "pp:badge=0".into(),
+            id: format!("pp:badge={ada}:0"),
         },
         host.now,
     );
     assert!(matches!(&intents[..], [Intent::OpenUrl(url)] if url.contains("insignias/pionera")));
+    // Beside a conversation it is the same badge under its own id.
+    let intents = update(
+        &mut host.ui,
+        &mut host.store,
+        &limn::UiAction::Clicked {
+            id: format!("pp:badge=side:{ada}:1"),
+        },
+        host.now,
+    );
+    assert!(matches!(&intents[..], [Intent::OpenUrl(url)] if url.contains("insignias/mejora")));
+    // She talks in «Sala común»: her card says so, and its button joins
+    // it and closes the card.
+    let voice = card.identity.voice.as_ref().expect("Ada is in voice");
+    assert_eq!((voice.channel.as_str(), voice.count), ("Sala común", 3));
+    assert!(voice.joinable && voice.server.is_some() && !voice.own);
+    let id = format!("pp:voice={}", voice.key);
+    update(
+        &mut host.ui,
+        &mut host.store,
+        &limn::UiAction::Clicked { id },
+        host.now,
+    );
+    assert_eq!(host.ui.profile, None);
     // Her connected accounts are in the full profile.
     let accounts = crate::identity::connections(&host.store, ada, Some(server));
     assert_eq!(accounts[0].label, "GitHub");
@@ -512,4 +546,145 @@ fn an_ignored_person_shows_no_activity_only_the_status() {
     assert_eq!(line.as_deref(), Some("Jugando a Factorio"));
     let (line, _) = crate::identity::status_line(&host.ui, &playing, true);
     assert_eq!(line.as_deref(), Some("de vacaciones"));
+}
+
+#[test]
+fn a_profile_takes_its_colors_and_moves_its_own_picture_and_banner_while_shown() {
+    use rustcord_model::{ImageKind, ProfileBanner, RemoteImage, Rgb, UserProfile};
+    let mut host = Host::new();
+    host.open_channel("general");
+    let ada = UserId(10);
+    let picture = |name: &str, kind| RemoteImage {
+        url: format!("https://cdn.example.test/{name}"),
+        kind,
+    };
+    let (face, banner) = (
+        picture("ada.png", ImageKind::Artwork),
+        picture("ada-banner.png", ImageKind::Banner),
+    );
+    let (moving_face, moving_banner) = (
+        picture("ada.webp", ImageKind::Artwork),
+        picture("ada-banner.webp", ImageKind::AttachmentPreview),
+    );
+    let mut account = host.store.user(ada).unwrap().clone();
+    account.avatar = Some(face.clone());
+    account.banner = ProfileBanner::Image(banner.clone());
+    host.event(Event::UserChanged(account));
+    host.ui.profiles.full = Some((ada, None));
+    assert!(host.store.begin_profile(ada, None, 7).allowed());
+    host.event(Event::ProfileLoaded {
+        request: 7,
+        profile: UserProfile {
+            user: ada,
+            theme: Some((Rgb(0x2B_6C_B0), Rgb(0x9F_7A_EA))),
+            moving_avatar: Some((face.clone(), moving_face.clone())),
+            moving_banner: Some((banner.clone(), moving_banner.clone())),
+            ..Default::default()
+        },
+    });
+    // Shown, both are asked for and may play.
+    let wanted = wanted_images(&host.ui, &host.store, &host.tree);
+    let playable = crate::playable_images(&host.ui, &host.store, &host.tree, false);
+    for moving in [&moving_face, &moving_banner] {
+        assert!(wanted.contains(moving) && playable.contains(moving));
+    }
+    // Loaded and played by the host, the card draws them moving, in her colors.
+    let still = super::attachments::image();
+    host.ui.images.insert(moving_face.clone(), still.clone());
+    host.ui.animated.insert(still.sha256().to_owned());
+    let card = crate::profile::card_of(&host.ui, &host.store, None, ada, &Look::DARK).unwrap();
+    assert!(card.theme.is_some_and(|theme| theme.dark));
+    assert_eq!(card.image, Some(still));
+    assert!(
+        card.avatar_playing && !card.banner_playing,
+        "the banner is not loaded"
+    );
+    // With motion reduced, nothing moves nor is asked for.
+    host.ui.reduced_motion = true;
+    let card = crate::profile::card_of(&host.ui, &host.store, None, ada, &Look::DARK).unwrap();
+    assert!(
+        !card.avatar_playing && card.image.is_none(),
+        "the still one, not loaded"
+    );
+    assert!(!wanted_images(&host.ui, &host.store, &host.tree).contains(&moving_face));
+    // A picture changed since moves no more: the moving one was another's.
+    host.ui.reduced_motion = false;
+    let mut account = host.store.user(ada).unwrap().clone();
+    account.avatar = Some(picture("nueva.png", ImageKind::Artwork));
+    host.event(Event::UserChanged(account));
+    assert_eq!(
+        crate::profile::moving_pictures(&host.ui, &host.store, ada, None),
+        [None, Some(&moving_banner)]
+    );
+}
+
+#[test]
+fn a_name_style_shows_whole_outside_servers_only_its_font_in_them_and_never_hidden() {
+    let mut host = Host::new();
+    // Camila (simulated) writes her name in a neon style, in a font the
+    // simulation has no face for.
+    let camila = UserId(12);
+    let direct = host
+        .store
+        .directs()
+        .into_iter()
+        .find(|channel| channel.kind == ChannelKind::Direct && channel.recipients == [camila])
+        .map(|channel| channel.id)
+        .unwrap();
+    host.click("home");
+    host.click(&format!("channel:{direct}"));
+    host.tree.scroll_to_end(&timeline_id(direct));
+    let name = host.store.display_name(camila, None);
+    let in_font = |frame: &Frame| {
+        frame
+            .commands
+            .iter()
+            .filter(|command| {
+                matches!(command, limn::DrawCommand::Text {
+                    text,
+                    font_family: limn::FontFamily::Custom(1),
+                    ..
+                } if *text == name)
+            })
+            .count()
+    };
+    let glowing = |frame: &Frame| {
+        frame.commands.iter().any(|command| match command {
+            limn::DrawCommand::TextEffect { runs, .. } => runs
+                .iter()
+                .any(|run| matches!(run, limn::DrawCommand::Text { text, .. } if *text == name)),
+            _ => false,
+        })
+    };
+    // Her messages' name and the profile beside the conversation.
+    let frame = host.frame();
+    assert!(in_font(&frame) >= 2, "{}", in_font(&frame));
+    assert!(glowing(&frame));
+    assert_eq!(wanted_fonts(&frame), vec![1], "its face is asked for");
+    // In a server her name keeps its font, in her role's color, without
+    // the effect; her card there shows all of it.
+    let server = host
+        .store
+        .servers()
+        .iter()
+        .find(|server| host.store.member_of(server.id, camila).is_some())
+        .map(|server| server.id)
+        .unwrap();
+    let look = host.ui.look();
+    let marks = crate::identity::marks(&host.ui, &host.store, Some(server), camila, &look);
+    let style = marks.style.unwrap();
+    assert_eq!(
+        (style.font, style.effect, style.colors.len()),
+        (Some(1), NameEffect::Solid, 0)
+    );
+    let card = crate::identity::card(&host.ui, &host.store, Some(server), camila, &[], &look);
+    let style = card.marks.style.unwrap();
+    assert_eq!((style.effect, style.colors.len()), (NameEffect::Neon, 2));
+    // Hidden in the settings: neither drawn nor asked for.
+    host.ui.prefs.cosmetics.name_styles = false;
+    host.click("home");
+    host.click(&format!("channel:{direct}"));
+    let frame = host.frame();
+    assert_eq!((in_font(&frame), glowing(&frame)), (0, false));
+    assert!(wanted_fonts(&frame).is_empty());
 }

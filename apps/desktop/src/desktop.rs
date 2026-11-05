@@ -640,7 +640,7 @@ impl Desktop {
 
     /// Install `fonts` with the system's fallbacks found so far after them.
     fn install(&mut self, ctx: &egui::Context, fonts: egui::FontDefinitions) {
-        ctx.set_fonts(self.fallbacks.with(&fonts));
+        set_fonts(ctx, self.fallbacks.with(&fonts));
         self.base_fonts = Some(fonts);
     }
 
@@ -655,7 +655,7 @@ impl Desktop {
         let wake = self.wake.clone();
         match self.fallbacks.step(base, |work| background(wake, work)) {
             Some(fonts) => {
-                ctx.set_fonts(fonts);
+                set_fonts(ctx, fonts);
                 true
             }
             None => false,
@@ -723,6 +723,13 @@ impl Desktop {
         }
         true
     }
+}
+
+/// Give egui `fonts` with the faces of the name fonts installed so far
+/// (`limn_egui::install_face`), which a copy made before them lacks.
+fn set_fonts(ctx: &egui::Context, mut fonts: egui::FontDefinitions) {
+    limn_egui::add_installed_faces(&mut fonts);
+    ctx.set_fonts(fonts);
 }
 
 /// Mada, the free face nearest Discord's gg sans, with gg sans' line

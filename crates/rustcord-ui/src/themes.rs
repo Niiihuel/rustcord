@@ -520,7 +520,7 @@ fn rgb(color: Color) -> Rgb {
     Rgb(u32::from(color.r) << 16 | u32::from(color.g) << 8 | u32::from(color.b))
 }
 
-fn color_of(rgb: Rgb) -> Color {
+pub(crate) fn color_of(rgb: Rgb) -> Color {
     let (r, g, b) = rgb.channels();
     Color::rgb(r, g, b)
 }

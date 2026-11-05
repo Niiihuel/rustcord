@@ -245,10 +245,10 @@ y Windows; sin las dependencias que sólo usan los tests), agrupado por el
 texto de su licencia. Donde un crate ofrece varias licencias a elección, se
 muestra una.
 
-- MIT License: 615
+- MIT License: 617
 - Apache License 2.0: 22
+- BSD 3-Clause "New" or "Revised" License: 21
 - Unicode License v3: 21
-- BSD 3-Clause "New" or "Revised" License: 20
 - Mozilla Public License 2.0: 16
 - ISC License: 4
 - BSD 2-Clause "Simplified" License: 3
@@ -2287,6 +2287,26 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+````
+
+### BSD 3-Clause "New" or "Revised" License
+
+- alloc-no-stdlib 3.0.0, <https://github.com/dropbox/rust-alloc-no-stdlib>
+
+````text
+Copyright (c) 2016 Dropbox, Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ````
 
@@ -9784,6 +9804,7 @@ SOFTWARE.
 - accesskit_unix 0.24.1, <https://github.com/AccessKit/accesskit>
 - accesskit_windows 0.35.2, <https://github.com/AccessKit/accesskit>
 - anymap3 1.1.0, <https://github.com/reivilibre/anymap3>
+- brotli-decompressor 6.2.0, <https://github.com/dropbox/rust-brotli-decompressor>
 - chrono 0.4.45, <https://github.com/chronotope/chrono>
 - cookie-factory 0.3.3, <https://github.com/rust-bakery/cookie-factory>
 - dasp_sample 0.11.0, <https://github.com/rustaudio/sample.git>
@@ -9826,6 +9847,7 @@ SOFTWARE.
 - windows 0.62.2, <https://github.com/microsoft/windows-rs>
 - windows_x86_64_gnu 0.52.6, <https://github.com/microsoft/windows-rs>
 - windows_x86_64_msvc 0.52.6, <https://github.com/microsoft/windows-rs>
+- wuff 0.2.10, <https://github.com/nicoburns/wuff>
 
 ````text
 MIT License

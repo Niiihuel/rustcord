@@ -31,6 +31,7 @@ mod keys;
 mod local_history;
 mod profile_images;
 mod read_states;
+mod spotify;
 mod storage;
 mod tallies;
 mod theme_files;
@@ -68,6 +69,7 @@ pub use images::{
     CacheLimits as ImageCacheLimits, CachePart as ImageCachePart, CacheUsage as ImageCacheUsage,
 };
 pub use local_history::LocalReadResult;
+pub use spotify::SpotifyResult;
 
 /// Decode and fit `bytes` as the image service would the picture `source`
 /// names, for pictures made on this machine (the capture's simulated ones).
@@ -257,6 +259,8 @@ pub struct Client {
     documents: documents::Documents,
     clips: clips::Clips,
     invitations: invitations::Invitations,
+    /// The cards of Spotify links, apart from the account and its provider.
+    spotify: spotify::Spotify,
     invitation_acceptance: invitation_acceptance::PendingAcceptance,
     gifs: gifs::GifSearch,
     group_icons: group_icons::GroupIcons,
@@ -367,6 +371,7 @@ impl Client {
             config.wake.clone(),
         );
         let gifs = gifs::GifSearch::new(runtime.handle().clone(), None, config.wake.clone());
+        let spotify = spotify::Spotify::new(runtime.handle().clone(), config.wake.clone());
         let storage_identity = provider.storage_identity();
         let legacy_namespace = provider.legacy_storage_namespace();
         let former_providers = provider.former_storage_providers();
@@ -446,6 +451,7 @@ impl Client {
             documents,
             clips,
             invitations,
+            spotify,
             invitation_acceptance: Default::default(),
             gifs,
             group_icons,
@@ -918,6 +924,20 @@ impl Client {
         self.invitations.poll_card()
     }
 
+    /// Look up what Spotify's embed player shows of a Spotify link in the
+    /// timeline; at most four run at once.
+    pub fn preview_spotify(
+        &mut self,
+        request: RequestId,
+        link: rustcord_model::spotify::SpotifyLink,
+    ) {
+        self.spotify.start(request, link);
+    }
+
+    pub fn poll_spotify(&mut self) -> Option<SpotifyResult> {
+        self.spotify.poll()
+    }
+
     /// Configure an independent GIF service, never the account provider's key.
     pub fn configure_gifs(&mut self, config: Option<gifs::GiphyConfig>) {
         self.gifs.configure(config);
@@ -1008,6 +1028,15 @@ impl Client {
         // (another account's Ready, a cache cut short) keeps nothing there.
         self.images.disk.trusted = self.storage_active;
         self.images.load(wanted)
+    }
+
+    /// The faces (TrueType or OpenType) of the name fonts `wanted`, the
+    /// ones painted now, that arrived since the last call, each once; the
+    /// host installs them. Fetched as pictures are, from where the provider
+    /// says, and kept on disk with them.
+    pub fn load_fonts(&mut self, wanted: &[u16]) -> Vec<(u16, Arc<[u8]>)> {
+        self.images.disk.trusted = self.storage_active;
+        self.images.load_fonts(wanted)
     }
 
     /// The budgets and retention of the pictures kept on disk. Nothing is

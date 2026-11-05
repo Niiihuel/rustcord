@@ -25,6 +25,25 @@ pub const UNREAD_CLEAR: &str = "unread:clear";
 /// How many emoji the account's recent ones keep.
 const RECENT: usize = 18;
 
+/// Follow the emoji under the pointer in an open picker, as Discord's
+/// selection does: it is highlighted and named in the footer.
+pub(crate) fn hold_hovered_emoji(ui: &mut Ui, tree: &limn::UiTree) -> Vec<Intent> {
+    let hovered = tree.hovered_id().and_then(|id| {
+        [
+            composer_ids::EMOJI,
+            rustcord_components::message::react_ids::BASE,
+        ]
+        .iter()
+        .find_map(|base| id.strip_prefix(base)?.strip_prefix('='))
+        .map(str::to_owned)
+    });
+    if hovered.is_none() || hovered == ui.messages.emoji_hovered {
+        return Vec::new();
+    }
+    ui.messages.emoji_hovered = hovered;
+    vec![Intent::Repaint]
+}
+
 /// The state of what is done with messages, beyond what [`Ui`] had.
 #[derive(Debug, Default)]
 pub struct Messages {
@@ -45,6 +64,8 @@ pub struct Messages {
     pub plus: bool,
     /// What the open emoji picker searches.
     pub query: String,
+    /// The emoji under the pointer in an open picker.
+    pub emoji_hovered: Option<String>,
     /// The emoji the account used lately, the most recent first.
     pub recent: Vec<String>,
     /// What the message being edited says now.
@@ -553,6 +574,8 @@ fn delete(ui: &mut Ui, channel: ChannelId, message: MessageId) -> Vec<Intent> {
 /// Reopen the picker with the input belonging to its active tab focused.
 fn open_picker(ui: &mut Ui, base: &str) -> Vec<Intent> {
     ui.messages.query.clear();
+    // A picker opens on its first emoji, not the last one pointed at.
+    ui.messages.emoji_hovered = None;
     let field =
         if base == composer_ids::EMOJI && ui.messages.expression_tab == emoji::PickerTab::Gif {
             if ui.messages.gifs.available {
@@ -753,14 +776,17 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
         let message = MessageId(message.parse().ok()?);
         return Some(react(ui, store, channel?, message, emoji));
     }
-    if let Some(glyph) = id.strip_prefix(react_ids::PICK) {
+    if let Some(glyph) = id.strip_prefix(react_ids::PICK).map(emoji::ids::glyph) {
         let target = ui.reacting.take();
         return Some(match (channel, target) {
             (Some(channel), Some(message)) => react(ui, store, channel, message, glyph),
             _ => Vec::new(),
         });
     }
-    if let Some(glyph) = id.strip_prefix(composer_ids::EMOJI_PICK) {
+    if let Some(glyph) = id
+        .strip_prefix(composer_ids::EMOJI_PICK)
+        .map(emoji::ids::glyph)
+    {
         ui.emoji_open = false;
         return Some(insert_emoji(ui, channel?, glyph, now));
     }
@@ -913,6 +939,10 @@ fn message_action(
                 rustcord_model::HistorySource::Provider,
             )
         }));
+    }
+    // The player of a Spotify link of the message.
+    if let Some(what) = what.strip_prefix("spotify:") {
+        return Some(crate::spotify::act(ui, store, channel, message, what));
     }
     // The `index`th invitation card of the message.
     if let Some((index, what)) = what
@@ -1307,6 +1337,7 @@ pub(crate) fn composer(
                 recent: &ui.messages.recent,
                 placeholder: t("Encuentra el emoji ideal"),
                 tabs: true,
+                hovered: ui.messages.emoji_hovered.as_deref(),
                 expressions: Some(emoji::ExpressionView {
                     tab: ui.messages.expression_tab,
                     custom: &custom,

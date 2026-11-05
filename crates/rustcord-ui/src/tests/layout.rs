@@ -465,8 +465,9 @@ fn timeline_hover_stops_before_the_composer_even_when_it_grows() {
             })
             .expect("the composer surface below the timeline");
         let clearance = card.y - (timeline.y + timeline.height);
+        // The strip of who is typing, as Discord's over its box.
         assert!(
-            (8.0..=12.0).contains(&clearance),
+            (18.0..=22.0).contains(&clearance),
             "the last message needs a compact, non-interactive gap: {clearance} ({draft:?})"
         );
         let between = Point::new(card.x + card.width / 2.0, card.y - clearance / 2.0);

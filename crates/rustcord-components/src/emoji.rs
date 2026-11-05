@@ -859,6 +859,15 @@ pub mod ids {
         format!("{base}={glyph}")
     }
 
+    /// The frequent row repeats emoji of the sections under it: its cells
+    /// end in this, so that each cell's id is its own.
+    pub const FREQUENT: &str = "~frequent";
+
+    /// The emoji a pick's rest names, without the row it was picked in.
+    pub fn glyph(rest: &str) -> &str {
+        rest.strip_suffix(FREQUENT).unwrap_or(rest)
+    }
+
     /// Its search field.
     pub fn search(base: &str) -> String {
         format!("{base}:search")
@@ -893,6 +902,9 @@ pub struct PickerView<'a> {
     pub tabs: bool,
     /// Real catalog/media content for the composer's additional tabs.
     pub expressions: Option<ExpressionView<'a>>,
+    /// The emoji under the pointer: the one highlighted and in the footer,
+    /// as Discord's selection follows the pointer.
+    pub hovered: Option<&'a str>,
 }
 
 /// The full picker's surface: the composer's, and the reactions' a little
@@ -950,10 +962,10 @@ pub fn full_picker(view: PickerView<'_>, look: &Look) -> Element {
         view.placeholder,
         look.menu_palette(),
     )
-    .width(289.0)
     .accessibility_label(t("Buscar emoji"))
     .render();
-    header.push(Element::row(vec![field, Element::spacer().flex(1.0)]).size(None, Some(38.5)));
+    // Across the header, as Discord's.
+    header.push(Element::row(vec![field.flex(1.0)]).size(None, Some(38.5)));
     let searching = !view.query.trim().is_empty();
     let frequent = frequent(view.recent, GRID_COLUMNS * 2);
     let found: Vec<&'static str> = if searching {
@@ -964,11 +976,18 @@ pub fn full_picker(view: PickerView<'_>, look: &Look) -> Element {
     } else {
         Vec::new()
     };
-    let highlighted = if searching {
-        found.first().copied()
-    } else {
-        frequent.first().map(String::as_str)
-    };
+    // A cell's key: its emoji, and the frequent row's mark in that row.
+    let first_frequent = frequent
+        .first()
+        .map(|glyph| format!("{glyph}{}", ids::FREQUENT));
+    let highlighted = view
+        .hovered
+        .filter(|key| find(ids::glyph(key)).is_some())
+        .or(if searching {
+            found.first().copied()
+        } else {
+            first_frequent.as_deref()
+        });
     let mut sections = Vec::new();
     if let Some(expressions) = &view.expressions {
         if !expressions.custom.is_empty() {
@@ -989,7 +1008,7 @@ pub fn full_picker(view: PickerView<'_>, look: &Look) -> Element {
                     .padding(12.0),
             );
         } else {
-            sections.push(grid(base, &found, highlighted, look));
+            sections.push(grid(base, &found, "", highlighted, look));
         }
     } else {
         let glyphs: Vec<&str> = frequent.iter().map(String::as_str).collect();
@@ -1042,7 +1061,7 @@ pub fn full_picker(view: PickerView<'_>, look: &Look) -> Element {
     .size(Some(RAIL), None)
     .background(look.raised);
     let body = Element::row(vec![rail, grid_area]).flex(1.0);
-    let footer = match highlighted.and_then(find) {
+    let footer = match highlighted.map(ids::glyph).and_then(find) {
         Some(emoji) => Element::row(vec![
             Element::text(emoji.glyph)
                 .font_family(FontFamily::Sans)
@@ -1115,17 +1134,30 @@ fn section(
     .gap(6.0)
     .padding(4.0)
     .size(None, Some(28.0));
-    Element::column(vec![heading, grid(base, glyphs, highlighted, look)])
+    let scope = if index == 0 { ids::FREQUENT } else { "" };
+    Element::column(vec![heading, grid(base, glyphs, scope, highlighted, look)])
         .anchor(ids::section(base, index))
 }
 
-fn grid(base: &str, glyphs: &[&str], highlighted: Option<&str>, look: &Look) -> Element {
+/// `glyphs` in rows; `scope` ends each cell's key ([`ids::FREQUENT`] in the
+/// frequent row), and the cell keyed `highlighted` is lit.
+fn grid(
+    base: &str,
+    glyphs: &[&str],
+    scope: &str,
+    highlighted: Option<&str>,
+    look: &Look,
+) -> Element {
     let rows = glyphs
         .chunks(GRID_COLUMNS)
         .map(|chunk| {
             let mut cells: Vec<Element> = chunk
                 .iter()
-                .map(|glyph| cell(base, glyph, highlighted == Some(*glyph), look))
+                .map(|glyph| {
+                    let key = format!("{glyph}{scope}");
+                    let lit = highlighted == Some(key.as_str());
+                    cell(base, glyph, &key, lit, look)
+                })
                 .collect();
             cells.push(Element::spacer().flex(1.0));
             Element::row(cells)
@@ -1134,8 +1166,8 @@ fn grid(base: &str, glyphs: &[&str], highlighted: Option<&str>, look: &Look) -> 
     Element::column(rows)
 }
 
-fn cell(base: &str, glyph: &str, highlighted: bool, look: &Look) -> Element {
-    let id = ids::pick(base, glyph);
+fn cell(base: &str, glyph: &str, key: &str, highlighted: bool, look: &Look) -> Element {
+    let id = ids::pick(base, key);
     let mut button = Element::clickable(
         id.clone(),
         crate::centered(
@@ -1220,6 +1252,7 @@ mod tests {
     fn the_full_picker_offers_its_search_categories_and_the_highlighted_emoji() {
         let recent = vec!["🦀".to_owned()];
         let view = |query| PickerView {
+            hovered: None,
             base: "react-pick",
             query,
             recent: &recent,
@@ -1234,7 +1267,11 @@ mod tests {
         let ids = controls(&frame);
         assert!(ids.contains(&"react-pick:search".to_owned()), "{ids:?}");
         assert!(ids.contains(&"react-pick:cat=3".to_owned()));
-        assert!(ids.contains(&"react-pick=🦀".to_owned()));
+        // In the frequent row, under an id of its own.
+        assert!(
+            ids.contains(&"react-pick=🦀~frequent".to_owned()),
+            "{ids:?}"
+        );
         let texts = crate::testing::texts(&frame);
         assert!(
             texts.iter().any(|text| text == ":crab:"),
@@ -1243,6 +1280,19 @@ mod tests {
         let (_, found) = frame_of(full_picker(view("fire"), &Look::DARK));
         assert!(controls(&found).contains(&"react-pick=🔥".to_owned()));
         assert!(!controls(&found).contains(&"react-pick=🦀".to_owned()));
+        // The emoji under the pointer is the one highlighted and named: one
+        // cell lit, not the first frequent one beside it too.
+        let pointed = PickerView {
+            hovered: Some("🔥"),
+            ..view("")
+        };
+        let (_, frame) = frame_of(full_picker(pointed, &Look::DARK));
+        let texts = crate::testing::texts(&frame);
+        assert!(
+            texts.iter().any(|text| text.contains(":fire:")),
+            "{texts:?}"
+        );
+        assert!(!texts.iter().any(|text| text == ":crab:"), "{texts:?}");
     }
 
     fn frame_of(element: Element) -> (limn::UiTree, limn::Frame) {

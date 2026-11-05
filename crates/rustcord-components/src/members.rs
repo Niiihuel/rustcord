@@ -148,7 +148,13 @@ pub fn member(row: &MemberRow, profile: Option<&Profile>, look: &Look) -> Elemen
     let name = if row.offline {
         name
     } else {
-        crate::identity::inked(name, row.ink, &row.marks.gradient)
+        crate::identity::styled(
+            name,
+            16.0,
+            (row.ink, &row.marks.gradient),
+            row.marks.style.as_ref(),
+            look,
+        )
     };
     let mut marks = crate::identity::after_name(&row.marks, 14.0, look);
     if row.owner {
@@ -261,8 +267,11 @@ mod tests {
         let profile = Profile {
             identity: Default::default(),
             image: None,
+            avatar_playing: false,
             banner: None,
+            banner_playing: false,
             banner_tint: None,
+            theme: None,
             name: "Ada".into(),
             handle: "ada".into(),
             accent: Color::rgb(90, 120, 200),

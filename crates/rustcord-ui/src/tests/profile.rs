@@ -1924,6 +1924,14 @@ fn pf_a_direct_conversation_shows_its_persons_profile_beside_it_until_hidden() {
     // Opening it asks for her profile, as Discord's panel does.
     host.answer_profile();
     let shown = host.painted();
+    // She talks in «Sala común»: her voice card leads the cards.
+    for expected in ["En el canal de voz", "Sala común", "Unirse al chat de voz"] {
+        assert!(shown.iter().any(|t| t == expected), "{expected}: {shown:?}");
+    }
+    // Out of voice, the rest of the panel fits the window.
+    let channel = host.store.voice_state_of(ada).unwrap().channel;
+    host.event(Event::VoiceLeft { channel, user: ada });
+    let shown = host.painted();
     for expected in [
         "Colección de juegos",
         "+1",

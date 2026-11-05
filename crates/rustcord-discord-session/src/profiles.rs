@@ -83,6 +83,23 @@ fn banner(value: Option<&Value>, path: &str) -> ProfileBanner {
     }
 }
 
+/// A profile's `theme_colors`: two colors, the primary then the accent.
+fn theme(value: &Value) -> Option<(Rgb, Rgb)> {
+    match value.as_array()?.as_slice() {
+        [primary, accent] => Some((self::accent(primary)?, self::accent(accent)?)),
+        _ => None,
+    }
+}
+
+/// The first of `places` (a hash and its CDN folder) that is a picture,
+/// with its moving one when it moves, as [`either`] picks banners.
+fn moving(places: &[(Option<&Value>, String)], banner: bool) -> Option<(RemoteImage, RemoteImage)> {
+    let (hash, path) = places
+        .iter()
+        .find(|(hash, path)| hash.is_some_and(|hash| wire::cdn(path, banner, hash).is_some()))?;
+    wire::moving(path, banner, (*hash)?)
+}
+
 /// The first of two places that reports a banner, else the second.
 fn either(first: ProfileBanner, second: ProfileBanner) -> ProfileBanner {
     match first {
@@ -369,11 +386,18 @@ pub(crate) fn profile(
         ..Default::default()
     };
     let member = &value["guild_member"];
+    let scoped = &value["guild_member_profile"];
+    // What can move: a server's own picture and banner first, as the card
+    // shows them, then theirs.
+    let mut avatars = vec![(account.get("avatar"), format!("avatars/{user}"))];
+    let mut banners = vec![
+        (global.get("banner"), format!("banners/{user}")),
+        (account.get("banner"), format!("banners/{user}")),
+    ];
     if let (Some(server), true) = (server, member.is_object()) {
         if !member["user"].is_null() && wire::id(&member["user"]["id"])? != user.0 {
             return Err(wire::invalid());
         }
-        let scoped = &value["guild_member_profile"];
         if !scoped["guild_id"].is_null() && wire::id(&scoped["guild_id"])? != server.0 {
             return Err(wire::invalid());
         }
@@ -386,7 +410,21 @@ pub(crate) fn profile(
             banner(member.get("banner"), &path),
         );
         profile.joined = wire::timestamp(&member["joined_at"]).ok();
+        profile.theme = theme(&scoped["theme_colors"]);
+        let avatar = format!("guilds/{server}/users/{user}/avatars");
+        avatars.insert(0, (member.get("avatar"), avatar));
+        banners.splice(
+            0..0,
+            [
+                (scoped.get("banner"), path.clone()),
+                (member.get("banner"), path),
+            ],
+        );
     }
+    // Only colors they chose: Discord's fallback from the avatar is left out.
+    profile.theme = profile.theme.or_else(|| theme(&global["theme_colors"]));
+    profile.moving_avatar = moving(&avatars, false);
+    profile.moving_banner = moving(&banners, true);
     // The server's emoji the texts name, drawn in place.
     profile.pictures = crate::emoji::pictures(
         [&profile.about, &profile.server_about]
@@ -634,6 +672,50 @@ mod tests {
             "only Discord's CDN, else the product's still"
         );
         assert_eq!(wishlist(&answer, UserId(44)), None, "someone else's");
+    }
+
+    #[test]
+    fn theme_colors_and_moving_pictures_are_the_servers_first() {
+        let animated = format!("a_{HASH}");
+        let value = json!({
+            "user": {"id":"43","username":"peer","avatar":animated,"banner":HASH},
+            "user_profile": {"theme_colors":[16711680, 255],"banner":animated},
+            "guild_member": {"user":{"id":"43"},"roles":[],"avatar":HASH},
+            "guild_member_profile": {"guild_id":"10","theme_colors":[1, 2],"banner":null}
+        });
+        let events = profile(&value, 1, UserId(43), Some(ServerId(10)), true).unwrap();
+        let here = loaded(&events);
+        assert_eq!(here.theme, Some((Rgb(1), Rgb(2))));
+        assert_eq!(
+            here.moving_avatar, None,
+            "the server's still picture is shown"
+        );
+        let (still, moving) = here.moving_banner.clone().unwrap();
+        assert_eq!(
+            here.banner.image(),
+            Some(&still),
+            "it moves for the one shown"
+        );
+        assert_eq!(
+            moving.url,
+            format!("https://cdn.discordapp.com/banners/43/a_{HASH}.webp?size=512&animated=true")
+        );
+        assert_eq!(moving.kind, ImageKind::AttachmentPreview, "frames kept");
+        let events = profile(&value, 1, UserId(43), None, true).unwrap();
+        let theirs = loaded(&events);
+        assert_eq!(theirs.theme, Some((Rgb(0xFF0000), Rgb(0xFF))));
+        let (still, moving) = theirs.moving_avatar.clone().unwrap();
+        assert_eq!(wire::user(&value["user"]).unwrap().avatar, Some(still));
+        assert_eq!(
+            moving.url,
+            format!("https://cdn.discordapp.com/avatars/43/a_{HASH}.webp?size=128&animated=true")
+        );
+        // Not two colors, or a still banner: nothing.
+        let plain = json!({"user": {"id":"43","username":"peer","banner":HASH},
+            "user_profile": {"theme_colors":[1]}});
+        let events = profile(&plain, 1, UserId(43), None, true).unwrap();
+        let plain = loaded(&events);
+        assert!(plain.theme.is_none() && plain.moving_banner.is_none());
     }
 
     #[test]

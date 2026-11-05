@@ -3216,6 +3216,14 @@ pub trait Provider: Send + Sync + 'static {
         None
     }
 
+    /// Where the face of the name font `id` (`NameStyle::font`) is: a
+    /// WOFF2 file over HTTPS, without the account's credentials, that the
+    /// core downloads once a name in it is shown. `None` writes such names
+    /// in the interface's own face.
+    fn name_font(&self, _id: u16) -> Option<String> {
+        None
+    }
+
     /// Recognize an invitation without I/O. Protocol-specific URL rules stay here.
     fn invitation_target(&self, _url: &str) -> Option<InvitationTarget> {
         None

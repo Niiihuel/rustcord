@@ -6,6 +6,25 @@ use rustcord_model::{ChannelId, RemoteImage, ServerId, UserId};
 use rustcord_state::Store;
 use std::collections::HashSet;
 
+/// The name fonts (`FontFamily::Custom`) `frame` paints, each once: the
+/// host has the core fetch the faces of these and installs them as they
+/// come, so a font is downloaded only once a name in it is shown.
+pub fn wanted_fonts(frame: &limn::Frame) -> Vec<u16> {
+    let mut fonts = Vec::new();
+    for command in &frame.commands {
+        if let limn::DrawCommand::Text {
+            font_family: limn::FontFamily::Custom(font),
+            ..
+        } = command
+        {
+            if !fonts.contains(font) {
+                fonts.push(*font);
+            }
+        }
+    }
+    fonts
+}
+
 /// The host calls this after layout. Virtualized timelines contribute only
 /// their visible rows; navigation uses hit regions already cut to the viewport.
 pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> {
@@ -55,7 +74,7 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
     // What the profile shown carries: activities, badges, marks, games.
     crate::identity::wanted(ui, store, &mut add);
     if let Some((user, server)) = crate::identity::shown(ui, store) {
-        crate::profile::wanted(store, user, server, &mut add);
+        crate::profile::wanted(ui, store, user, server, &mut add);
     }
     // The profile beside a direct conversation: the same, and the faces of
     // the first mutual friends.
@@ -75,6 +94,10 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             .flatten()
         {
             add(badge.icon.as_ref());
+            add(badge.detail.as_ref().and_then(|detail| detail.art.as_ref()));
+        }
+        for person in crate::identity::voice_people(store, user) {
+            add(store.avatar_in(None, person));
         }
         // The emoji of its custom status and of its bio.
         add(store
@@ -94,7 +117,7 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             add(store.user(*friend).and_then(|friend| friend.picture()));
         }
         crate::identity::face_marks(ui, store, None, user, false, &mut add);
-        crate::profile::wanted(store, user, None, &mut add);
+        crate::profile::wanted(ui, store, user, None, &mut add);
     }
     // The faces and pictures of the message search's results.
     crate::search::wanted(ui, store, tree, &mut add);
@@ -281,6 +304,9 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
                     }
                     for source in card_sources(ui, message, obscure) {
                         add(Some(&source));
+                    }
+                    for cover in crate::spotify::images(ui, message) {
+                        add(Some(cover));
                     }
                     let revealed = ui.messages.revealed.get(&message.id);
                     let copy = message.forwarded.as_ref();

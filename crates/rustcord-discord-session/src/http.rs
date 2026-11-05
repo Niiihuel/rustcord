@@ -894,6 +894,30 @@ impl Http {
                     Ok(answer) => profile.wishlist = crate::profiles::wishlist(&answer, user),
                 }
             }
+            // What the catalog of badges says of theirs, for the badges'
+            // hints; the official client reads it with the profile.
+            if let Some(badges) = profile
+                .badges
+                .as_mut()
+                .filter(|badges| crate::identity::has_catalog(badges))
+            {
+                // Mutuals are asked about someone else only.
+                let path = crate::identity::badges_path(user, !mutuals);
+                match self
+                    .request(
+                        secret,
+                        Method::GET,
+                        &path,
+                        None,
+                        crate::profiles::MAX_RESPONSE,
+                    )
+                    .await
+                {
+                    Err(error) if error.ends_session => return Err(error),
+                    Err(_) => {}
+                    Ok(answer) => crate::identity::badge_catalog(&answer, badges),
+                }
+            }
         }
         Ok(events)
     }

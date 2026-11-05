@@ -41,6 +41,10 @@ serde_json.workspace = true
 # MIT/Apache-2.0. Without its default features: no GIF export, embedded
 # images or text layers, which stickers that need them do without.
 rasterlottie = { version = "=0.2.4", default-features = false }
+# The faces of name fonts come as WOFF2, which egui does not read: wuff
+# decodes them to TrueType, in pure Rust (with brotli-decompressor), with
+# limits on what a file may grow to; maintained, MIT.
+wuff = { version = "0.2.10", default-features = false, features = ["brotli"] }
 # Pictures kept on disk are written beside their place, 0600 under a random
 # name, and moved in whole; the tests' private fixtures use it too. It was a
 # dependency of the tests already, and its own are in the tree.

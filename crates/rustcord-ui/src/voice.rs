@@ -292,7 +292,7 @@ fn channel_clicked(
 
 /// Show `channel`: the call's stage when the account is in it, else its
 /// preview, inviting to join.
-fn show(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<Intent> {
+pub(crate) fn show(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<Intent> {
     let intents = if ui.voice.chat.is_some() && shown_stage(ui) != Some(channel) {
         keeping_stage(ui, |ui| hide_chat(ui, store))
     } else {

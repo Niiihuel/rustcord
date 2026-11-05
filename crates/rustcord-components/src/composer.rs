@@ -127,7 +127,7 @@ const CARD_PADDING: f32 = 8.0;
 const CONTROL_GAP: f32 = 6.0;
 const TEXT_PADDING: f32 = EDITOR_PADDING - CARD_PADDING;
 
-/// The composer, with the line of who is typing under it.
+/// The composer, with the line of who is typing over it.
 pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     let palette = raised_palette(look);
     let enabled = view.disabled.is_none();
@@ -332,7 +332,13 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     } else {
         typing
     };
-    Element::column(vec![card, typing.size(None, Some(20.0))]).gap(2.0)
+    // As Discord's: who is typing over the box, 16 in, and the box 10 off the
+    // window's foot, level with the account's panel.
+    Element::column(vec![
+        Element::row(vec![gap(16.0, 0.0), typing.flex(1.0)]).size(None, Some(20.0)),
+        card,
+        gap(0.0, 10.0),
+    ])
 }
 
 /// The «+» before the editor and its menu: what can be added to a message.

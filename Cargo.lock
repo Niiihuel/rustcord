@@ -220,6 +220,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "alloc-no-stdlib"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2fb6cfd47bf496ff64095c20eaba0c201404ee38714d4142fcfa1dc334fcc7a"
+
+[[package]]
 name = "allocator-api2"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,6 +712,15 @@ dependencies = [
  "futures-io",
  "futures-lite",
  "piper",
+]
+
+[[package]]
+name = "brotli-decompressor"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34c6783f42c21c952ad7112b354f0ba2f10760e9decea5b1b60523d6e270faaf"
+dependencies = [
+ "alloc-no-stdlib",
 ]
 
 [[package]]
@@ -3632,7 +3647,7 @@ dependencies = [
 [[package]]
 name = "limn"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#8ae884eb3449bdcba4d1b70b1557969b52b6a6b8"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#1181e840b071d9381b1873122062b1b1b7356e9e"
 dependencies = [
  "limn-editor",
  "unicode-linebreak",
@@ -3645,7 +3660,7 @@ dependencies = [
 [[package]]
 name = "limn-editor"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#8ae884eb3449bdcba4d1b70b1557969b52b6a6b8"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#1181e840b071d9381b1873122062b1b1b7356e9e"
 dependencies = [
  "regex",
  "ropey",
@@ -3657,7 +3672,7 @@ dependencies = [
 [[package]]
 name = "limn-egui"
 version = "0.1.43"
-source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#8ae884eb3449bdcba4d1b70b1557969b52b6a6b8"
+source = "git+https://github.com/Niiihuel/limn?branch=rune%2Fintegration-2026-11-05#1181e840b071d9381b1873122062b1b1b7356e9e"
 dependencies = [
  "base64 0.22.1",
  "eframe",
@@ -3665,6 +3680,7 @@ dependencies = [
  "limn",
  "resvg",
  "sha2 0.10.9",
+ "skrifa",
  "unicode-segmentation",
 ]
 
@@ -5827,6 +5843,7 @@ dependencies = [
  "tokio",
  "url",
  "windows",
+ "wuff",
 ]
 
 [[package]]
@@ -8730,6 +8747,16 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "wuff"
+version = "0.2.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a992b57b3d1ee972b2e3fd9225e44793104d49818836dd812d5459187712dd"
+dependencies = [
+ "brotli-decompressor",
+ "bytes",
+]
 
 [[package]]
 name = "x11-dl"

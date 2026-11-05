@@ -540,7 +540,11 @@ fn viewer_picture(name: &str, original: bool) -> Option<image::RgbaImage> {
 /// Simulated records, a forward, an app's card with a picture, a voted poll
 /// and one still to vote after the latest message, to see rich content
 /// drawn; nothing reaches a provider. Returns the picture to serve locally.
-pub fn rich(store: &mut Store, ui: &mut Ui) -> Option<(RemoteImage, limn::RasterImage)> {
+pub fn rich(
+    store: &mut Store,
+    ui: &mut Ui,
+    spotify: bool,
+) -> Option<(RemoteImage, limn::RasterImage)> {
     use rustcord_model::{Embed, EmbedField, EmbedImage, Forwarded, MessageKind, Poll, PollAnswer};
     let base = ui.channel().and_then(|channel| {
         let timeline = store.timeline(channel)?;
@@ -737,10 +741,25 @@ pub fn rich(store: &mut Store, ui: &mut Ui) -> Option<(RemoteImage, limn::Raster
     }];
     let mut parts = blank(9, MessageKind::Default);
     parts.components = app_parts(&source);
+    // A Spotify link with the card its provider sent, which Spotify's
+    // player takes the place of ([`spotify`]).
+    let mut listen = blank(10, MessageKind::Default);
+    listen.content = format!("Lo que suena en el ensayo (simulado) {SPOTIFY}");
+    listen.embeds = vec![Embed {
+        provider: Some("Spotify".into()),
+        title: Some("Ensayos del jueves".into()),
+        url: Some(SPOTIFY.into()),
+        ..Embed::default()
+    }];
+    let messages = if spotify {
+        vec![listen]
+    } else {
+        vec![
+            pinned, boost, card, poll, forward, open, result, voice, parts,
+        ]
+    };
     let at = std::time::Instant::now();
-    for message in [
-        pinned, boost, card, poll, forward, open, result, voice, parts,
-    ] {
+    for message in messages {
         let applied = store.apply(
             Event::MessageCreated {
                 message,
@@ -1185,8 +1204,8 @@ pub fn simulated(
             } else {
                 0
             }
-        } else if distance < 60.0 || path.starts_with("juegos/") {
-            // A game's icon fills its square.
+        } else if distance < 60.0 || path.starts_with("juegos/") || path.starts_with("portadas/") {
+            // A game's icon, or a cover, fills its square.
             255
         } else {
             0
@@ -1200,6 +1219,40 @@ pub fn simulated(
         .ok()?;
     let data = rustcord_core::normalize_image(png.get_ref(), source, density)?;
     super::preview(&data, rustcord_i18n::t("Imagen simulada")).map(|image| (image, data.color))
+}
+
+/// The capture's Spotify link: a playlist that does not exist.
+const SPOTIFY: &str = "https://open.spotify.com/playlist/0000000000000000000000";
+
+/// What Spotify's player shows of the capture's link, made up here: the
+/// capture never reaches Spotify. Its previews play the simulation's sample.
+pub fn spotify(
+    link: &rustcord_model::spotify::SpotifyLink,
+) -> Option<rustcord_model::spotify::SpotifyEntity> {
+    use rustcord_model::spotify::{SpotifyEntity, SpotifyLink, SpotifyTrack};
+    let track = |title: &str, subtitle: &str, seconds: u64, explicit: bool| SpotifyTrack {
+        title: title.into(),
+        subtitle: subtitle.into(),
+        duration_ms: seconds * 1000,
+        explicit,
+        preview: Some("https://p.scdn.co/mp3-preview/simulada".into()),
+    };
+    (Some(link) == SpotifyLink::parse(SPOTIFY).as_ref()).then(|| SpotifyEntity {
+        title: "Ensayos del jueves (simulada)".into(),
+        subtitle: "Rustcord".into(),
+        cover: Some(RemoteImage {
+            url: "https://simulacion.invalid/portadas/ensayos.png".into(),
+            kind: ImageKind::AttachmentPreview,
+        }),
+        color: Some(rustcord_model::Rgb(0x66_50_00)),
+        tracks: vec![
+            track("Tono de prueba", "Rustcord, La Banda Simulada", 255, true),
+            track("Patrón de colores", "Rustcord", 203, false),
+            track("Cuatro segundos", "La Banda Simulada", 187, true),
+            track("Silencio de ensayo", "Rustcord", 242, false),
+            track("Eco local", "Rustcord, Ada", 198, false),
+        ],
+    })
 }
 
 #[cfg(test)]

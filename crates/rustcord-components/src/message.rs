@@ -20,6 +20,7 @@ mod components;
 mod embeds;
 mod media;
 mod skeleton;
+mod spotify;
 mod viewer;
 mod voice;
 pub use attachments::ids as attachment_ids;
@@ -31,6 +32,7 @@ pub use components::{
 pub use embeds::{card_explicit, card_picture, card_spoiler};
 pub use media::{controls as media_controls, media_surface, playable, Playable};
 pub use skeleton::history_skeleton;
+pub use spotify::{spotify_action, SpotifyNow, SpotifyPlayer};
 pub use viewer::{
     details as viewer_details, entries as viewer_entries, lead as viewer_lead, more as viewer_more,
 };
@@ -206,6 +208,8 @@ pub struct Live<'a> {
     pub recent: &'a [String],
     /// What the picker of reactions searches, while open on the row.
     pub query: &'a str,
+    /// The emoji under the pointer in that picker.
+    pub hovered_emoji: Option<&'a str>,
     /// What its text can mention.
     pub names: Option<&'a Names>,
     /// Its spoilers shown, by their order in the text.
@@ -218,6 +222,9 @@ pub struct Live<'a> {
     /// the order of [`invitation_links`]; a link without one only offers to
     /// review it.
     pub invitations: &'a [InvitationCard],
+    /// The players of its Spotify links whose data arrived, each in place
+    /// of its card.
+    pub spotify: &'a [SpotifyPlayer],
     /// Why the account cannot vote on polls here, when it cannot.
     pub vote_denied: Option<&'a str>,
     /// The answers of its multiselect poll picked before «Votar».
@@ -730,6 +737,8 @@ fn draw<'a>(view: &MessageView<'_>, live: &Live<'a>, look: &'a Look) -> embeds::
         animated: live.animated,
         app: None,
         obscure_explicit: live.obscure_explicit,
+        spotify: live.spotify,
+        message: view.message.id,
     }
 }
 
@@ -804,6 +813,18 @@ fn system(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
     ])
 }
 
+/// The author's name, in their role's colors or their own style.
+fn author_name(view: &MessageView<'_>, scale: f32, look: &Look) -> Element {
+    let author = &view.author;
+    crate::identity::styled(
+        strong_line(&author.name, 16.0 * scale, author.ink),
+        16.0 * scale,
+        (author.ink, &author.marks.gradient),
+        author.marks.style.as_ref(),
+        look,
+    )
+}
+
 /// The author, the time and what was written: a group's first message has
 /// its author's mark and name; one that continues has its time in the gutter.
 fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> Element {
@@ -818,11 +839,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
     };
     let (mark_card, name_card) = if on_mark { (card, None) } else { (None, card) };
     if !view.continued && !style.compact {
-        let label = crate::identity::inked(
-            strong_line(&view.author.name, 16.0 * scale, view.author.ink),
-            view.author.ink,
-            &view.author.marks.gradient,
-        );
+        let label = author_name(view, scale, look);
         // A sample message, as in the settings' preview, opens nothing.
         let name = if style.sample {
             label
@@ -874,12 +891,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
     };
     if style.compact {
         // The author's name leads the line, then what was written.
-        let mut head = vec![crate::identity::inked(
-            strong_line(&view.author.name, 16.0 * scale, view.author.ink),
-            view.author.ink,
-            &view.author.marks.gradient,
-        )
-        .shrink_to_fit()];
+        let mut head = vec![author_name(view, scale, look).shrink_to_fit()];
         head.extend(crate::identity::after_name(
             &view.author.marks,
             14.0 * scale,
@@ -1915,6 +1927,7 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
                 placeholder: t("Encuentra la reacción perfecta"),
                 tabs: false,
                 expressions: None,
+                hovered: live.hovered_emoji,
             },
             look,
         )

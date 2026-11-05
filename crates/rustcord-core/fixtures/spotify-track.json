@@ -1,0 +1,71 @@
+{
+ "type": "track",
+ "name": "Straightenin",
+ "uri": "spotify:track:15EH2glphTjcarRjAsc0EB",
+ "id": "15EH2glphTjcarRjAsc0EB",
+ "title": "Straightenin",
+ "artists": [
+  {
+   "name": "Migos",
+   "uri": "spotify:artist:6oMuImdp5ZcFhWP0ESe6mG"
+  },
+  {
+   "name": "Quavo",
+   "uri": "spotify:artist:0VRj0yCOv2FXJNP47XQnx5"
+  }
+ ],
+ "duration": 255023,
+ "isExplicit": true,
+ "audioPreview": {
+  "url": "https://p.scdn.co/mp3-preview/36e4d4c60bc8fa8654a068fa5dad4434c373fc40"
+ },
+ "visualIdentity": {
+  "backgroundBase": {
+   "alpha": 255,
+   "blue": 87,
+   "green": 92,
+   "red": 0
+  },
+  "backgroundTintedBase": {
+   "alpha": 255,
+   "blue": 52,
+   "green": 57,
+   "red": 0
+  },
+  "textBase": {
+   "alpha": 255,
+   "blue": 255,
+   "green": 255,
+   "red": 255
+  },
+  "textBrightAccent": {
+   "alpha": 255,
+   "blue": 255,
+   "green": 255,
+   "red": 255
+  },
+  "textSubdued": {
+   "alpha": 255,
+   "blue": 213,
+   "green": 222,
+   "red": 121
+  },
+  "image": [
+   {
+    "url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02f89d00155b6a066650e5460d",
+    "maxHeight": 300,
+    "maxWidth": 300
+   },
+   {
+    "url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d00004851f89d00155b6a066650e5460d",
+    "maxHeight": 64,
+    "maxWidth": 64
+   },
+   {
+    "url": "https://image-cdn-ak.spotifycdn.com/image/ab67616d0000b273f89d00155b6a066650e5460d",
+    "maxHeight": 640,
+    "maxWidth": 640
+   }
+  ]
+ }
+}
