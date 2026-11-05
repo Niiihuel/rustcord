@@ -537,11 +537,29 @@ const GPU: &str = "gpu";
 /// `RUSTCORD_GPU` of a start again after the chosen GPU could not open the window.
 const GPU_FALLBACK: &str = "fallback";
 
+/// The native graphics API wgpu draws with here, as `WGPU_BACKEND` names it.
+const NATIVE_BACKENDS: &str = if cfg!(windows) {
+    "dx12,vulkan"
+} else if cfg!(target_os = "macos") {
+    "metal"
+} else {
+    "vulkan"
+};
+
+/// What [`choose_gpu`] limited for this start; a start again after a failure
+/// takes everything back.
+#[derive(Clone, Copy)]
+struct Limited {
+    /// The Vulkan loader, to one vendor's drivers (see `gpu`).
+    loader: bool,
+    /// wgpu, to the native API (`NATIVE_BACKENDS`).
+    backend: bool,
+}
+
 /// Choose the GPU before anything reads the environment: the Vulkan loader
-/// and wgpu read these variables when the window opens. Returns whether the
-/// loader was limited to one vendor's drivers (see `gpu`), and what the
-/// settings show of it.
-fn choose_gpu() -> (bool, rustcord_ui::desktop::Graphics) {
+/// and wgpu read these variables when the window opens. Returns what was
+/// limited, and what the settings show of it.
+fn choose_gpu() -> (Limited, rustcord_ui::desktop::Graphics) {
     let set = |name: &str| {
         std::env::var_os(name).is_some()
             || (name == "RUSTCORD_GPU" && std::env::var_os("RUNE_GPU").is_some())
@@ -573,7 +591,19 @@ fn choose_gpu() -> (bool, rustcord_ui::desktop::Graphics) {
     if let Some(filter) = filter {
         std::env::set_var("VK_LOADER_DRIVERS_SELECT", filter);
     }
-    (filter.is_some(), graphics)
+    // Listing adapters, wgpu also opened every OpenGL (EGL) driver: NVIDIA's
+    // and Mesa's (gallium, LLVM), ~35 MiB of the process measured and the
+    // discrete GPU woken, though it drew with Vulkan. The native API only;
+    // a start again after a failure takes OpenGL too.
+    let backend = !set("WGPU_BACKEND") && !fallback;
+    if backend {
+        std::env::set_var("WGPU_BACKEND", NATIVE_BACKENDS);
+    }
+    let limited = Limited {
+        loader: filter.is_some(),
+        backend,
+    };
+    (limited, graphics)
 }
 
 /// The first argument after the program, if it is Unicode;
@@ -778,7 +808,7 @@ fn main() -> eframe::Result {
     match result {
         // The chosen GPU's driver was not there after all: start again with
         // every GPU, as if Rustcord had not chosen, and the settings say so.
-        Err(error) if limited => {
+        Err(error) if limited.loader || limited.backend => {
             eprintln!(
                 "rustcord: could not open the window on the chosen GPU ({error}); trying every GPU"
             );
@@ -786,11 +816,18 @@ fn main() -> eframe::Result {
             #[cfg(any(unix, windows))]
             drop(logging);
             let again = std::env::current_exe().and_then(|program| {
-                std::process::Command::new(program)
+                let mut again = std::process::Command::new(program);
+                again
                     .args(std::env::args_os().skip(1))
-                    .env_remove("VK_LOADER_DRIVERS_SELECT")
-                    .env("RUSTCORD_GPU", GPU_FALLBACK)
-                    .status()
+                    .env("RUSTCORD_GPU", GPU_FALLBACK);
+                // Only what Rustcord set: the person's own stays.
+                if limited.loader {
+                    again.env_remove("VK_LOADER_DRIVERS_SELECT");
+                }
+                if limited.backend {
+                    again.env_remove("WGPU_BACKEND");
+                }
+                again.status()
             });
             std::process::exit(again.map_or(1, |status| status.code().unwrap_or(1)))
         }
