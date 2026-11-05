@@ -16,6 +16,8 @@ mod rows;
 
 mod pip;
 
+mod switch;
+
 impl Host {
     /// Answer the voice commands sent from `from` on as the simulation
     /// does, its connection measured at `rtt` milliseconds.
@@ -85,12 +87,11 @@ impl Host {
         }
     }
 
-    /// Join the voice channel `name` from its preview, answered: its ID.
+    /// Join the voice channel `name` from its row, answered: its ID.
     pub(super) fn vz_join(&mut self, name: &str) -> ChannelId {
         let channel = self.channel_named(name);
         let from = self.sent.len();
         self.click(&format!("voice:{channel}"));
-        self.click(ids::JOIN);
         self.vz_answer(from, 47);
         channel
     }
@@ -180,12 +181,13 @@ fn joining_shows_the_panel_through_every_phase_and_the_details_its_measures() {
     let text = host.ui.channel().unwrap();
     let room = host.channel_named("Sala común");
     let from = host.sent.len();
+    // As Discord's, the row joins at once and the conversation stays in view.
     host.click(&format!("voice:{room}"));
-    host.click(ids::JOIN);
     assert_eq!(host.store.call().unwrap().phase, CallPhase::Joining);
     assert!(host.painted().contains(&"Conectando a la voz…".to_owned()));
-    assert_eq!(host.ui.voice.stage, Some(room));
+    assert_eq!((host.ui.voice.stage, host.ui.voice.preview), (None, None));
     assert_eq!(host.ui.channel(), Some(text));
+    assert!(host.vz_shows(&editor_id(text)));
 
     host.vz_answer(from, 47);
     let painted = host.painted();
@@ -284,8 +286,7 @@ fn a_stage_is_joined_and_without_speaking_the_call_only_listens() {
         host.now,
     );
     host.run(intents);
-    // The click previews it; «Unirse al chat de voz» joins.
-    host.click(ids::JOIN);
+    // The click joins it.
     assert!(
         matches!(host.sent[from..], [Command::JoinVoice { channel, .. }] if channel == stage),
         "{:?}",
@@ -300,7 +301,8 @@ fn a_stage_is_joined_and_without_speaking_the_call_only_listens() {
     host.event(Event::ChannelChanged(silent));
     let from = host.sent.len();
     host.click(&format!("voice:{room}"));
-    host.click(ids::JOIN);
+    // Moving the call from the stage asks first.
+    host.click(ids::SWITCH);
     assert!(matches!(
         host.sent[from..],
         [Command::JoinVoice { muted: true, .. }]
@@ -469,15 +471,35 @@ fn the_bar_mutes_and_hangs_up_the_panel_deafens_and_the_video_says_it_stays_here
     host.key(Key::Escape, false, false);
     assert_eq!(host.ui.settings, None);
 
-    // Hanging up shows the conversation the stage covered again.
+    // Hanging up keeps the channel's view, now inviting to join, as
+    // Discord's; the conversation stays under it.
     let from = host.sent.len();
     host.click(ids::LEAVE);
     assert_eq!(host.sent[from..], [Command::LeaveVoice]);
     assert!(host.store.call().is_none());
     assert_eq!(host.ui.voice.stage, None);
+    assert_eq!(host.ui.voice.preview, Some(room));
     assert_eq!(host.ui.channel(), Some(text));
-    assert!(host.vz_shows(&editor_id(text)));
+    assert!(host.vz_usable(ids::JOIN));
+    assert!(!host.vz_shows(&editor_id(text)));
     host.vz_answer(from, 47);
+    // Its «Unirse» joins it again, with no question.
+    let again = host.sent.len();
+    host.click(ids::JOIN);
+    assert!(matches!(
+        host.sent[again..],
+        [Command::JoinVoice { channel, .. }] if channel == room
+    ));
+    assert_eq!(host.ui.voice.stage, Some(room));
+    assert_eq!(host.ui.voice.preview, None);
+    host.vz_answer(again, 47);
+    let left = host.sent.len();
+    host.click(ids::LEAVE);
+    host.vz_answer(left, 47);
+    // Opening a conversation shows it again.
+    host.click(&format!("channel:{text}"));
+    assert_eq!(host.ui.voice.preview, None);
+    assert!(host.vz_shows(&editor_id(text)));
     assert!(
         !host.vz_shows(&ids::row(me.0)),
         "the account left the column"
@@ -608,11 +630,16 @@ fn the_room_s_chat_shows_beside_the_stage_and_hides_back_to_the_conversation() {
     assert_eq!(host.ui.voice.stage, Some(room));
     assert!(!host.vz_shows(&crate::timeline_id(room)));
 
-    // Hanging up with the chat open goes back to the conversation too.
+    // Hanging up with the chat open keeps the channel's view with its chat,
+    // now inviting to join; hiding the chat goes back to the conversation.
     host.click(ids::CHAT);
     host.click(ids::LEAVE);
-    assert_eq!(host.ui.channel(), Some(text));
     assert_eq!(host.ui.voice.stage, None);
+    assert_eq!(host.ui.voice.preview, Some(room));
+    assert_eq!(host.ui.channel(), Some(room));
+    assert!(host.vz_shows(&crate::timeline_id(room)) && host.vz_usable(ids::JOIN));
+    host.click(ids::CHAT);
+    assert_eq!(host.ui.channel(), Some(text));
 }
 
 #[test]
@@ -800,7 +827,7 @@ fn the_stage_gives_way_to_a_conversation_and_invites_back_once_the_call_ends() {
     // entry: bring it into view.
     host.tree.reveal_at_start(&format!("voice:{pair}"), 0.0);
     host.click(&format!("voice:{pair}"));
-    host.click(ids::JOIN);
+    host.click(ids::SWITCH);
     host.vz_answer(from, 47);
     assert_eq!(host.ui.voice.stage, Some(pair));
     let me = host.vz_me();
@@ -2101,6 +2128,7 @@ fn the_wave_opens_the_noise_popout_whose_switch_flips_the_suppression_and_escape
 fn the_account_bar_says_it_shares_its_screen_while_it_does() {
     let mut host = Host::new();
     let room = host.vz_join("Sala común");
+    host.click(&format!("voice:{room}"));
     host.click(ids::SCREEN);
     host.click(ids::SHARE);
     // The system's dialog answers with frames, then the provider confirms the stream.

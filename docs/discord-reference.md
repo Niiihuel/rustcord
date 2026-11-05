@@ -213,6 +213,34 @@ of the Windows client (2026-11-04).
   with a cut-out ×); 24 px glyphs, white under the pointer. No live badge
   and no hang up.
 
+### Joining and switching voice channels
+
+From the web bundle (`handleVoiceConnect`, the channel list's voice item)
+and the owner's capture of the question.
+
+- A voice channel's row, out of any call: joins at once
+  (`selectVoiceChannel`); the view stays on the conversation that was open,
+  the voice panel appears at the bottom of the column. A channel with
+  unread mentions also opens its call view with its chat.
+- The row of the channel of the call opens its call view (the stage).
+- Another channel's row (or «Unirse» of Activo ahora, a voice card) while
+  in a call: first the question, unless its setting is off or the call is
+  in its server's AFK channel. The card: «¿Confirmas?» with × at the top
+  right; «Parece que estás en otro canal de voz. ¿Realmente quieres
+  cambiar a **{canal}**?» (the name bold); one row under it: the check box
+  «No volver a preguntar» on the left, «Cancelar» (secondary) and
+  «Confirmar» (accent) on the right. «Confirmar» moves the call; ticked,
+  it also turns the setting off. «Cancelar», × and Escape change nothing.
+  The stage, if it was showing, follows the call to the new channel;
+  otherwise the view stays.
+- The setting: Ajustes › Voz y video › Avanzado, «Cambiar la advertencia
+  del canal de voz», «Mostrar un aviso de confirmación antes de cambiar a
+  otro canal de voz.», on by default.
+- The pre-join view (the stage with «Unirse al chat de voz») is only for
+  looking at a channel the account is not in: from the row's chat bubble,
+  and after hanging up while its stage shows (the view, and its chat,
+  stay). Its «Unirse» joins without the question.
+
 ## User settings
 
 Measured on 2026-11-04 in the web client (build stable 663810, es-419,

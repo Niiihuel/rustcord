@@ -121,6 +121,7 @@ pub(crate) fn modal_obscured(ui: &Ui) -> bool {
         || ui.channel_list.dialog.is_some()
         || ui.voice.stage.is_some()
         || ui.voice.preview.is_some()
+        || ui.voice.switch.is_some()
         || ui.attachment_viewer.is_some()
         || ui.document_viewer.is_some()
         || crate::invitations::visible(ui)

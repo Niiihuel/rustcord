@@ -1055,6 +1055,34 @@ fn the_gpu_does_the_video_until_it_is_turned_off_and_that_is_kept() {
     assert!(!host.us_next_run().prefs.video_hardware);
 }
 
+#[test]
+fn the_voice_channel_switch_warning_is_on_until_turned_off_and_that_is_kept() {
+    let mut host = Host::new();
+    let mut old = Ui::default();
+    old.restore(|_| None);
+    assert!(old.prefs.voice_switch_warning, "settings without it ask");
+    assert!(host.ui.prefs.voice_switch_warning);
+    host.us_open();
+    // Found by what it is about, in the voice page's «Avanzado».
+    host.us_write(SEARCH, "advertencia canal de voz");
+    host.click("us:page=voice");
+    let painted = host.painted();
+    for expected in [
+        "Cambiar la advertencia del canal de voz",
+        "Mostrar un aviso de confirmación antes de cambiar a otro canal de voz.",
+    ] {
+        assert!(
+            painted.contains(&expected.to_owned()),
+            "{expected} in {painted:?}"
+        );
+    }
+    host.click("us:voice-switch-warning");
+    assert!(!host.ui.prefs.voice_switch_warning);
+    assert!(!host.us_next_run().prefs.voice_switch_warning);
+    host.click("us:voice-switch-warning");
+    assert!(host.us_next_run().prefs.voice_switch_warning);
+}
+
 #[cfg(windows)]
 #[test]
 fn on_windows_the_gpu_switch_says_the_processor_does_the_video() {

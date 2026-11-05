@@ -1,12 +1,15 @@
 //! The account's call where the window shows it. The panel above the
 //! account's own, with its connection's details; the people under each
-//! voice channel in the column; a channel preview before joining; the call's
-//! stage where the conversation goes, opened by clicking the channel of the
-//! call; and the menus and cards of the people in it. Its actions start with
-//! `vz:`, and a voice channel's row reports `voice:{id}`.
+//! voice channel in the column; a channel's preview, inviting to join; the
+//! call's stage where the conversation goes, opened by clicking the channel of
+//! the call; and the menus and cards of the people in it. Its actions start
+//! with `vz:`, and a voice channel's row reports `voice:{id}`.
 //!
-//! The stage covers the conversation without closing it: hanging up, or
-//! opening any conversation, shows the one that was open again.
+//! As Discord's, a row joins its channel and leaves the view as it is, asking
+//! first when that moves the call from another channel; the preview is only
+//! for looking at a channel, from its chat bubble or once its call is left.
+//! The stage covers the conversation without closing it: opening any
+//! conversation shows the one that was open again.
 
 use std::time::{Duration, Instant};
 
@@ -52,6 +55,16 @@ pub struct Voice {
     /// The stage's channel's chat shows beside it, in place of the
     /// conversation that was open, kept here to go back to.
     pub chat: Option<Option<ChannelId>>,
+    /// The question before moving the call to another voice channel.
+    pub switch: Option<Switch>,
+}
+
+/// The question before moving the call: to which channel, and whether
+/// «No volver a preguntar» is ticked.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Switch {
+    pub channel: ChannelId,
+    pub dont_ask_again: bool,
 }
 
 /// The chat shows beside the stage from this width of the conversation's
@@ -168,10 +181,23 @@ pub(crate) fn join(
         }
         return Vec::new();
     }
-    if previewing {
+    // The call's stage, shown, follows it to its new channel, without the
+    // old one's chat.
+    let follows = ui.voice.preview.is_none()
+        && ui.voice.stage.is_some()
+        && ui.voice.stage == store.call().map(|call| call.channel);
+    let mut intents = if follows {
+        keeping_stage(ui, |ui| hide_chat(ui, store))
+    } else {
+        Vec::new()
+    };
+    if previewing || follows {
         ui.voice.stage = Some(channel);
     }
-    ui.voice.preview = None;
+    // Another channel's preview stays: joining does not change the view.
+    if previewing {
+        ui.voice.preview = None;
+    }
     ui.voice.samples.clear();
     ui.voice.details = false;
     ui.voice.noise = false;
@@ -195,27 +221,84 @@ pub(crate) fn join(
         }
     }
     store.begin_call(channel, ui.muted, ui.deafened);
-    vec![Intent::Command(Command::JoinVoice {
+    intents.push(Intent::Command(Command::JoinVoice {
         channel,
         muted: ui.muted,
         deafened: ui.deafened,
-    })]
+    }));
+    intents
 }
 
-/// A voice channel's row opens its preview. The current call opens its stage.
 /// The column's chat bubble of a voice channel, followed by its ID.
 pub(crate) const OPEN_CHAT: &str = "vz:open-chat:";
 
-fn channel_clicked(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<Intent> {
+/// The channel of the call the account is in, unless it failed.
+fn current_call(store: &Store) -> Option<ChannelId> {
+    store
+        .call()
+        .filter(|call| !matches!(call.phase, CallPhase::Failed { .. }))
+        .map(|call| call.channel)
+}
+
+/// Join `channel` as Discord's `selectVoiceChannel` is reached from a row, a
+/// card or «Activo ahora»: at once, unless that moves the call from another
+/// channel and the account wants to be asked first (not from the AFK one).
+pub(crate) fn connect(
+    ui: &mut Ui,
+    store: &mut Store,
+    channel: ChannelId,
+    now: Instant,
+) -> Vec<Intent> {
+    let afk = |from: ChannelId| {
+        store
+            .channel(from)
+            .and_then(|found| found.server)
+            .and_then(|server| store.server(server))
+            .is_some_and(|server| server.options.afk_channel == Some(from))
+    };
+    match current_call(store) {
+        Some(from) if from != channel && ui.prefs.voice_switch_warning && !afk(from) => {
+            ui.voice.switch = Some(Switch {
+                channel,
+                dont_ask_again: false,
+            });
+            Vec::new()
+        }
+        _ => join(ui, store, channel, now),
+    }
+}
+
+/// A voice channel's row: the call's own opens its stage; another is joined
+/// and the view stays, unless mentions wait in it: then its stage opens too,
+/// with its chat, as Discord's.
+fn channel_clicked(
+    ui: &mut Ui,
+    store: &mut Store,
+    channel: ChannelId,
+    now: Instant,
+) -> Vec<Intent> {
+    if current_call(store) == Some(channel) {
+        return show(ui, store, channel);
+    }
+    let mut intents = connect(ui, store, channel, now);
+    if store.read(channel).mentions > 0 && current_call(store) == Some(channel) {
+        intents.extend(show(ui, store, channel));
+        if ui.voice.chat.is_none() {
+            intents.extend(toggle_chat(ui, store));
+        }
+    }
+    intents
+}
+
+/// Show `channel`: the call's stage when the account is in it, else its
+/// preview, inviting to join.
+fn show(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<Intent> {
     let intents = if ui.voice.chat.is_some() && shown_stage(ui) != Some(channel) {
         keeping_stage(ui, |ui| hide_chat(ui, store))
     } else {
         Vec::new()
     };
-    let here = store.call().is_some_and(|call| {
-        call.channel == channel && !matches!(call.phase, CallPhase::Failed { .. })
-    });
-    if here {
+    if current_call(store) == Some(channel) {
         ui.voice.stage = Some(channel);
         ui.voice.preview = None;
         ui.voice.card = None;
@@ -246,12 +329,23 @@ pub(crate) fn keeping_stage(
     intents
 }
 
-/// Hang up, and show again the conversation the stage covered.
+/// Hang up. A server channel's stage, shown, stays as its preview with its
+/// chat, as Discord keeps the channel's view; otherwise the conversation the
+/// stage covered shows again.
 fn leave(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
     store.end_call();
     video::call_over(ui);
     let mut intents = vec![Intent::Command(Command::LeaveVoice)];
-    intents.extend(keeping_stage(ui, |ui| hide_chat(ui, store)));
+    if ui.voice.preview.is_none() {
+        ui.voice.preview = ui.voice.stage.filter(|stage| {
+            store
+                .channel(*stage)
+                .is_some_and(|found| found.server.is_some())
+        });
+    }
+    if ui.voice.preview.is_none() {
+        intents.extend(keeping_stage(ui, |ui| hide_chat(ui, store)));
+    }
     ui.voice.stage = None;
     ui.voice.details = false;
     ui.voice.noise = false;
@@ -430,11 +524,12 @@ pub(crate) fn update(
         return Some(video::choose(ui, None, u32::try_from(fps).ok()));
     }
     if let Some(channel) = number(id, "voice:") {
-        return Some(channel_clicked(ui, store, ChannelId(channel)));
+        return Some(channel_clicked(ui, store, ChannelId(channel), now));
     }
-    // A voice channel's chat bubble in the column: its stage, and its chat.
+    // A voice channel's chat bubble in the column: its stage or its preview,
+    // and its chat.
     if let Some(channel) = number(id, OPEN_CHAT) {
-        let mut intents = channel_clicked(ui, store, ChannelId(channel));
+        let mut intents = show(ui, store, ChannelId(channel));
         if ui.voice.chat.is_none() {
             intents.extend(toggle_chat(ui, store));
         }
@@ -526,6 +621,29 @@ pub(crate) fn update(
         return Some(Vec::new());
     }
     Some(match id {
+        // The question before moving the call: a «No volver a preguntar»
+        // ticked turns the warning off, then the call moves.
+        ids::SWITCH => match ui.voice.switch.take() {
+            Some(switch) => {
+                let mut intents = Vec::new();
+                if switch.dont_ask_again {
+                    intents.push(ui.prefs.set_voice_switch_warning(false));
+                }
+                intents.extend(join(ui, store, switch.channel, now));
+                intents
+            }
+            None => Vec::new(),
+        },
+        ids::SWITCH_CANCEL => {
+            ui.voice.switch = None;
+            Vec::new()
+        }
+        ids::SWITCH_FORGET => {
+            if let Some(switch) = ui.voice.switch.as_mut() {
+                switch.dont_ask_again = !switch.dont_ask_again;
+            }
+            Vec::new()
+        }
         ids::MUTE | ids::MENU_MUTE => crate::clicked(ui, store, "me:mute", now),
         ids::MENU_DEAFEN => crate::clicked(ui, store, "me:deafen", now),
         ids::LEAVE | ids::PANEL_LEAVE => leave(ui, store),
@@ -727,6 +845,13 @@ pub(crate) fn on_applied(ui: &mut Ui, store: &Store, applied: &Applied, now: Ins
         if ui.voice.stage.is_none() {
             ui.voice.chat = None;
         }
+    }
+    if ui.voice.switch.is_some_and(|switch| {
+        store
+            .channel(switch.channel)
+            .is_none_or(|found| !Store::visible(found))
+    }) {
+        ui.voice.switch = None;
     }
     // A card or a menu goes with the person it is on.
     let here = |user: UserId, channel: ChannelId| {
@@ -1113,17 +1238,24 @@ pub(crate) fn stage_of(
     ))
 }
 
-/// A person's menu opened by a secondary click, over everything.
+/// A person's menu opened by a secondary click, and the question before
+/// moving the call, over everything.
 /// `room` is the window's height: a long menu grows with it, as Discord's.
 pub(crate) fn overlays(ui: &Ui, store: &Store, root: Element, room: f32, look: &Look) -> Element {
-    let Some(menu) = ui.voice.menu else {
-        return root;
+    let root = match ui.voice.menu.and_then(|menu| Some((menu, menu.at?))) {
+        Some((menu, at)) => Element::stack(vec![
+            root,
+            parts::context_menu(at, menu_entries(ui, store, menu), room, look),
+        ]),
+        None => root,
     };
-    let Some(at) = menu.at else {
-        return root;
-    };
-    Element::stack(vec![
-        root,
-        parts::context_menu(at, menu_entries(ui, store, menu), room, look),
-    ])
+    match ui.voice.switch {
+        Some(switch) => parts::switch_question(
+            root,
+            &store.channel_title(switch.channel),
+            switch.dont_ask_again,
+            look,
+        ),
+        None => root,
+    }
 }
