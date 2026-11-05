@@ -79,10 +79,18 @@ pub enum Page {
     Bans,
     // Administration (19).
     Integrations,
+    /// Discord's «Configuración de seguridad»: verification and filters.
     Safety,
+    /// The order of the channels: the channel list moves them too, and
+    /// Discord's settings have no such page, so the sidebar leaves it out.
     Channels,
     Onboarding,
     AutoMod,
+    /// Discord's «Interacción»: the service's messages, the notifications
+    /// a newcomer gets, and the inactive channel.
+    Engagement,
+    /// Becoming a community, or a community's overview.
+    Community,
 }
 
 impl Page {
@@ -101,6 +109,8 @@ impl Page {
             "channels" => Self::Channels,
             "onboarding" => Self::Onboarding,
             "automod" => Self::AutoMod,
+            "engagement" => Self::Engagement,
+            "community" => Self::Community,
             _ => return None,
         })
     }

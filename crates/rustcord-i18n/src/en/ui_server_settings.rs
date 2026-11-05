@@ -2,14 +2,11 @@
 
 pub(super) const ENTRIES: super::Entries = &[
     // The sidebar.
-    ("Perfil del servidor", "Server profile"),
-    ("Seguridad y participación", "Safety and engagement"),
     ("Canales", "Channels"),
     ("Personas", "People"),
     ("Miembros", "Members"),
     ("Roles", "Roles"),
     ("Invitaciones", "Invites"),
-    ("Expresiones", "Expressions"),
     ("Emojis", "Emoji"),
     ("Stickers", "Stickers"),
     ("Moderación", "Moderation"),
@@ -23,25 +20,8 @@ pub(super) const ENTRIES: super::Entries = &[
     // The profile.
     ("Nombre", "Name"),
     ("Nombre del servidor", "Server name"),
-    ("Color", "Color"),
-    (
-        "El color de la marca del servidor mientras no tenga imagen.",
-        "The server's brand color while it has no picture.",
-    ),
     ("Descripción", "Description"),
-    (
-        "¿De qué se trata el servidor? Se muestra en su perfil.",
-        "What is the server about? It shows on its profile.",
-    ),
-    (
-        "Cuéntale a la gente de qué se trata este servidor.",
-        "Tell people what this server is about.",
-    ),
     ("Descripción del servidor", "Server description"),
-    (
-        "Así se presenta el servidor: su nombre, su color y de qué se trata.",
-        "How the server presents itself: its name, its color and what it's about.",
-    ),
     // Roles.
     (
         "Usa roles para agrupar a los miembros del servidor y darles permisos.",

@@ -161,6 +161,9 @@ pub fn header_bar(content: Element, look: &Look) -> Element {
     .background(look.sidebar)
 }
 
+/// How tall the server's name is, the button that opens its menu.
+pub const NAME_HEIGHT: f32 = 31.5;
+
 /// The server's name as the button that opens its menu, its chevron up
 /// while the menu is `open`.
 pub fn server_name(title: &str, open: bool, look: &Look) -> Element {
@@ -183,7 +186,7 @@ pub fn server_name(title: &str, open: bool, look: &Look) -> Element {
             gap(12.0, 0.0),
         ]),
     )
-    .size(None, Some(31.5))
+    .size(None, Some(NAME_HEIGHT))
     .radius(8.0)
     .background(if open {
         look.hover

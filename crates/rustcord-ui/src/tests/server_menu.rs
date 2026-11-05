@@ -101,22 +101,91 @@ fn the_menu_of_an_owned_server_offers_what_the_owner_may_do() {
         format!("ss:open:{lab}"),
         format!("newchan:{lab}"),
         format!("newcat:{lab}"),
-        format!("sm:notifications:{lab}"),
+        format!("sm:notify:{lab}"),
         format!("sm:invite:{lab}"),
-        format!("ss:open:{lab}:delete"),
         format!("sm:profile:{lab}"),
         format!("sm:copy-id:{lab}"),
     ] {
         assert!(buttons.contains(&id), "{id} can be chosen: {buttons:?}");
     }
-    // Who owns it deletes it instead of leaving: leaving is not offered at all.
+    // Who owns it deletes it in its settings, as Discord's: the menu neither
+    // deletes nor leaves.
     assert!(host.access(&format!("sm:leave:{lab}")).is_none());
+    assert!(host.access(&format!("ss:open:{lab}:delete")).is_none());
     host.clicked_id(&format!("sm:leave:{lab}"));
     assert!(host.ui.server_menu.dialog.is_none(), "not even asked for");
     // The settings belong to another window: the menu asks for them and closes.
     host.click(ids::TOGGLE);
     host.click(&format!("ss:open:{lab}"));
     assert!(!host.ui.server_menu.open);
+}
+
+#[test]
+fn the_menu_lists_what_rustcord_does_in_discords_groups_and_order() {
+    let mut host = Host::new();
+    host.ui.prefs.developer = true;
+    let lab = host.open_server_named("Laboratorio limn");
+    let groups: Vec<Vec<String>> = crate::server_menu::header_groups(&host.ui, &host.store, lab)
+        .into_iter()
+        .map(|group| {
+            group
+                .into_iter()
+                .filter_map(|entry| match entry {
+                    rustcord_components::channel_menu::Entry::Item(item) => {
+                        assert!(item.icon.is_some(), "{} has its glyph", item.label);
+                        Some(item.label)
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+        .filter(|group: &Vec<String>| !group.is_empty())
+        .collect();
+    let mut expected = vec![
+        vec![
+            "Invitar al servidor",
+            "Ajustes del servidor",
+            "Crear un canal",
+            "Crear categoría",
+            "Crear evento",
+        ],
+        vec!["Ajustes de notificaciones", "Ajustes de privacidad"],
+        vec![
+            "Editar perfil de servidor",
+            "Ocultar los canales silenciados",
+        ],
+        vec!["Copiar ID del servidor"],
+    ];
+    // What the provider does not do is left out: not the event without
+    // events, nor the privacy without its settings, nor hiding the muted
+    // channels where nothing keeps that.
+    let capabilities = &host.store.provider.as_ref().unwrap().capabilities;
+    if !capabilities.messaging_privacy {
+        expected[1].retain(|label| *label != "Ajustes de privacidad");
+    }
+    if !capabilities.synced_notifications {
+        expected[2].retain(|label| *label != "Ocultar los canales silenciados");
+    }
+    if !host.store.event_abilities(lab).create.allowed() {
+        expected[0].retain(|label| *label != "Crear evento");
+    }
+    assert_eq!(groups, expected);
+    // The notification settings open their dialog at once, without a submenu.
+    host.click(ids::TOGGLE);
+    host.click(&format!("sm:notify:{lab}"));
+    assert_eq!(host.ui.server_menu.dialog, Some(Dialog::Notifications(lab)));
+    // Another's server: leaving, the last, in the danger ink.
+    let taller = host.server_id_named("Taller de Rust");
+    let last = crate::server_menu::header_groups(&host.ui, &host.store, taller)
+        .into_iter()
+        .rev()
+        .nth(1)
+        .unwrap();
+    assert!(matches!(
+        &last[..],
+        [rustcord_components::channel_menu::Entry::Item(item)]
+            if item.label == "Abandonar el servidor" && item.danger
+    ));
 }
 
 #[test]

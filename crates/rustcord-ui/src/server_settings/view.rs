@@ -5,13 +5,14 @@ use limn::{
     Modal, SearchField, Select, TextArea, TextField,
 };
 use rustcord_components::server_settings::{
-    self as parts, audit_details, audit_label, audit_sentence, AuditKind, AuditLine, BanLine,
-    ExpressionLine, InviteLine, MemberLine, MenuAction, Metrics, PersonLine, RoleChoice, RoleItem,
-    RoleLine, ServerCard, SidebarEntry, Swatches, UnsavedBar, AUDIT_ACTIONS, DEFAULT_ROLE_COLOR,
+    self as parts, audit_details, audit_label, audit_sentence, hex, AuditKind, AuditLine, BanLine,
+    BannerSwatch, ExpressionLine, InviteLine, MemberLine, MenuAction, Metrics, PersonLine,
+    RoleChoice, RoleItem, RoleLine, ServerCard, SidebarEntry, Swatches, UnsavedBar, AUDIT_ACTIONS,
+    DEFAULT_ROLE_COLOR,
 };
 use rustcord_components::{gap, line, strong_line, text, time, Look};
 use rustcord_i18n::{t, tr};
-use rustcord_model::{ExpressionId, RemoteImage, Role, RoleId, Server, UserId};
+use rustcord_model::{ExpressionId, RemoteImage, Rgb, Role, RoleId, Server, UserId};
 use rustcord_provider::ProviderKind;
 use rustcord_state::{ServerAbilities, Store};
 
@@ -33,7 +34,16 @@ mod onboarding;
 mod automod;
 
 /// The height of the settings' text fields, as Discord's client measures them.
-const FIELD_HEIGHT: f32 = 41.0;
+const FIELD_HEIGHT: f32 = 40.0;
+/// Between the profile's form and its preview card.
+const PROFILE_GAP: f32 = 40.0;
+/// The banner's usual color, Discord's blurple, when none of its own is set.
+const DEFAULT_ACCENT: Rgb = Rgb(0x58_65_F2);
+
+/// A color of the domain, exactly: Discord's banner colors are not themed.
+fn color_of(rgb: Rgb) -> limn::Color {
+    limn::Color::rgb((rgb.0 >> 16) as u8, (rgb.0 >> 8) as u8, rgb.0 as u8)
+}
 
 /// The settings over the whole window, while they are open.
 pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
@@ -45,8 +55,9 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
         .role
         .and_then(|id| server.roles.iter().find(|role| role.id == id))
         .filter(|_| settings.page == Page::Roles);
-    let wide = editing.is_none() && matches!(settings.page, Page::Profile | Page::Members);
-    let metrics = Metrics::new(context.window.width, wide);
+    // The role editor keeps the list of roles beside it.
+    let wide = editing.is_some() || matches!(settings.page, Page::Profile | Page::Members);
+    let metrics = Metrics::server(context.window.width, wide);
     let view = View {
         settings,
         store,
@@ -69,6 +80,8 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
         (Page::Bans, _) => view.bans(),
         (Page::Integrations, _) => view.integrations(),
         (Page::Safety, _) => view.safety(),
+        (Page::Engagement, _) => view.engagement(),
+        (Page::Community, _) => view.community_page(),
         (Page::Channels, _) => view.channels(),
         (Page::Onboarding, _) => view.onboarding(),
         (Page::AutoMod, _) => view.automod(),
@@ -210,6 +223,11 @@ impl View<'_> {
 }
 
 impl View<'_> {
+    /// The pages in Discord's groups and order, those Rustcord has (and its
+    /// own «Canales», which moves channels between categories in one save):
+    /// Discord's «Etiqueta del servidor», «Ventajas de mejora», «Panel de
+    /// sonidos», «Acceso», «Directorio de apps» and «Plantilla del servidor»
+    /// have nothing behind them here.
     fn sidebar(&self) -> Element {
         let page = |id: &str, label: &str, page: Page| SidebarEntry::Item {
             id: format!("ss:page:{id}"),
@@ -219,37 +237,48 @@ impl View<'_> {
         };
         let mut entries = vec![
             SidebarEntry::Heading(self.server.shown_name().into()),
-            page("profile", t("Perfil del servidor"), Page::Profile),
-            page("safety", t("Seguridad y participación"), Page::Safety),
+            page("profile", t("Perfil de servidor"), Page::Profile),
+            page("engagement", t("Interacción"), Page::Engagement),
+            // Rustcord's own: the channels' order and categories at once.
             page("channels", t("Canales"), Page::Channels),
-        ];
-        // Only a community has one.
-        if self.server.options.community {
-            entries.push(page("onboarding", t("Incorporación"), Page::Onboarding));
-        }
-        entries.extend([
+            SidebarEntry::Separator,
+            SidebarEntry::Heading(t("Expresión").into()),
+            page("emojis", t("Emojis"), Page::Emojis),
+            page("stickers", t("Stickers"), Page::Stickers),
             SidebarEntry::Separator,
             SidebarEntry::Heading(t("Personas").into()),
             page("members", t("Miembros"), Page::Members),
             page("roles", t("Roles"), Page::Roles),
             page("invites", t("Invitaciones"), Page::Invites),
             SidebarEntry::Separator,
-            SidebarEntry::Heading(t("Expresiones").into()),
-            page("emojis", t("Emojis"), Page::Emojis),
-            page("stickers", t("Stickers"), Page::Stickers),
+            SidebarEntry::Heading(t("Apps").into()),
+            page("integrations", t("Integraciones"), Page::Integrations),
             SidebarEntry::Separator,
             SidebarEntry::Heading(t("Moderación").into()),
+            page("safety", t("Configuración de seguridad"), Page::Safety),
             page("audit", t("Registro de auditoría"), Page::Audit),
             page("bans", t("Baneos"), Page::Bans),
-            SidebarEntry::Separator,
-            SidebarEntry::Heading(t("Aplicaciones").into()),
-            page("integrations", t("Integraciones"), Page::Integrations),
-        ]);
-        // AutoMod: under moderation, after the bans.
-        if let Some(at) = entries.iter().position(
-            |entry| matches!(entry, SidebarEntry::Item { id, .. } if id == "ss:page:bans"),
-        ) {
-            entries.insert(at + 1, page("automod", t("AutoMod"), Page::AutoMod));
+            page("automod", t("AutoMod"), Page::AutoMod),
+        ];
+        // A community has its own group; another server can become one where
+        // the provider does that.
+        let capable = self
+            .store
+            .provider
+            .as_ref()
+            .is_some_and(|info| info.capabilities.community);
+        if self.server.options.community {
+            entries.extend([
+                SidebarEntry::Separator,
+                SidebarEntry::Heading(t("Comunidad").into()),
+                page("community", t("Vista general"), Page::Community),
+                page("onboarding", t("Incorporación"), Page::Onboarding),
+            ]);
+        } else if capable {
+            entries.extend([
+                SidebarEntry::Separator,
+                page("community", t("Activa la comunidad"), Page::Community),
+            ]);
         }
         if self.store.owns(self.server.id) {
             entries.push(SidebarEntry::Separator);
@@ -270,14 +299,15 @@ impl View<'_> {
         parts::sidebar(&entries, &footnote, self.look)
     }
 
-    /// The profile's form sits beside the preview card when there is room.
+    /// The profile's form sits beside the preview card when there is room,
+    /// 40 from it as Discord's.
     fn beside(&self) -> bool {
-        self.metrics.content - 318.5 - 44.0 >= 300.0
+        self.metrics.content - parts::CARD_WIDTH - PROFILE_GAP >= 300.0
     }
 
     fn form_width(&self) -> f32 {
         if self.beside() {
-            (self.metrics.content - 318.5 - 44.0).min(440.0)
+            self.metrics.content - parts::CARD_WIDTH - PROFILE_GAP
         } else {
             self.metrics.content
         }
@@ -335,8 +365,9 @@ impl View<'_> {
             .iter()
             .filter(|member| self.store.presence(member.user).status.is_around())
             .count();
+        let width = self.form_width();
         let mut form = vec![
-            parts::field_label(t("Nombre"), true, look),
+            parts::titled(t("Nombre"), None, look),
             TextField::new(
                 NAME,
                 shown.name.clone(),
@@ -344,53 +375,45 @@ impl View<'_> {
                 look.palette(),
             )
             .height(FIELD_HEIGHT)
+            .radius(8.0)
+            .outline(look.border, look.accent)
             .accessibility_label(t("Nombre del servidor"))
             .enabled(can)
             .render(),
-            parts::divider(look),
-            parts::field_label(t("Color"), false, look),
-            text(
-                t("El color de la marca del servidor mientras no tenga imagen."),
-                14.0,
-                look.muted,
-            ),
-            parts::swatches(
-                &Swatches {
-                    prefix: "ss:accent".into(),
-                    chosen: Some(shown.accent),
-                    default: None,
-                    custom: self.settings.accent_hex.clone(),
-                    enabled: can,
-                    narrow: self.form_width() < parts::swatches_width(false),
-                    picked: crate::color_picker::picked(self.ui, "ss:accent"),
-                },
+        ];
+        form.extend(self.icon_fields());
+        form.extend([
+            parts::rule(look),
+            parts::titled(t("Cartel"), None, look),
+            parts::banner_swatches(&self.banner_swatches(shown.accent), width, can, look),
+        ]);
+        form.extend(self.trait_fields(width));
+        form.extend([
+            parts::rule(look),
+            parts::titled(
+                t("Descripción"),
+                Some(t(
+                    "¿Cómo se inició tu servidor? ¿Por qué deberían unirse las personas?",
+                )),
                 look,
-            ),
-            parts::divider(look),
-            parts::field_label(t("Descripción"), false, look),
-            text(
-                t("¿De qué se trata el servidor? Se muestra en su perfil."),
-                14.0,
-                look.muted,
             ),
             TextArea::new(
                 DESCRIPTION,
                 shown.description.clone().unwrap_or_default(),
-                t("Cuéntale a la gente de qué se trata este servidor."),
+                "",
                 look.palette(),
             )
             .accessibility_label(t("Descripción del servidor"))
-            .height(120.0)
+            .height(89.0)
             .enabled(can)
             .render(),
-        ];
-        form.extend(self.identity_fields());
+        ]);
+        form.extend(self.banner_fields());
         let card = parts::server_card(
             &ServerCard {
                 name: shown.name.clone(),
                 initials: shown.initials(),
                 accent: look.ink(shown.accent),
-                description: shown.description.clone(),
                 online,
                 members: members.len(),
                 // The icon chosen, else the saved one.
@@ -400,32 +423,63 @@ impl View<'_> {
             },
             look,
         );
-        let mut children = vec![parts::page_title(
-            t("Perfil del servidor"),
+        let title = parts::page_title(
+            t("Perfil de servidor"),
             Some(t(
-                "Así se presenta el servidor: su nombre, su color y de qué se trata.",
+                "Personaliza cómo aparece tu servidor en los enlaces de invitación y en su perfil.",
             )),
             look,
-        )];
-        if let Some(reason) = denied {
-            children.push(parts::denied(reason, look));
+        );
+        // Why nothing can be changed goes over the whole page; else the
+        // card's top is the title's, as Discord's.
+        let mut children = Vec::new();
+        let mut column = Vec::new();
+        match denied {
+            Some(reason) => children.extend([title, parts::denied(reason, look)]),
+            None => column.extend([title, gap(0.0, 24.0)]),
         }
+        column.extend(form);
+        let form = Element::column(column).gap(8.0).size(Some(width), None);
         if self.beside() {
             children.push(
                 Element::row(vec![
-                    Element::column(form)
-                        .gap(10.0)
-                        .size(Some(self.form_width()), None),
-                    Element::spacer().flex(1.0),
-                    card,
+                    form,
+                    Element::column(vec![card, Element::spacer().flex(1.0)]),
                 ])
-                .gap(24.0),
+                .gap(PROFILE_GAP),
             );
         } else {
-            children.push(Element::column(form).gap(10.0));
-            children.push(card);
+            children.extend([form, card]);
         }
         parts::page("ss:scroll:profile", self.metrics.content, children)
+    }
+
+    /// The banner's colors: the server's own (or the usual one, while one
+    /// of Discord's is chosen) and Discord's nine.
+    fn banner_swatches(&self, chosen: Rgb) -> Vec<BannerSwatch> {
+        let named = |rgb: Rgb| {
+            parts::BANNER_COLORS
+                .iter()
+                .any(|(_, color, _)| *color == rgb)
+        };
+        let own = [chosen, self.server.accent]
+            .into_iter()
+            .find(|rgb| !named(*rgb))
+            .unwrap_or(DEFAULT_ACCENT);
+        let swatch = |rgb: Rgb, name: String| BannerSwatch {
+            id: format!("ss:accent:{}", hex(rgb)),
+            name,
+            color: color_of(rgb),
+            glow: color_of(parts::banner_glow(rgb)),
+            chosen: rgb == chosen,
+        };
+        let mut swatches = vec![swatch(own, t("Color del servidor").into())];
+        swatches.extend(
+            parts::BANNER_COLORS
+                .iter()
+                .map(|(name, rgb, _)| swatch(*rgb, (*name).to_owned())),
+        );
+        swatches
     }
 
     fn members_with(&self, role: RoleId) -> usize {

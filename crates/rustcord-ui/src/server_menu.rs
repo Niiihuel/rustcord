@@ -23,7 +23,7 @@ use rustcord_model::{
     RoleId, ServerId, Timestamp, UserId,
 };
 use rustcord_provider::{Command, Created, RequestId, ServerEdit};
-use rustcord_state::{Applied, Permit, Store};
+use rustcord_state::{Applied, Permit, ServerAbilities, Store};
 
 pub use rustcord_components::server_menu::NotifyLevel;
 
@@ -806,9 +806,149 @@ pub(crate) fn header(ui: &Ui, store: &Store, server: ServerId, look: &Look) -> E
         .server(server)
         .map_or_else(String::new, |found| found.shown_name().into());
     let open = ui.server_menu.open;
-    let entries = grouped(server_groups(ui, store, server, Vec::new()));
+    let entries = grouped(header_groups(ui, store, server));
     let name = parts::menu(sidebar::server_name(&name, open, look), entries, open, look);
     sidebar::header_bar(name, look)
+}
+
+/// The entries of the menu under `server`'s name, in Discord's groups and
+/// order, glyphs on their left. Only what the account and the provider can
+/// do is offered: Discord's «Mejora del servidor», «Directorio de apps» and
+/// «Hilos activos» have nothing behind them here, and deleting the server is
+/// in its settings, as Discord's.
+pub(crate) fn header_groups(ui: &Ui, store: &Store, server: ServerId) -> Vec<Vec<Entry>> {
+    let Some(abilities) = store.server_abilities(server) else {
+        return Vec::new();
+    };
+    let act = |id: String, label: &str, glyph: &'static str| Item {
+        icon: Some(Icon::Custom(glyph)),
+        ..Item::new(id, label)
+    };
+    let mut groups = Vec::new();
+
+    let mut manage = Vec::new();
+    if abilities.create_invites.allowed() && !invite_channels(store, server).is_empty() {
+        manage.push(
+            act(
+                format!("sm:invite:{server}"),
+                t("Invitar al servidor"),
+                parts::glyphs::INVITE,
+            )
+            .into(),
+        );
+    }
+    if manages(&abilities) {
+        manage.push(
+            act(
+                format!("ss:open:{server}"),
+                t("Ajustes del servidor"),
+                parts::glyphs::SETTINGS,
+            )
+            .into(),
+        );
+    }
+    if abilities.manage_channels.allowed() {
+        manage.push(
+            act(
+                format!("newchan:{server}"),
+                t("Crear un canal"),
+                parts::glyphs::CIRCLE_PLUS,
+            )
+            .into(),
+        );
+        manage.push(
+            act(
+                format!("newcat:{server}"),
+                t("Crear categoría"),
+                parts::glyphs::FOLDER_PLUS,
+            )
+            .into(),
+        );
+    }
+    if store.event_abilities(server).create.allowed() {
+        manage.push(
+            act(
+                format!("ev:new:{server}"),
+                t("Crear evento"),
+                parts::glyphs::CALENDAR_PLUS,
+            )
+            .into(),
+        );
+    }
+    groups.push(manage);
+
+    let mut notifications = vec![act(
+        format!("sm:notify:{server}"),
+        t("Ajustes de notificaciones"),
+        parts::glyphs::BELL,
+    )
+    .into()];
+    if store
+        .provider
+        .as_ref()
+        .is_some_and(|info| info.capabilities.messaging_privacy)
+    {
+        notifications.push(
+            act(
+                format!("sm:privacy:{server}"),
+                t("Ajustes de privacidad"),
+                parts::glyphs::SHIELD,
+            )
+            .into(),
+        );
+    }
+    groups.push(notifications);
+
+    let mut profile = Vec::new();
+    if abilities.change_nick.allowed() {
+        profile.push(
+            act(
+                format!("sm:profile:{server}"),
+                t("Editar perfil de servidor"),
+                parts::glyphs::EDIT,
+            )
+            .into(),
+        );
+    }
+    // Kept by the provider: without it there is nothing to hide them by.
+    if store.synced_notifications() {
+        let hidden = store
+            .notifications(Some(server))
+            .is_some_and(|kept| kept.hide_muted);
+        profile.push(
+            act(
+                format!("sm:flag:{server}:hide"),
+                t("Ocultar los canales silenciados"),
+                parts::glyphs::EYE_OFF,
+            )
+            .checked(hidden)
+            .into(),
+        );
+    }
+    groups.push(profile);
+
+    // Who owns it cannot leave it: its settings delete it.
+    if abilities.leave.allowed() && !store.owns(server) {
+        groups.push(vec![Item {
+            danger: true,
+            ..act(
+                format!("sm:leave:{server}"),
+                t("Abandonar el servidor"),
+                parts::glyphs::LEAVE,
+            )
+        }
+        .into()]);
+    }
+    // «Copiar ID» is for developer mode.
+    if ui.prefs.developer {
+        groups.push(vec![act(
+            format!("sm:copy-id:{server}"),
+            t("Copiar ID del servidor"),
+            parts::glyphs::ID,
+        )
+        .into()]);
+    }
+    groups
 }
 
 /// The mute durations of the menu's submenu: each one's action, then the
@@ -976,17 +1116,8 @@ pub(crate) fn server_groups(
     }
     groups.push(notifications);
 
-    let manages = [
-        &abilities.manage_server,
-        &abilities.manage_roles,
-        &abilities.kick,
-        &abilities.ban,
-        &abilities.view_audit_log,
-    ]
-    .iter()
-    .any(|permit| permit.allowed());
     let mut manage = Vec::new();
-    if manages {
+    if manages(&abilities) {
         manage.push(
             act(
                 format!("ss:open:{server}"),
@@ -1068,6 +1199,20 @@ pub(crate) fn server_groups(
         .into()]);
     }
     groups
+}
+
+/// Whether the account may change something in a server's settings, which
+/// are offered then.
+fn manages(abilities: &ServerAbilities) -> bool {
+    [
+        &abilities.manage_server,
+        &abilities.manage_roles,
+        &abilities.kick,
+        &abilities.ban,
+        &abilities.view_audit_log,
+    ]
+    .iter()
+    .any(|permit| permit.allowed())
 }
 
 /// «Marcar como leído» for `server`: what it reaches, and why not when

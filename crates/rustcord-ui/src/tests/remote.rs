@@ -359,7 +359,19 @@ fn a_server_is_marked_read_from_its_menu_and_a_reminder_reaches_the_provider() {
     )]));
     assert!(host.store.server_unread(server).0);
     host.sent.clear();
-    host.click(rustcord_components::server_menu::ids::TOGGLE);
+    // From the rail's menu: the one under the server's name has no such
+    // entry, as Discord's.
+    let frame = host.frame();
+    let rect = frame
+        .regions
+        .iter()
+        .rev()
+        .find(|region| region.id == format!("server:{server}"))
+        .unwrap()
+        .rect;
+    host.send(UiEvent::ContextMenu {
+        position: Point::new(rect.x + rect.width / 2.0, rect.y + rect.height / 2.0),
+    });
     host.click(&format!("sm:read:{server}"));
     assert!(host.sent.iter().any(|command| matches!(command,
         Command::MarkServerRead { server: found, .. } if *found == server)));

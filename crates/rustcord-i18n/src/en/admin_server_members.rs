@@ -11,11 +11,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Archivar después de", "Archive after"),
     ("Cambiar banner", "Change banner"),
-    (
-        "Canal de novedades de la comunidad",
-        "Community updates channel",
-    ),
-    ("Canal de reglas", "Rules channel"),
     ("Como decida el servicio", "As the service decides"),
     ("Comunidad", "Community"),
     (
@@ -34,7 +29,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Elige el canal de reglas y el de novedades de la comunidad.",
         "Choose the community's rules channel and updates channel.",
     ),
-    ("Es una comunidad", "It is a community"),
     ("Ese emoji no es de este servidor.", "That emoji is not this server's."),
     (
         "Este servidor no tiene desbloqueado el ícono animado.",
@@ -64,10 +58,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Filtrar por todas las etiquetas elegidas",
         "Filter by every tag chosen",
     ),
-    (
-        "Hasta cinco cosas que lo definen, con un emoji o «:nombre:» de uno del servidor. Se muestran en su perfil.",
-        "Up to five things that define it, with an emoji or “:name:” of one of the server's own. They show on its profile.",
-    ),
     ("No se guardó la comunidad", "The community was not saved"),
     ("Quitar banner", "Remove banner"),
     (
@@ -77,10 +67,6 @@ pub(super) const ENTRIES: super::Entries = &[
     (
         "Sobre la lista de canales. En la simulación se guarda su nombre, no la imagen.",
         "Above the channel list. The simulation keeps its name, not the picture.",
-    ),
-    (
-        "Tiene un canal de reglas y otro donde el servicio avisa novedades a la moderación. Al activarla, la verificación sube a baja si no tenía y se revisa el contenido de todos.",
-        "It has a rules channel and another where the service tells the moderators about news. Turning it on raises verification to low if there was none and scans everyone's content.",
     ),
     (
         "Una comunidad necesita al menos verificación baja y revisar el contenido de todos.",

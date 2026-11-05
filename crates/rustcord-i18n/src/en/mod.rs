@@ -76,6 +76,8 @@ mod settings_apps;
 mod settings_look;
 // The card of the files of a message being sent.
 mod uploads_progress;
+// The server's menu and its settings, as Discord's.
+mod server_admin;
 
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
@@ -135,4 +137,6 @@ pub(crate) const ALL: &[(&str, Entries)] = &[
     ("settings_look", settings_look::ENTRIES),
     // The card of the files of a message being sent.
     ("uploads_progress", uploads_progress::ENTRIES),
+    // The server's menu and its settings, as Discord's.
+    ("server_admin", server_admin::ENTRIES),
 ];
