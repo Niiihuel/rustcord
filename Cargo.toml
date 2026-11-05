@@ -113,5 +113,9 @@ debug = "line-tables-only"
 opt-level = 2
 debug = false
 
+# Whole-program LTO in one unit: the code is 16 % smaller (63.7 to 53.7 MB
+# of .text) and the running window holds ~10 MiB less of it (PSS 94.5 to
+# 84.4 MiB, measured 2026-11-05), at minutes more per release build.
 [profile.release]
-lto = "thin"
+lto = "fat"
+codegen-units = 1
