@@ -210,11 +210,25 @@ impl Matcher {
             Input::Button { button, down } => (Main::Button(button), down),
         };
         let flags = held_flags(self.sides);
+        // Of the shortcuts on this input whose modifiers are all held, only
+        // the ones that name the most: Ctrl+V is mute's when mute is on
+        // Ctrl+V, not also push to talk's on V; Shift+V stays push to talk's.
+        let covered = |hotkey: &Hotkey| hotkey.main == main && hotkey.modifiers & !flags == 0;
+        let most = self
+            .hotkeys
+            .iter()
+            .filter(|hotkey| covered(hotkey))
+            .map(|hotkey| hotkey.modifiers.count_ones())
+            .max();
         for (place, hotkey) in self.hotkeys.iter().enumerate() {
             if hotkey.main != main {
                 continue;
             }
-            if down && !self.active[place] && hotkey.modifiers & !flags == 0 {
+            if down
+                && !self.active[place]
+                && covered(hotkey)
+                && Some(hotkey.modifiers.count_ones()) == most
+            {
                 self.active[place] = true;
                 edges.push(Edge::Pressed(place));
             } else if !down && self.active[place] {
@@ -549,6 +563,23 @@ mod tests {
         matcher.step(key(0x11, true));
         assert_eq!(matcher.step(key(T, true)), [Edge::Pressed(0)]);
         assert_eq!(matcher.step(key(0x11, false)), [Edge::Released(0)]);
+    }
+
+    /// Push to talk on V and mute on Ctrl+V: Ctrl+V is mute's alone.
+    #[test]
+    fn the_shortcut_naming_the_most_modifiers_held_takes_the_press() {
+        let v = u32::from(b'V');
+        let mut matcher = matcher(&["v", "CTRL+v"]);
+        matcher.step(key(CTRL, true));
+        assert_eq!(matcher.step(key(v, true)), [Edge::Pressed(1)]);
+        assert_eq!(matcher.step(key(v, false)), [Edge::Released(1)]);
+        matcher.step(key(CTRL, false));
+        matcher.step(key(SHIFT_KEY, true));
+        assert_eq!(
+            matcher.step(key(v, true)),
+            [Edge::Pressed(0)],
+            "Shift is extra"
+        );
     }
 
     #[test]

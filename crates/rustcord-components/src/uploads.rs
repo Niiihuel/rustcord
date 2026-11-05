@@ -338,6 +338,7 @@ pub fn sending_uploads(
                 inner_spacing: 0.0,
             })
             .tooltip(t("Cancelar envío"))
+            .accessibility_label(t("Cancelar envío"))
             .ink(look.muted)
             .hover_ink(look.text)
             .render()

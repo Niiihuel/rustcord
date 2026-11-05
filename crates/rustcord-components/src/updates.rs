@@ -259,7 +259,8 @@ fn stage(view: &UpdateView, look: &Look) -> Element {
 pub fn header_button(stage: &Stage, look: &Look) -> Element {
     let (hint, enabled) = match stage {
         Stage::Offered => (t("Hay una actualización disponible"), true),
-        Stage::Downloading { .. } | Stage::Installing => (t("Descargando la actualización"), false),
+        Stage::Downloading { .. } => (t("Descargando la actualización"), false),
+        Stage::Installing => (t("Instalando…"), false),
         Stage::Restarting => (t("Reiniciando Rustcord…"), false),
         Stage::Installed => (t("¡Actualización lista!"), true),
         Stage::Failed(_) => (t("No se pudo actualizar"), true),
@@ -594,7 +595,7 @@ mod tests {
         for (stage, hint, waits) in [
             (Stage::Offered, "Hay una actualización disponible", false),
             (downloading, "Descargando la actualización", true),
-            (Stage::Installing, "Descargando la actualización", true),
+            (Stage::Installing, "Instalando…", true),
             (Stage::Restarting, "Reiniciando Rustcord…", true),
             (Stage::Installed, "¡Actualización lista!", false),
         ] {

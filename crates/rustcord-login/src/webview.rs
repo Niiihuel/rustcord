@@ -357,9 +357,12 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
                     return;
                 }
                 // A page moving on fails the evaluation: the result stays in
-                // it, or its next document tells again; never the end.
+                // it, or its next document tells again. Failing every
+                // retry, the take is broken: the window ends with its error.
                 let Ok(value) = result else {
-                    state.retry();
+                    if !state.retry() {
+                        state.finish(&main, 6);
+                    }
                     return;
                 };
                 if !value.is_string() {

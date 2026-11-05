@@ -168,6 +168,10 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Pulsar para hablar en Rustcord", "Push to talk in Rustcord"),
     ("{shortcut} en Rustcord", "{shortcut} in Rustcord"),
     ("Atajo", "Shortcut"),
+    // Capture fixture: the notices it stacks.
+    ("No se pudo enviar el mensaje", "Couldn't send the message"),
+    ("Revisa tu conexión e inténtalo de nuevo.", "Check your connection and try again."),
+    ("Imagen guardada en Descargas", "Image saved in Downloads"),
     (
         "el escritorio no da los botones del ratón fuera de la ventana.",
         "the desktop doesn't give mouse buttons outside the window.",

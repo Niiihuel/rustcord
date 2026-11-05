@@ -421,10 +421,15 @@ impl GlobalPushToTalk {
         if self.wanted.is_none() {
             match key {
                 None => ui.audio.global_keys = GlobalKeys::Off,
-                Some(_) if !matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)) => {
-                    ui.audio.global_keys = GlobalKeys::Unavailable(
-                        es("el escritorio no da los botones del ratón fuera de la ventana.").into(),
-                    );
+                Some(key) if !matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)) => {
+                    // A mouse button the desktop does not take, or a key
+                    // name that no longer reads.
+                    let why = if mouse(key).is_some() {
+                        es("el escritorio no da los botones del ratón fuera de la ventana.")
+                    } else {
+                        es("el sistema no puede dar esa tecla.")
+                    };
+                    ui.audio.global_keys = GlobalKeys::Unavailable(why.into());
                 }
                 Some(_) => {}
             }

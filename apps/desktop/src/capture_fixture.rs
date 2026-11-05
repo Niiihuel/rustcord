@@ -43,14 +43,15 @@ pub fn offer_update(ui: &mut Ui, stage: &str) {
 /// `--action notices`: three notices, an error with its detail between two
 /// plain ones, as the window stacks them.
 pub fn notices(ui: &mut Ui, now: std::time::Instant) {
-    ui.notify("Enlace copiado", None, false, now);
+    use rustcord_i18n::t;
+    ui.notify(t("Enlace copiado"), None, false, now);
     ui.notify(
-        "No se pudo enviar el mensaje",
-        Some("Revisa tu conexión e inténtalo de nuevo.".into()),
+        t("No se pudo enviar el mensaje"),
+        Some(t("Revisa tu conexión e inténtalo de nuevo.").into()),
         true,
         now,
     );
-    ui.notify("Imagen guardada en Descargas", None, false, now);
+    ui.notify(t("Imagen guardada en Descargas"), None, false, now);
 }
 
 /// `--capture-accounts`: a provider that remembers five accounts, the open one
