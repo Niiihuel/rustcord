@@ -174,6 +174,31 @@ fn the_menu_lists_what_rustcord_does_in_discords_groups_and_order() {
     host.click(ids::TOGGLE);
     host.click(&format!("sm:notify:{lab}"));
     assert_eq!(host.ui.server_menu.dialog, Some(Dialog::Notifications(lab)));
+    host.ui.server_menu.dialog = None;
+    // «Invitar al servidor» makes an invitation; «Editar perfil de servidor»
+    // asks for the name in it; «Copiar ID del servidor» copies it.
+    host.sent.clear();
+    host.click(ids::TOGGLE);
+    host.click(&format!("sm:invite:{lab}"));
+    assert!(host
+        .sent
+        .iter()
+        .any(|command| matches!(command, Command::CreateInvite { server, .. } if *server == lab)));
+    host.click(ids::TOGGLE);
+    host.click(&format!("sm:profile:{lab}"));
+    assert!(
+        matches!(host.ui.server_menu.dialog, Some(Dialog::Nick { server, .. }) if server == lab)
+    );
+    host.ui.server_menu.dialog = None;
+    let copied = update(
+        &mut host.ui,
+        &mut host.store,
+        &UiAction::Clicked {
+            id: format!("sm:copy-id:{lab}"),
+        },
+        host.now,
+    );
+    assert!(copied.contains(&Intent::Copy(lab.to_string())));
     // Another's server: leaving, the last, in the danger ink.
     let taller = host.server_id_named("Taller de Rust");
     let last = crate::server_menu::header_groups(&host.ui, &host.store, taller)
