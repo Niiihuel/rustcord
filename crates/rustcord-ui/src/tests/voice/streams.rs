@@ -908,3 +908,40 @@ fn watch_alone_stops_the_others_and_the_icon_adds_a_stream_to_those_watched() {
     assert_eq!(watched(&host), vec![owners[2]]);
     assert_eq!(host.ui.video.spotlight, Some(owners[2]));
 }
+
+#[test]
+fn a_stream_focused_or_full_screen_fits_the_window_with_its_strip() {
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    host.click(&format!("voice:{room}"));
+    let owner = host.tr_streamers(room, 5, 1)[0];
+    host.tr_watch(room, owner);
+    let me = host.vz_me();
+    for full in [false, true] {
+        if full {
+            host.click(&ids::fullscreen(owner.0));
+        }
+        for size in [
+            Size::new(1920.0, 1080.0),
+            Size::new(1280.0, 800.0),
+            Size::new(1229.0, 768.0),
+            Size::new(800.0, 600.0),
+        ] {
+            let frame = host.vz_frame_at(size);
+            let tile = vz_rect_in(&frame, &ids::stream_tile(owner.0));
+            let strip = vz_rect_in(&frame, &ids::tile(me.0));
+            let toggle = vz_rect_in(&frame, ids::TILES);
+            let case = format!("full screen {full} at {size:?}");
+            assert!(
+                tile.x >= 0.0 && tile.x + tile.width <= size.width,
+                "{case}: {tile:?}"
+            );
+            assert!(
+                tile.y + tile.height <= strip.y,
+                "{case}: {tile:?} {strip:?}"
+            );
+            assert!(strip.y + strip.height <= size.height, "{case}: {strip:?}");
+            assert!(toggle.y + toggle.height <= size.height, "{case}");
+        }
+    }
+}

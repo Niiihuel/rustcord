@@ -7252,6 +7252,123 @@ mod tests {
     }
 
     #[test]
+    fn a_focused_stream_fits_between_the_header_and_the_strip_at_any_size() {
+        let look = Look::ONYX;
+        let streaming = |user| Participant {
+            streaming: true,
+            ..person(user, false, false, false)
+        };
+        let shown = |fullscreen| Preview {
+            surface: ids::stream_surface(2),
+            title: "Pantalla de Persona 2".into(),
+            frame: Some((1280, 720)),
+            fps: Some(30),
+            waiting: "Esperando video…".into(),
+            stop: (ids::stop_watching(2), "Dejar de ver"),
+            note: String::new(),
+            actions: Vec::new(),
+            stream: Some(StreamTile {
+                owner: 2,
+                name: "Persona 2".into(),
+                sound: 1_002,
+                silenced: false,
+                windowed: false,
+                menu: None,
+                fullscreen,
+                over: false,
+                idle: false,
+                activity: None,
+                degraded: false,
+                viewers: Vec::new(),
+                zoom: Some(Zoom::FIT),
+                failed: false,
+            }),
+            focused: true,
+            card: false,
+        };
+        let surface = |laid: &limn::Frame| {
+            laid.commands
+                .iter()
+                .find_map(|command| match command {
+                    limn::DrawCommand::Surface { id, rect, .. }
+                        if *id == ids::stream_surface(2) =>
+                    {
+                        Some(*rect)
+                    }
+                    _ => None,
+                })
+                .unwrap()
+        };
+        // Full screen on a 1080p screen, the usual window, a small one, and
+        // a wide short one, as a 16:10 laptop's.
+        for (size, fullscreen) in [
+            (Size::new(1920.0, 1080.0), true),
+            (Size::new(1280.0, 800.0), false),
+            (Size::new(800.0, 600.0), false),
+            (Size::new(1231.0, 769.0), true),
+        ] {
+            for tiles_hidden in [false, true] {
+                let view = Stage {
+                    channel: "General".into(),
+                    phase: Some(CallPhase::Connected),
+                    people: (1..=5).map(streaming).collect(),
+                    muted: false,
+                    simulated: false,
+                    join_denied: None,
+                    chat: Ok(false),
+                    size,
+                    card: None,
+                    tile_menu: None,
+                    more_open: false,
+                    video: VideoControls::default(),
+                    previews: Vec::new(),
+                    watch: Ok(()),
+                    watching: vec![shown(fullscreen)],
+                    tiles_hidden,
+                    private: None,
+                    quick: None,
+                    camera_panel: None,
+                    end: 0.0,
+                    invite: false,
+                    idle: false,
+                };
+                let (_, laid) = frame(stage(view, &look), size);
+                let case = format!("{size:?} hidden {tiles_hidden}");
+                let tile = rect_of(&laid, &ids::stream_tile(2));
+                let picture = surface(&laid);
+                let bar_top = size.height - BAR_BOTTOM - BAR_HEIGHT;
+                // Under the header, over the bar, inside the sides; the
+                // picture fills the 16:9 tile, neither cropped nor past it.
+                assert!(tile.y >= crate::sidebar::HEADER, "{case}: {tile:?}");
+                assert!(tile.x >= 0.0 && tile.x + tile.width <= size.width, "{case}");
+                assert!(tile.y + tile.height <= bar_top, "{case}: {tile:?}");
+                assert!(
+                    (tile.width / tile.height - 16.0 / 9.0).abs() < 0.01,
+                    "{case}"
+                );
+                assert!(
+                    picture.x >= tile.x - 0.5
+                        && picture.y >= tile.y - 0.5
+                        && picture.x + picture.width <= tile.x + tile.width + 0.5
+                        && picture.y + picture.height <= tile.y + tile.height + 0.5,
+                    "{case}: {picture:?} in {tile:?}"
+                );
+                // The strip under it, whole, over the bar.
+                if tiles_hidden {
+                    assert!(!controls(&laid).contains(&ids::tile(1)), "{case}");
+                } else {
+                    let strip = rect_of(&laid, &ids::tile(1));
+                    assert!(strip.y >= tile.y + tile.height, "{case}: {strip:?}");
+                    assert!(strip.y + strip.height <= bar_top, "{case}: {strip:?}");
+                }
+                // Its toggle in the stage.
+                let pill = rect_of(&laid, ids::TILES);
+                assert!(pill.y + pill.height <= size.height, "{case}: {pill:?}");
+            }
+        }
+    }
+
+    #[test]
     fn a_person_with_camera_on_shows_the_camera_mark_and_one_off_does_not() {
         let look = Look::ONYX;
         let shown = |camera_on| {
