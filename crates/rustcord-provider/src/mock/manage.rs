@@ -655,6 +655,10 @@ impl World {
             kind,
             name: name.to_owned(),
             topic: None,
+            options: rustcord_model::ChannelOptions {
+                bitrate: if kind.is_voice() { 64_000 } else { 0 },
+                ..Default::default()
+            },
             topic_pictures: Vec::new(),
             parent,
             position: position as i32,
@@ -795,6 +799,7 @@ impl World {
         if edit.slowmode_secs.is_some_and(|secs| secs > 6 * 60 * 60) {
             return Err(t("el modo lento llega hasta 6 horas").into());
         }
+        self.check_options(server, kind, &edit)?;
         // See `mock::server_admin`.
         self.edit_forum(channel, &edit)?;
         let found = self
@@ -822,10 +827,93 @@ impl World {
         if let Some(nsfw) = edit.nsfw {
             found.nsfw = nsfw;
         }
+        let options = &mut found.options;
+        if let Some(bitrate) = edit.bitrate {
+            options.bitrate = bitrate;
+        }
+        if let Some(limit) = edit.user_limit {
+            options.user_limit = limit;
+        }
+        if let Some(region) = edit.region {
+            options.region = region;
+        }
+        if let Some(full) = edit.full_video {
+            options.full_video = full;
+        }
+        if let Some(spoiler) = edit.spoiler {
+            options.spoiler = spoiler;
+        }
+        if let Some(minutes) = edit.archive_after {
+            options.archive_after = Some(minutes);
+        }
+        if let Some(kind) = edit.kind {
+            found.kind = kind;
+        }
         if edit.position.is_none() && edit.parent.is_none() {
             return Ok(vec![Event::ChannelChanged(found.clone())]);
         }
         Ok(self.place(channel, edit.position))
+    }
+
+    /// What a channel's options need, as a service would check them: voice
+    /// options on a voice room within its server's sound and 99 people (a
+    /// stage's audience up to 10 000), a region of the simulation's, thread
+    /// hiding on a text channel, and announcements only in a community.
+    fn check_options(
+        &self,
+        server: ServerId,
+        kind: Option<ChannelKind>,
+        edit: &ChannelEdit,
+    ) -> Result<(), String> {
+        let stage = kind == Some(ChannelKind::Stage);
+        let voice = kind.is_some_and(ChannelKind::is_voice);
+        let texts = matches!(kind, Some(ChannelKind::Text | ChannelKind::Announcement));
+        let options = self
+            .servers
+            .iter()
+            .find(|found| found.id == server)
+            .map(|found| found.options.clone())
+            .unwrap_or_default();
+        let most = if stage {
+            64_000
+        } else {
+            options.max_bitrate.max(96_000)
+        };
+        let voice_options = edit.bitrate.is_some()
+            || edit.user_limit.is_some()
+            || edit.region.is_some()
+            || edit.full_video.is_some();
+        if voice_options && !voice
+            || edit
+                .bitrate
+                .is_some_and(|bitrate| !(8_000..=most).contains(&bitrate))
+            || edit
+                .user_limit
+                .is_some_and(|limit| limit > if stage { 10_000 } else { 99 })
+            || edit.region.as_ref().is_some_and(|region| {
+                region
+                    .as_deref()
+                    .is_some_and(|region| !super::VOICE_REGIONS.iter().any(|(id, _)| *id == region))
+            })
+        {
+            return Err(t("esa opción de voz no está disponible aquí").into());
+        }
+        if edit
+            .archive_after
+            .is_some_and(|minutes| !texts || !rustcord_model::ARCHIVE_AFTER.contains(&minutes))
+            || edit.spoiler.is_some() && kind == Some(ChannelKind::Category)
+        {
+            return Err(t("ese canal no tiene esa opción").into());
+        }
+        if let Some(to) = edit.kind {
+            let between = texts && matches!(to, ChannelKind::Text | ChannelKind::Announcement);
+            if !between || to == ChannelKind::Announcement && !options.community {
+                return Err(
+                    t("solo un canal de texto de una comunidad pasa a ser de anuncios").into(),
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Put `channel` at `position` among its siblings (same server, same

@@ -24,6 +24,7 @@ use rustcord_provider::{ChannelEdit, RoleEdit, RoleIcon, ServerEdit};
 use serde_json::{json, Map, Value};
 
 use super::{holds, Standing};
+use crate::bootstrap::SPOILER_CHANNEL;
 use crate::{wire, LoginError};
 
 /// A forum's flag that asks every post for a tag.
@@ -41,6 +42,25 @@ const BANNER: &str = "BANNER";
 const ANIMATED_BANNER: &str = "ANIMATED_BANNER";
 /// What a recent join is.
 const RECENT_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+/// Discord's voice regions, by id, as its client lists them to override
+/// one channel's, each with the name the service gives it (not translated).
+pub(crate) const VOICE_REGIONS: &[(&str, &str)] = &[
+    ("brazil", "Brazil"),
+    ("hongkong", "Hong Kong"),
+    ("india", "India"),
+    ("japan", "Japan"),
+    ("rotterdam", "Rotterdam"),
+    ("singapore", "Singapore"),
+    ("southafrica", "South Africa"),
+    ("sydney", "Sydney"),
+    ("us-central", "US Central"),
+    ("us-east", "US East"),
+    ("us-south", "US South"),
+    ("us-west", "US West"),
+];
+/// A stage's most sound, and a voice channel's without boosts.
+const STAGE_BITRATE: u32 = 64_000;
+const PLAIN_BITRATE: u32 = 96_000;
 
 /// What the safety and profile parts of `edit` need, checked against the session.
 pub(super) fn server_edit(standing: &Standing, edit: &ServerEdit) -> Result<(), LoginError> {
@@ -326,6 +346,15 @@ pub(crate) fn options<'a>(
     if let Some(value) = get("public_updates_channel_id") {
         options.updates_channel = id(value);
     }
+    // Each boost tier raises a voice channel's most, as the client offers.
+    if let Some(tier) = get("premium_tier").and_then(Value::as_u64) {
+        options.max_bitrate = match tier {
+            3 => 384_000,
+            2 => 256_000,
+            1 => 128_000,
+            _ => 96_000,
+        };
+    }
     options
 }
 
@@ -598,6 +627,107 @@ pub(crate) fn forum_fields(body: &mut Value, edit: &ChannelEdit, flags: Option<u
             let require = if forum.require_tag { REQUIRE_TAG } else { 0 };
             body["flags"] = json!((flags & !REQUIRE_TAG) | require);
         }
+    }
+}
+
+/// What a channel's options need: a voice channel for its voice options,
+/// within what its server allows, and a region Discord has; a text or
+/// announcement channel for its thread hiding; and an announcement channel
+/// only made from a text one, or back, in a community.
+pub(super) fn options_edit(
+    server: &Server,
+    channel: &Channel,
+    edit: &ChannelEdit,
+) -> Result<(), LoginError> {
+    let stage = channel.kind == ChannelKind::Stage;
+    let voice_options = edit.bitrate.is_some()
+        || edit.user_limit.is_some()
+        || edit.region.is_some()
+        || edit.full_video.is_some();
+    if voice_options && !channel.kind.is_voice() {
+        return Err(LoginError::new(es(
+            "Solo un canal de voz tiene esas opciones.",
+        )));
+    }
+    let most = if stage {
+        STAGE_BITRATE
+    } else {
+        server.options.max_bitrate.max(PLAIN_BITRATE)
+    };
+    if edit
+        .bitrate
+        .is_some_and(|bitrate| !(8_000..=most).contains(&bitrate))
+    {
+        return Err(LoginError::new(es(
+            "Esa velocidad de transferencia no está disponible en este servidor.",
+        )));
+    }
+    if edit
+        .user_limit
+        .is_some_and(|limit| limit > if stage { 10_000 } else { 99 })
+    {
+        return Err(LoginError::new(es(
+            "Ese límite de usuarios es demasiado alto.",
+        )));
+    }
+    if let Some(Some(region)) = &edit.region {
+        if !VOICE_REGIONS.iter().any(|(id, _)| id == region) {
+            return Err(wire::invalid());
+        }
+    }
+    let texts = matches!(channel.kind, ChannelKind::Text | ChannelKind::Announcement);
+    if edit
+        .archive_after
+        .is_some_and(|minutes| !texts || !ARCHIVE_AFTER.contains(&minutes))
+    {
+        return Err(wire::invalid());
+    }
+    if edit.spoiler.is_some() && channel.kind == ChannelKind::Category {
+        return Err(wire::invalid());
+    }
+    if let Some(kind) = edit.kind {
+        if !texts || !matches!(kind, ChannelKind::Text | ChannelKind::Announcement) {
+            return Err(LoginError::new(es(
+                "Solo un canal de texto pasa a ser de anuncios, y al revés.",
+            )));
+        }
+        if kind == ChannelKind::Announcement && !server.options.community {
+            return Err(LoginError::new(es(
+                "Solo una comunidad tiene canales de anuncios.",
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// A channel's options in `body`; `flags` is the channel's as read just
+/// now, its other flags kept, and as `forum_fields` may have left them.
+pub(crate) fn options_fields(body: &mut Value, edit: &ChannelEdit, flags: Option<u64>) {
+    if let Some(bitrate) = edit.bitrate {
+        body["bitrate"] = json!(bitrate);
+    }
+    if let Some(limit) = edit.user_limit {
+        body["user_limit"] = json!(limit);
+    }
+    if let Some(region) = &edit.region {
+        body["rtc_region"] = json!(region);
+    }
+    if let Some(full) = edit.full_video {
+        body["video_quality_mode"] = json!(if full { 2 } else { 1 });
+    }
+    if let Some(minutes) = edit.archive_after {
+        body["default_auto_archive_duration"] = json!(minutes);
+    }
+    if let Some(kind) = edit.kind {
+        body["type"] = json!(if kind == ChannelKind::Announcement {
+            5
+        } else {
+            0
+        });
+    }
+    if let (Some(spoiler), Some(flags)) = (edit.spoiler, body["flags"].as_u64().or(flags)) {
+        let spoiler = if spoiler { SPOILER_CHANNEL } else { 0 };
+        body["flags"] = json!((flags & !SPOILER_CHANNEL) | spoiler);
     }
 }
 
@@ -943,6 +1073,48 @@ mod tests {
             default_reaction_emoji(&body["default_reaction_emoji"]),
             Some(EmojiId(9))
         );
+    }
+
+    #[test]
+    fn a_channel_s_options_go_as_discord_names_them_and_keep_its_other_flags() {
+        let mut body = json!({});
+        let edit = ChannelEdit {
+            bitrate: Some(96_000),
+            user_limit: Some(10),
+            region: Some(None),
+            full_video: Some(true),
+            spoiler: Some(true),
+            archive_after: Some(10080),
+            kind: Some(ChannelKind::Announcement),
+            ..ChannelEdit::default()
+        };
+        options_fields(&mut body, &edit, Some(1 << 1));
+        assert_eq!(
+            body,
+            json!({"bitrate": 96000, "user_limit": 10, "rtc_region": null,
+                "video_quality_mode": 2, "default_auto_archive_duration": 10080, "type": 5,
+                "flags": (1 << 1) | SPOILER_CHANNEL})
+        );
+        // After a forum's own fields, their flags are the ones kept.
+        let mut body = json!({"flags": REQUIRE_TAG | SPOILER_CHANNEL});
+        let edit = ChannelEdit {
+            spoiler: Some(false),
+            region: Some(Some("rotterdam".into())),
+            ..ChannelEdit::default()
+        };
+        options_fields(&mut body, &edit, Some(0));
+        assert_eq!(body["flags"], REQUIRE_TAG);
+        assert_eq!(body["rtc_region"], "rotterdam");
+        // Each boost tier raises a voice channel's most.
+        let guild = json!({"premium_tier": 2});
+        let read = options(|key| guild.get(key), &ServerOptions::default());
+        assert_eq!(read.max_bitrate, 256_000);
+        let plain = json!({"premium_tier": 0});
+        assert_eq!(
+            options(|key| plain.get(key), &read).max_bitrate,
+            PLAIN_BITRATE
+        );
+        assert!(VOICE_REGIONS.iter().any(|(id, _)| *id == "rotterdam"));
     }
 
     #[test]

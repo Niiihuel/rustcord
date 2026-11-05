@@ -410,6 +410,7 @@ pub(crate) fn allowed(snapshot: &Snapshot, command: &Command) -> Result<(), Logi
             if edit.position.is_some_and(|position| position < 0) {
                 return Err(wire::invalid());
             }
+            rest::options_edit(standing.server, found, edit)?;
             rest::forum_edit(standing.server, found, edit)
         }
         Command::DeleteChannel { channel } => {

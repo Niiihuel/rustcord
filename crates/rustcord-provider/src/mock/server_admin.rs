@@ -93,6 +93,7 @@ impl World {
             kind,
             name: name.into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 0,

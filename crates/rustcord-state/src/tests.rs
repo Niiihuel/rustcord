@@ -196,6 +196,7 @@ fn channel(id: ChannelId, kind: ChannelKind, name: &str) -> Channel {
         kind,
         name: name.into(),
         topic: None,
+        options: Default::default(),
         topic_pictures: Vec::new(),
         parent: None,
         position: 0,

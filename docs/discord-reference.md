@@ -306,6 +306,86 @@ Measured on 2026-11-04 in the web client (build stable 663810, es-419,
 - «Desarrollador»: no heading; «Modo desarrollador» and «Modo de prueba de
   la aplicación», each a switch.
 
+## Channel settings
+
+Measured on 2026-11-05 in the web client (es-419, 1440×900, «Midnight») on
+a text and a voice channel of a server the account owns, read only: pages
+opened and a select opened and closed, nothing changed or saved.
+
+- Frame: the sidebar's list 238 wide, 200 in from the left; its head 60
+  from the top: the channel's glyph (12), its name 14/500 muted, 4 px, and
+  its category 12/600 in the text's color, not capitalized; items 24 under
+  the head, 36 high and 38 apart (padding 6 10, radius 4, 16 px; the chosen
+  one `#97979f` at 24 % with the strong text, the rest muted). A line (8
+  above, 6 below, 10 in from each side) before «Eliminar canal», red, with
+  a 16 px trash can at its end. The page column 740 wide from 452 with
+  60/40/80 of padding (its content 660 from 492); the round close (36, a
+  2 px muted ring, an 18 px ×) 40 past the content, «ESC» (12/600) 6 under
+  it. Rustcord keeps the server settings' frame, measured about 7 % larger
+  (254, 38.5, 705), so both settings stay one size.
+- Pages: «Vista general», «Permisos», «Invitaciones», «Integraciones», a
+  line, «Eliminar canal».
+- Overview: the title 20/500 (line 24); each field's title 16/500 (line
+  20), 8 over its control; fields and selects 40 high, radius 8; a note 4
+  under its control, 12/16 muted. Fields 24 apart, 40 after slow mode's
+  note, 48 after the choices of «Visibilidad del contenido».
+- Text channel, in order: «Nombre del canal» (an emoji button 30×18, 12 in
+  from the field's end), «Tema del canal» (an editor 233 high: a row of
+  format buttons 32 high — bold, italic, underline, strikethrough, spoiler,
+  emoji — and what is left, 14/600, at its lower right; «¡Hazle saber a
+  todos cómo usar este canal!»), «Modo lento» (Apagar, 5, 10, 15 and 30
+  segundos, 1, 2, 5, 10, 15 and 30 minutos, 1, 2 and 6 horas; «Los miembros
+  solo podrán enviar un mensaje y crear un hilo durante este intervalo, a
+  menos que tengan el permiso de Omitir el modo lento.»), «Visibilidad del
+  contenido» (Predeterminado, Canal de spoilers, Canal con restricción de
+  edad, each with its 14/18 description; circle 20, label 32 in, choices
+  16 apart, the group 8 under its title and 4 over what follows), «Ocultar
+  después de inactividad» (1 hora, 24 horas, 3 días, 1 semana; «Los hilos
+  nuevos no aparecerán en la lista de canales tras estar inactivos durante
+  el tiempo especificado.»). «Canal de anuncios» is a switch of a
+  community's text channel (not seen: the server is not one). An
+  illustration closes the page (not copied).
+- Voice channel: the name (focused as the page opens), «Modo lento» (the
+  same note), «Visibilidad del contenido», a line 56 under the choices and
+  48 over «Velocidad de transferencia»: a slider 48 high, its marks named
+  over it (12/500 muted: 8kbps at its start, 64kbps centered where it
+  falls, 96kbps at its end — more with boosts), dashes across the track,
+  the fill blurple and the thumb white; «¡TODAS LAS VELOCIDADES! Exceder una
+  velocidad de 64 kbps puede afectar negativamente a personas con una mala
+  conexión.». «Calidad del video»: Automática and 720p (36 apart), a note
+  with «Automática» in 600. «Límite de usuarios»: a slider from ∞ to 99, a
+  note with «Mover miembros» in 600. «Excepción de región»: its note
+  (14/18) 4 under the title, the select 8 under the note: Automática,
+  Brazil, Hong Kong, India, Japan, Rotterdam, Singapore, South Africa,
+  Sydney, US Central, US East, US South, US West (the service's own names).
+- «Permisos»: «Permisos del canal» 20/600 over «Usa los permisos para
+  personalizar quién puede hacer qué en este canal.» (14); the card
+  «Permisos sincronizados con la categoría: **Canales de texto**» (a
+  yellow arrows glyph); «Canal privado» (a lock, a switch, «Al convertir un
+  canal en privado, solo los miembros y roles seleccionados podrán
+  verlo.» 12); a line; «Permisos avanzados ›» 20/600.
+- «Invitaciones»: the title 20/600; 40 under it «Aquí tienes una lista de
+  todos los enlaces de invitación activos. Puedes revocar cualquiera o
+  crear uno.» (14 muted, «crear uno» a link); «Pausar invitaciones», a red
+  button 32 high (14/500); a line 16 under it; the headings 16/500
+  «Persona que invita» (203 wide), «Código de invitación» (163), «Usos»
+  (71), «Caduca» (122), «Roles»; a row each: a 24 avatar and the name 16,
+  the code 14, its uses and a countdown «08:04:40:49» (days, hours,
+  minutes, seconds); a 16 px × past the column's end revokes it; a line
+  under the list.
+- «Integraciones»: the title; «Personaliza tu servidor con
+  integraciones. Administra los webhooks y canales que sigues que hacen
+  publicaciones en este canal.» (14) and a help link; a line 32 under it;
+  cards 88 high, radius 8, 16 apart: a 24 glyph 28 in, the title 16/500
+  over its count 12 at 80 in, a blurple button 32 high 16 from the end
+  («Crear Webhook»; «Más información» for «Canales que sigues»).
+- «Eliminar canal»: a dialog 400 wide: «Eliminar canal» (20 bold),
+  «¿Realmente quieres eliminar **#general**? Esta acción no se puede
+  deshacer.» (16), a × at its top right, «Cancelar» (gray) and «Eliminar
+  canal» (red) side by side, as wide as the dialog.
+- The bar of unsaved changes says «¡Cuidado! ¡Tienes cambios sin
+  guardar!» (from the bundle's strings: nothing was changed to see it).
+
 ## Threads popout (text channel)
 
 Read from the web bundle the desktop client cached (2026-11-04).

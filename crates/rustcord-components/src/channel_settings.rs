@@ -12,8 +12,8 @@
 
 use limn::{
     Access, Button, ButtonSize, ButtonVariant, Color, Component, ControlSize, DropdownOption,
-    Element, FontFamily, Icon, Popover, PopoverPlacement, Role, ScrollArea, ScrollbarAppearance,
-    Select, Switch, TextField, TextSpan,
+    Element, FontFamily, Icon, Popover, PopoverPlacement, RadioGroup, RadioMetrics, RadioOption,
+    RadioVariant, Role, ScrollArea, ScrollbarAppearance, Select, Size, Switch, TextField, TextSpan,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{ChannelKind, Permissions};
@@ -25,7 +25,7 @@ use crate::{centered, gap, line, strong_line, text, Look};
 /// the choice says (Spanish: show it through `t`). The provider takes up to
 /// six hours.
 pub const SLOWMODE: [(u32, &str); 14] = [
-    (0, es("Apagado")),
+    (0, es("Apagar")),
     (5, es("5 segundos")),
     (10, es("10 segundos")),
     (15, es("15 segundos")),
@@ -51,6 +51,18 @@ pub fn slowmode_label(secs: u32) -> String {
             || tr!("{seconds} segundos", seconds = secs),
             |(_, label)| t(label).to_owned(),
         )
+}
+
+/// How a time to hide or archive threads after reads: one of
+/// [`rustcord_model::ARCHIVE_AFTER`], or its minutes.
+pub fn archive_label(minutes: u32) -> String {
+    match minutes {
+        60 => t("1 hora").into(),
+        1440 => t("24 horas").into(),
+        4320 => t("3 días").into(),
+        10080 => t("1 semana").into(),
+        other => tr!("{n} minutos", n = other),
+    }
 }
 
 /// The most a channel's topic holds, in characters.
@@ -640,13 +652,13 @@ pub fn private_card(card: &PrivateCard, look: &Look) -> Element {
         (
             t("Categoría privada"),
             t(
-                "Si la haces privada, solo los roles y miembros que elijas van a poder verla. Los canales sincronizados con ella toman los mismos permisos.",
+                "Al convertir una categoría en privada, solo los miembros y roles seleccionados podrán verla. Los canales vinculados a esta categoría pasarán a tener los mismos ajustes de forma automática.",
             ),
         )
     } else {
         (
             t("Canal privado"),
-            t("Si lo haces privado, solo los roles y miembros que elijas van a poder verlo."),
+            t("Al convertir un canal en privado, solo los miembros y roles seleccionados podrán verlo."),
         )
     };
     let head = Element::column(vec![
@@ -1028,6 +1040,365 @@ pub fn field_select(select: &FieldSelect, look: &Look) -> Element {
     .render()
 }
 
+/// Room between two fields of the overview, as Discord's measures: 24 px,
+/// 40 after slow mode's note and 48 after the choices of «Visibilidad del
+/// contenido».
+pub const FIELD_GAP: f32 = 24.0;
+pub const AFTER_SLOWMODE: f32 = 40.0;
+pub const AFTER_CHOICES: f32 = 48.0;
+
+/// A field of the overview: its title (16 px medium), its control 8 px
+/// under it, and a [`note`] 4 px under the control.
+pub fn field(title: &str, control: Element, note: Option<Element>, look: &Look) -> Element {
+    let mut parts = vec![strong_line(title, 16.0, look.text), gap(0.0, 8.0), control];
+    if let Some(note) = note {
+        parts.push(gap(0.0, 4.0));
+        parts.push(note);
+    }
+    Element::column(parts)
+}
+
+/// A field's note: 12 px in the muted ink, the parts marked strong in
+/// semibold.
+pub fn note(parts: &[(&str, bool)], look: &Look) -> Element {
+    Element::formatted_text(
+        parts
+            .iter()
+            .map(|(text, strong)| {
+                let family = if *strong {
+                    FontFamily::SansSemibold
+                } else {
+                    FontFamily::Sans
+                };
+                TextSpan::new(*text, look.muted, 12.0, family)
+            })
+            .collect(),
+    )
+}
+
+/// The line that sets a voice channel's own options apart: 56 px under the
+/// choices above it and 48 over the next field.
+pub fn group_divider(look: &Look) -> Element {
+    Element::column(vec![
+        gap(0.0, 56.0),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+        gap(0.0, 48.0),
+    ])
+}
+
+/// What a channel's content shows as: the three choices of «Visibilidad
+/// del contenido».
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Visibility {
+    /// Always visible.
+    Shown,
+    /// Hidden as spoilers until each person shows them.
+    Spoiler,
+    /// Only for adults, who confirm their age first.
+    Adults,
+}
+
+impl Visibility {
+    /// What a channel marked so shows as: for adults wins over spoilers.
+    pub fn of(spoiler: bool, nsfw: bool) -> Self {
+        match (spoiler, nsfw) {
+            (_, true) => Self::Adults,
+            (true, false) => Self::Spoiler,
+            (false, false) => Self::Shown,
+        }
+    }
+
+    /// The last part of its choice's id, `cs:visibility:{key}`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Shown => "default",
+            Self::Spoiler => "spoiler",
+            Self::Adults => "nsfw",
+        }
+    }
+
+    pub const ALL: [Self; 3] = [Self::Shown, Self::Spoiler, Self::Adults];
+}
+
+/// One choice among a few, one under the other, each with its note under
+/// its name, as the account's settings draw them (`user_settings::choices`);
+/// `options` are each its id, its name, its note and whether it can be chosen.
+pub fn radio(
+    id: &str,
+    label: &str,
+    options: &[(String, String, Option<String>, bool)],
+    selected: &str,
+    look: &Look,
+) -> Element {
+    let options = options
+        .iter()
+        .map(|(value, name, note, enabled)| {
+            let option = RadioOption::new(value.clone(), name.clone()).enabled(*enabled);
+            match note {
+                Some(note) => option.description(note.clone()),
+                None => option,
+            }
+        })
+        .collect();
+    let group = RadioGroup::new(id, options, Some(selected), look.palette())
+        .variant(RadioVariant::Plain)
+        .size(ControlSize::Spacious)
+        .metrics(RadioMetrics {
+            circle: 20.0,
+            option_gap: 16.0,
+            description_size: 14.0,
+            description_gap: 4.0,
+            label_size: 16.0,
+        })
+        .accessibility_label(label)
+        .render();
+    // Discord's group keeps 8 px over its first choice and 4 under its last.
+    Element::column(vec![gap(0.0, 8.0), group, gap(0.0, 4.0)])
+}
+
+/// «Visibilidad del contenido»: shown, spoilers or for adults, each with
+/// its note (`cs:visibility:{key}`); `enabled` says which can be chosen,
+/// in [`Visibility::ALL`]'s order.
+pub fn visibility(chosen: Visibility, enabled: [bool; 3], look: &Look) -> Element {
+    let notes = [
+        (t("Predeterminado"), t("El contenido del canal siempre es visible.")),
+        (
+            t("Canal de spoilers"),
+            t("Indica que este canal contiene spoilers para que los giros de trama, temas delicados u otras discusiones sensibles permanezcan ocultos hasta que los usuarios decidan verlos."),
+        ),
+        (
+            t("Canal con restricción de edad"),
+            t("Los usuarios deberán confirmar que son mayores de edad para ver el contenido de este canal. Los canales con restricción de edad están exentos del filtro de contenido explícito."),
+        ),
+    ];
+    let options: Vec<_> = Visibility::ALL
+        .iter()
+        .zip(notes)
+        .zip(enabled)
+        .map(|((which, (name, note)), enabled)| {
+            (
+                format!("cs:visibility:{}", which.key()),
+                name.to_owned(),
+                Some(note.to_owned()),
+                enabled,
+            )
+        })
+        .collect();
+    let title = t("Visibilidad del contenido");
+    field(
+        title,
+        radio(
+            "cs:visibility",
+            title,
+            &options,
+            &format!("cs:visibility:{}", chosen.key()),
+            look,
+        ),
+        None,
+        look,
+    )
+}
+
+/// A slider whose marks are named over it at their own places, as
+/// Discord's bitrate: `marks` are each a fraction along the track and its
+/// label. The first label starts at the track's start, the last ends at its
+/// end, the rest center on their mark; a dash crosses the track at each.
+pub fn marked_slider(
+    id: &str,
+    label: &str,
+    fraction: f32,
+    marks: &[(f32, String)],
+    enabled: bool,
+    width: f32,
+    look: &Look,
+) -> Element {
+    /// Room a middle label is centered in.
+    const LABEL_BOX: f32 = 80.0;
+    const DASH: Size = Size::new(2.0, 24.0);
+    let last = marks.len().saturating_sub(1);
+    let labels = marks
+        .iter()
+        .enumerate()
+        .map(|(index, (at, name))| {
+            let name = line(name.clone(), 12.0, look.muted).font_family(FontFamily::SansMedium);
+            match index {
+                0 => Element::row(vec![name, Element::spacer().flex(1.0)]),
+                _ if index == last => Element::row(vec![Element::spacer().flex(1.0), name]),
+                _ => Element::row(vec![
+                    gap((at * width - LABEL_BOX / 2.0).max(0.0), 0.0),
+                    Element::row(vec![
+                        Element::spacer().flex(1.0),
+                        name,
+                        Element::spacer().flex(1.0),
+                    ])
+                    .size(Some(LABEL_BOX), None),
+                ]),
+            }
+        })
+        .collect();
+    let dashes = marks
+        .iter()
+        .map(|(at, _)| {
+            Element::row(vec![
+                gap((at * (width - DASH.width)).max(0.0), 0.0),
+                Element::panel(Element::spacer())
+                    .size(Some(DASH.width), Some(DASH.height))
+                    .radius(1.0)
+                    .background(look.border),
+            ])
+        })
+        .collect();
+    let slider = crate::user_settings::slider(id, fraction, look)
+        .width(width)
+        .enabled(enabled)
+        .accessibility_label(label)
+        .render();
+    Element::column(vec![
+        Element::stack(labels).size(Some(width), Some(16.0)),
+        gap(0.0, 4.0),
+        Element::stack(vec![
+            Element::stack(dashes),
+            Element::column(vec![
+                Element::spacer().flex(1.0),
+                slider,
+                Element::spacer().flex(1.0),
+            ]),
+        ])
+        .size(Some(width), Some(DASH.height)),
+    ])
+}
+
+/// An invitation to the channel, as its list shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InviteRow {
+    pub code: String,
+    /// Who made it: their name, accent and picture once loaded.
+    pub inviter: Option<(String, Color, Option<limn::RasterImage>)>,
+    pub uses: String,
+    /// What is left until it stops working, or «∞».
+    pub expires: String,
+    /// What revokes it, when the account may.
+    pub revoke: Option<String>,
+}
+
+/// The widths of the list's columns, as Discord's: who made it, its code,
+/// its uses and when it stops working, each with its room after it.
+const INVITE_COLUMNS: [f32; 4] = [203.3, 162.5, 70.9, 121.6];
+
+/// The channel's invitations as Discord's table: its headings and a row
+/// each, between two lines; a row that may be revoked ends in a ×.
+pub fn invite_table(rows: &[InviteRow], look: &Look) -> Element {
+    let rule = || {
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border)
+    };
+    let cells = |cells: Vec<Element>, end: Option<Element>| {
+        let mut row: Vec<Element> = cells
+            .into_iter()
+            .zip(INVITE_COLUMNS)
+            .map(|(cell, width)| cell.centered_y().size(Some(width), None))
+            .collect();
+        row.push(Element::spacer().flex(1.0));
+        if let Some(end) = end {
+            row.push(end.centered_y());
+        }
+        Element::row(row)
+    };
+    let heading = |label: &str| strong_line(label, 16.0, look.text);
+    let mut column = vec![
+        rule(),
+        gap(0.0, 20.0),
+        cells(
+            vec![
+                heading(t("Persona que invita")),
+                heading(t("Código de invitación")),
+                heading(t("Usos")),
+                heading(t("Caduca")),
+            ],
+            None,
+        )
+        .size(None, Some(20.0)),
+    ];
+    for row in rows {
+        let inviter = match &row.inviter {
+            Some((name, accent, image)) => Element::row(vec![
+                crate::avatar_with_image(name, *accent, 24.0, image.clone()).centered_y(),
+                line(name.clone(), 16.0, look.text).centered_y(),
+            ])
+            .gap(12.0),
+            None => line("—", 16.0, look.muted),
+        };
+        let revoke = row.revoke.as_ref().map(|id| {
+            Button::new(id.clone(), "", look.palette())
+                .icon(Icon::Close)
+                .variant(ButtonVariant::Ghost)
+                .button_size(ButtonSize::Small)
+                .accessibility_label(tr!("Revocar la invitación {code}", code = row.code))
+                .tooltip(t("Revocar"))
+                .render()
+        });
+        column.push(gap(0.0, 12.0));
+        column.push(
+            cells(
+                vec![
+                    inviter,
+                    line(row.code.clone(), 14.0, look.text).font_family(FontFamily::Monospace),
+                    line(row.uses.clone(), 14.0, look.text).font_family(FontFamily::Monospace),
+                    line(row.expires.clone(), 14.0, look.text).font_family(FontFamily::Monospace),
+                ],
+                revoke,
+            )
+            .size(None, Some(32.0)),
+        );
+    }
+    column.push(gap(0.0, 12.0));
+    column.push(rule());
+    Element::column(column)
+}
+
+/// What a channel's integrations card says: its glyph, its title, how many
+/// it holds, and its button (`id`, label, enabled) when it has one.
+pub fn integration_card(
+    glyph: Icon,
+    title: &str,
+    count: &str,
+    action: Option<(&str, &str, bool)>,
+    look: &Look,
+) -> Element {
+    let mut row = vec![
+        gap(28.0, 0.0),
+        Element::icon(glyph)
+            .foreground(look.muted)
+            .size(Some(24.0), Some(24.0))
+            .centered_y(),
+        gap(28.0, 0.0),
+        Element::column(vec![
+            strong_line(title, 16.0, look.text),
+            line(count, 12.0, look.text),
+        ])
+        .gap(4.0)
+        .flex(1.0)
+        .centered_y(),
+    ];
+    if let Some((id, label, enabled)) = action {
+        row.push(
+            Button::new(id, label, look.accent_palette())
+                .button_size(ButtonSize::Small)
+                .enabled(enabled)
+                .render()
+                .centered_y(),
+        );
+    }
+    row.push(gap(16.0, 0.0));
+    Element::panel(Element::row(row))
+        .size(None, Some(88.0))
+        .radius(8.0)
+        .background(look.raised)
+}
+
 /// A dialog's two buttons side by side, as wide as it: the way back and the
 /// action.
 pub fn dialog_buttons(back: (&str, &str), action: (&str, &str, bool), look: &Look) -> Element {
@@ -1095,7 +1466,7 @@ mod tests {
 
     #[test]
     fn slow_mode_names_its_waits() {
-        assert_eq!(slowmode_label(0), "Apagado");
+        assert_eq!(slowmode_label(0), "Apagar");
         assert_eq!(slowmode_label(21_600), "6 horas");
         assert_eq!(slowmode_label(45), "45 segundos");
         assert!(SLOWMODE.windows(2).all(|pair| pair[0].0 < pair[1].0));
@@ -1232,5 +1603,165 @@ mod tests {
             Size::new(705.0, 80.0),
         );
         assert_eq!(controls(&laid), vec!["cs:sync".to_owned()]);
+    }
+
+    /// Where a painted text starts, the first time it is painted.
+    fn painted_at(laid: &limn::Frame, wanted: &str) -> Option<limn::Point> {
+        laid.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::Text { text, position, .. } if text == wanted => Some(*position),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn the_visibility_offers_three_choices_and_locks_those_it_cannot_make() {
+        let (_, laid) = frame(
+            visibility(Visibility::Spoiler, [true, true, false], &LOOK),
+            Size::new(660.0, 400.0),
+        );
+        let ids = controls(&laid);
+        assert!(ids.contains(&"cs:visibility:default".to_owned()), "{ids:?}");
+        assert!(
+            !ids.contains(&"cs:visibility:nsfw".to_owned()),
+            "locked: {ids:?}"
+        );
+        let painted = texts(&laid);
+        for wanted in [
+            "Visibilidad del contenido",
+            "Predeterminado",
+            "Canal de spoilers",
+            "Canal con restricción de edad",
+        ] {
+            assert!(painted.iter().any(|text| text == wanted), "{wanted}");
+        }
+        let chosen = laid
+            .access
+            .iter()
+            .find(|node| node.id == "cs:visibility:spoiler")
+            .and_then(|node| node.selected);
+        assert_eq!(chosen, Some(true));
+        assert_eq!(Visibility::of(true, true), Visibility::Adults);
+        assert_eq!(Visibility::of(false, false).key(), "default");
+    }
+
+    #[test]
+    fn a_marked_slider_names_its_marks_where_they_fall() {
+        let marks = [
+            (0.0, "8kbps".to_owned()),
+            (56.0 / 88.0, "64kbps".to_owned()),
+            (1.0, "96kbps".to_owned()),
+        ];
+        let (_, laid) = frame(
+            Element::column(vec![marked_slider(
+                "cs:bitrate",
+                "Velocidad de transferencia",
+                0.5,
+                &marks,
+                true,
+                660.0,
+                &LOOK,
+            )]),
+            Size::new(660.0, 100.0),
+        );
+        assert!(laid.regions.iter().any(|region| region.id == "cs:bitrate"));
+        let first = painted_at(&laid, "8kbps").unwrap();
+        let usual = painted_at(&laid, "64kbps").unwrap();
+        let last = painted_at(&laid, "96kbps").unwrap();
+        assert!(first.x.abs() < 1.0, "the first starts at the start");
+        // 7 px characters: «64kbps» is 42 wide, centered on its mark.
+        assert!((usual.x + 21.0 - 420.0).abs() < 2.0, "{usual:?}");
+        assert!(
+            (last.x + 42.0 - 660.0).abs() < 1.0,
+            "the last ends at the end"
+        );
+        let (_, locked) = frame(
+            marked_slider("cs:bitrate", "x", 0.5, &marks, false, 660.0, &LOOK),
+            Size::new(660.0, 100.0),
+        );
+        assert!(
+            !locked
+                .regions
+                .iter()
+                .any(|region| region.id == "cs:bitrate" && region.kind == limn::HitKind::Button),
+            "a locked slider takes no pointer"
+        );
+    }
+
+    #[test]
+    fn the_invitations_list_its_columns_and_revoke_only_where_allowed() {
+        let rows = [
+            InviteRow {
+                code: "abc".into(),
+                inviter: Some(("Ana".into(), LOOK.accent, None)),
+                uses: "3".into(),
+                expires: "08:04:40:49".into(),
+                revoke: Some("cs:invite:abc:revoke".into()),
+            },
+            InviteRow {
+                code: "def".into(),
+                inviter: None,
+                uses: "0".into(),
+                expires: "∞".into(),
+                revoke: None,
+            },
+        ];
+        let (_, laid) = frame(invite_table(&rows, &LOOK), Size::new(660.0, 300.0));
+        assert_eq!(controls(&laid), vec!["cs:invite:abc:revoke".to_owned()]);
+        let painted = texts(&laid);
+        for wanted in [
+            "Persona que invita",
+            "Código de invitación",
+            "Usos",
+            "Caduca",
+            "Ana",
+            "abc",
+            "08:04:40:49",
+            "∞",
+        ] {
+            assert!(painted.iter().any(|text| text == wanted), "{wanted}");
+        }
+        // The code's column starts where Discord's does: 203 px in.
+        assert!((painted_at(&laid, "abc").unwrap().x - 203.3).abs() < 1.0);
+    }
+
+    #[test]
+    fn an_integrations_card_counts_and_offers_its_action() {
+        let card = integration_card(
+            Icon::Bolt,
+            "Webhooks",
+            "0 webhooks",
+            Some(("cs:webhook:new", "Crear Webhook", true)),
+            &LOOK,
+        );
+        let (_, laid) = frame(card, Size::new(660.0, 88.0));
+        assert_eq!(controls(&laid), vec!["cs:webhook:new".to_owned()]);
+        assert!(texts(&laid).contains(&"0 webhooks".to_owned()));
+        let locked = integration_card(
+            Icon::Bolt,
+            "Webhooks",
+            "0 webhooks",
+            Some(("cs:webhook:new", "Crear Webhook", false)),
+            &LOOK,
+        );
+        let (_, laid) = frame(locked, Size::new(660.0, 88.0));
+        assert!(controls(&laid).is_empty());
+    }
+
+    #[test]
+    fn a_field_puts_its_note_under_its_control() {
+        let (_, laid) = frame(
+            field(
+                "Modo lento",
+                gap(0.0, 40.0),
+                Some(note(&[("Selecciona ", false), ("Automática", true)], &LOOK)),
+                &LOOK,
+            ),
+            Size::new(660.0, 200.0),
+        );
+        let title = painted_at(&laid, "Modo lento").unwrap();
+        let note = painted_at(&laid, "Automática").unwrap();
+        // The title's line, 8 px, the control's 40 and 4 more.
+        assert!(note.y - title.y >= 8.0 + 40.0 + 4.0, "{title:?} {note:?}");
+        assert_eq!(archive_label(4320), "3 días");
     }
 }

@@ -115,6 +115,7 @@ impl Store {
             &mut abilities.pin,
             &mut abilities.create_poll,
             &mut abilities.forum_settings,
+            &mut abilities.channel_options,
         ] {
             if permit.allowed() {
                 *permit = denied.clone();

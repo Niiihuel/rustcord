@@ -1,10 +1,12 @@
 //! The settings of one channel or category, over the whole window, on the
-//! frame of the server's settings: its overview (name, topic, slow mode, age
-//! restriction), its permissions (private or not, in sync with its category
-//! or not, and every overwrite with a control of three states for each
-//! permission), and deleting it. Opened by the action `cs:open:{channel}`
-//! from wherever a channel offers its settings; every action of its own
-//! starts with `cs:`.
+//! frame of the server's settings, as Discord's: its overview (name, topic,
+//! slow mode, content visibility, thread hiding and announcements for a text
+//! channel; sound, cameras, size and region for a voice channel), its
+//! permissions (private or not, in sync with its category or not, and every
+//! overwrite with a control of three states for each permission), its
+//! invitations and integrations, and deleting it. Opened by the action
+//! `cs:open:{channel}` from wherever a channel offers its settings; every
+//! action of its own starts with `cs:`.
 //!
 //! As in the server's settings, nothing changes before the provider says so.
 //! The drafts keep only what differs from the store: a [`ChannelEdit`] and
@@ -29,9 +31,10 @@ use rustcord_components::server_settings::permission_of;
 use rustcord_i18n::t;
 use rustcord_model::{
     Channel, ChannelId, ChannelKind, Overwrite, OverwriteTarget, Permissions, RoleId, UserId,
+    WebhookId,
 };
 use rustcord_provider::{ChannelEdit, Command, Failure};
-use rustcord_state::{Applied, Store};
+use rustcord_state::{Abilities, Applied, Store};
 
 use crate::{Intent, Ui};
 
@@ -48,6 +51,8 @@ pub enum Page {
     Overview,
     Permissions,
     Forum,
+    Invites,
+    Integrations,
 }
 
 /// Choosing who may see a private channel: what is searched, and the roles
@@ -92,6 +97,10 @@ pub struct ChannelSettings {
     // A forum's archive time.
     /// Its list of archive times is open.
     pub archive_open: bool,
+    /// A text channel's list of times to hide its threads after is open.
+    pub hide_open: bool,
+    /// A voice channel's list of regions is open.
+    pub region_open: bool,
 }
 
 impl ChannelSettings {
@@ -123,6 +132,8 @@ impl ChannelSettings {
             || std::mem::take(&mut self.adding)
             || std::mem::take(&mut self.slowmode_open)
             || std::mem::take(&mut self.archive_open)
+            || std::mem::take(&mut self.hide_open)
+            || std::mem::take(&mut self.region_open)
     }
 
     /// The overwrite of `target` as shown: with what was changed here.
@@ -302,7 +313,58 @@ pub(crate) fn channel_changes(edit: &ChannelEdit, channel: &Channel) -> ChannelE
         nsfw: edit.nsfw.filter(|nsfw| *nsfw != channel.nsfw),
         tags: forum::changes(edit, channel).0,
         forum: forum::changes(edit, channel).1,
+        bitrate: edit
+            .bitrate
+            .filter(|bitrate| *bitrate != channel.options.bitrate),
+        user_limit: edit
+            .user_limit
+            .filter(|limit| *limit != channel.options.user_limit),
+        region: edit
+            .region
+            .clone()
+            .filter(|region| *region != channel.options.region),
+        full_video: edit
+            .full_video
+            .filter(|full| *full != channel.options.full_video),
+        spoiler: edit
+            .spoiler
+            .filter(|spoiler| *spoiler != channel.options.spoiler),
+        archive_after: edit
+            .archive_after
+            .filter(|minutes| Some(*minutes) != channel.options.archive_after),
+        kind: edit.kind.filter(|kind| *kind != channel.kind),
     }
+}
+
+/// What the provider offers a voice channel's sound, in bits per second:
+/// the least, the usual and the most, which a stage keeps at the usual and
+/// a voice channel at its server's plan; never below what it has.
+pub(crate) fn bitrates(store: &Store, channel: &Channel) -> (u32, u32, u32) {
+    let (least, usual) = store
+        .provider
+        .as_ref()
+        .map_or((8_000, 64_000), |info| info.capabilities.voice_bitrates);
+    let plan = channel
+        .server
+        .and_then(|server| store.server(server))
+        .map_or(0, |server| server.options.max_bitrate);
+    let most = if channel.kind == ChannelKind::Stage {
+        usual
+    } else {
+        plan.max(usual)
+    };
+    (least, usual, most.max(channel.options.bitrate))
+}
+
+/// The most people a voice channel's limit offers.
+pub(crate) const USER_LIMIT: u32 = 99;
+
+/// The regions the provider offers a voice channel: each one's id and name.
+pub(crate) fn regions(store: &Store) -> &'static [(&'static str, &'static str)] {
+    store
+        .provider
+        .as_ref()
+        .map_or(&[], |info| info.capabilities.voice_regions)
 }
 
 /// `@everyone` of the channel's server.
@@ -396,7 +458,8 @@ pub fn update(
     let id = match action {
         UiAction::Clicked { id }
         | UiAction::InputChanged { id, .. }
-        | UiAction::Submitted { id, .. } => id,
+        | UiAction::Submitted { id, .. }
+        | UiAction::SliderChanged { id, .. } => id,
         _ => return None,
     };
     let rest = id.strip_prefix("cs:")?;
@@ -415,6 +478,10 @@ pub fn update(
     let mut intents = Vec::new();
     let keep = match action {
         UiAction::Clicked { .. } => clicked(&mut settings, ui, store, rest, now, &mut intents),
+        UiAction::SliderChanged { fraction, .. } => {
+            slid(&mut settings, store, rest, *fraction);
+            true
+        }
         UiAction::InputChanged { value, .. } => {
             // A forum's fields.
             let forum = store
@@ -519,6 +586,13 @@ fn refresh(settings: &mut ChannelSettings, store: &Store, intents: &mut Vec<Inte
     }
     settings.edit.slowmode_secs = changed.slowmode_secs;
     settings.edit.nsfw = changed.nsfw;
+    settings.edit.bitrate = changed.bitrate;
+    settings.edit.user_limit = changed.user_limit;
+    settings.edit.region = changed.region;
+    settings.edit.full_video = changed.full_video;
+    settings.edit.spoiler = changed.spoiler;
+    settings.edit.archive_after = changed.archive_after;
+    settings.edit.kind = changed.kind;
     let emojis = channel
         .server
         .and_then(|server| store.server(server))
@@ -539,6 +613,32 @@ fn refresh(settings: &mut ChannelSettings, store: &Store, intents: &mut Vec<Inte
         .is_some_and(|target| !settings.listed(channel).contains(&target))
     {
         settings.selected = None;
+    }
+}
+
+/// What a slider moved to `fraction` changes: a voice channel's sound,
+/// in whole kilobits, or how many fit in it.
+fn slid(settings: &mut ChannelSettings, store: &Store, id: &str, fraction: f32) {
+    let Some(channel) = store.channel(settings.channel) else {
+        return;
+    };
+    if !store
+        .abilities(channel.id)
+        .is_some_and(|abilities| abilities.channel_options.allowed())
+    {
+        return;
+    }
+    let fraction = fraction.clamp(0.0, 1.0);
+    match id {
+        "bitrate" => {
+            let (least, _, most) = bitrates(store, channel);
+            let kbps = ((least as f32 + fraction * (most - least) as f32) / 1000.0).round();
+            settings.edit.bitrate = Some((kbps as u32 * 1000).clamp(least, most));
+        }
+        "user-limit" => {
+            settings.edit.user_limit = Some((fraction * USER_LIMIT as f32).round() as u32);
+        }
+        _ => {}
     }
 }
 
@@ -613,6 +713,7 @@ fn clicked(
     };
     let everyone = everyone(channel);
     let manage = abilities.manage.allowed();
+    let options = abilities.channel_options.allowed();
     let editable = |target: OverwriteTarget| target_lock(store, channel, target).is_none();
     let parts: Vec<&str> = rest.split(':').collect();
     match parts.as_slice() {
@@ -624,10 +725,13 @@ fn clicked(
             }
         }
         ["page", key] => {
+            let category = channel.kind == ChannelKind::Category;
             let page = match *key {
                 "overview" => Page::Overview,
                 "permissions" => Page::Permissions,
                 "forum" if channel.kind == ChannelKind::Forum => Page::Forum,
+                "invites" if !category => Page::Invites,
+                "integrations" if !category => Page::Integrations,
                 _ => return true,
             };
             if settings.page != page {
@@ -636,6 +740,7 @@ fn clicked(
                 } else {
                     while settings.close_overlay() {}
                     settings.page = page;
+                    intents.extend(load(ui, store, server, page));
                 }
             }
         }
@@ -643,7 +748,7 @@ fn clicked(
             settings.edit = ChannelEdit::default();
             settings.changes.clear();
             settings.removed.clear();
-            settings.slowmode_open = false;
+            while settings.close_overlay() {}
             refresh(settings, store, intents);
         }
         ["save"] => save(settings, store, intents),
@@ -657,8 +762,93 @@ fn clicked(
             }
             settings.slowmode_open = false;
         }
-        ["nsfw"] if manage => {
-            settings.edit.nsfw = Some(!settings.edit.nsfw.unwrap_or(channel.nsfw));
+        // Shown, spoilers or for adults: each choice sets both marks, when
+        // what it changes may be changed.
+        ["visibility", key] => {
+            let (spoiler, nsfw) = match *key {
+                "default" => (false, false),
+                "spoiler" => (true, false),
+                "nsfw" => (false, true),
+                _ => return true,
+            };
+            if visibility_allowed(settings, channel, &abilities, spoiler, nsfw) {
+                settings.edit.spoiler = Some(spoiler);
+                settings.edit.nsfw = Some(nsfw);
+            }
+        }
+        ["video", which @ ("auto" | "full")] if options => {
+            settings.edit.full_video = Some(*which == "full");
+        }
+        ["region"] if options => settings.region_open = !settings.region_open,
+        ["region", "dismiss"] => settings.region_open = false,
+        ["region", region] if options => {
+            settings.region_open = false;
+            if *region == "auto" {
+                settings.edit.region = Some(None);
+            } else if regions(store).iter().any(|(id, _)| id == region) {
+                settings.edit.region = Some(Some((*region).to_owned()));
+            }
+        }
+        ["hide"] if options => settings.hide_open = !settings.hide_open,
+        ["hide", "dismiss"] => settings.hide_open = false,
+        ["hide", minutes] if options => {
+            settings.hide_open = false;
+            if let Some(minutes) = minutes
+                .parse()
+                .ok()
+                .filter(|minutes| rustcord_model::ARCHIVE_AFTER.contains(minutes))
+            {
+                settings.edit.archive_after = Some(minutes);
+            }
+        }
+        ["announcement"] if options && announcements(store, channel) => {
+            let shown = settings.edit.kind.unwrap_or(channel.kind);
+            settings.edit.kind = Some(if shown == ChannelKind::Announcement {
+                ChannelKind::Text
+            } else {
+                ChannelKind::Announcement
+            });
+        }
+
+        // Invitations and webhooks.
+        ["invite", "create"] => {
+            intents.extend(crate::server_menu::invite(
+                ui, store, server, channel.id, now,
+            ));
+        }
+        ["invite", code, "revoke"] => {
+            let allowed = store
+                .server_abilities(server)
+                .is_some_and(|abilities| abilities.manage_invites.allowed());
+            let known = store.invites(server).is_some_and(|invites| {
+                invites
+                    .iter()
+                    .any(|invite| invite.code == *code && invite.channel == Some(channel.id))
+            });
+            if allowed && known {
+                intents.push(Intent::Command(Command::RevokeInvite {
+                    server,
+                    code: (*code).to_owned(),
+                }));
+            }
+        }
+        ["webhook", "new"] if webhooks(store, server) => {
+            intents.push(Intent::Command(Command::CreateWebhook {
+                server,
+                channel: channel.id,
+                name: t("Webhook nuevo").into(),
+            }));
+        }
+        ["webhook", id, "delete"] if webhooks(store, server) => {
+            let known = id.parse().ok().map(WebhookId).filter(|id| {
+                store.webhooks(server).is_some_and(|list| {
+                    list.iter()
+                        .any(|webhook| webhook.id == *id && webhook.channel == channel.id)
+                })
+            });
+            if let Some(webhook) = known {
+                intents.push(Intent::Command(Command::DeleteWebhook { server, webhook }));
+            }
         }
 
         // Private or not, and who may see it.
@@ -840,12 +1030,25 @@ fn save(settings: &mut ChannelSettings, store: &Store, intents: &mut Vec<Intent>
         return;
     }
     // Checked again as it leaves.
-    if !store
-        .abilities(channel.id)
+    let abilities = store.abilities(channel.id);
+    if !abilities
+        .as_ref()
         .is_some_and(|abilities| abilities.forum_settings.allowed())
     {
         edit.tags = None;
         edit.forum = None;
+    }
+    if !abilities
+        .as_ref()
+        .is_some_and(|abilities| abilities.channel_options.allowed())
+    {
+        edit.bitrate = None;
+        edit.user_limit = None;
+        edit.region = None;
+        edit.full_video = None;
+        edit.spoiler = None;
+        edit.archive_after = None;
+        edit.kind = None;
     }
     if edit != ChannelEdit::default() {
         settings.pending += 1;
@@ -871,6 +1074,62 @@ fn save(settings: &mut ChannelSettings, store: &Store, intents: &mut Vec<Intent>
         }
     }
     intents.extend(commands.into_iter().map(Intent::Command));
+}
+
+/// Whether a choice of «Visibilidad del contenido» may be made: each mark
+/// it changes needs its own permit, spoilers the channel's options and the
+/// age restriction its management.
+pub(crate) fn visibility_allowed(
+    settings: &ChannelSettings,
+    channel: &Channel,
+    abilities: &Abilities,
+    spoiler: bool,
+    nsfw: bool,
+) -> bool {
+    let shown_spoiler = settings.edit.spoiler.unwrap_or(channel.options.spoiler);
+    let shown_nsfw = settings.edit.nsfw.unwrap_or(channel.nsfw);
+    (spoiler == shown_spoiler || abilities.channel_options.allowed())
+        && (nsfw == shown_nsfw || abilities.manage.allowed())
+}
+
+/// Whether `channel` may be an announcement channel, as Discord's offers it:
+/// a text one, or one already, in a community.
+pub(crate) fn announcements(store: &Store, channel: &Channel) -> bool {
+    matches!(channel.kind, ChannelKind::Text | ChannelKind::Announcement)
+        && channel
+            .server
+            .and_then(|server| store.server(server))
+            .is_some_and(|server| {
+                server.options.community || channel.kind == ChannelKind::Announcement
+            })
+}
+
+/// Whether the account may make and delete the server's webhooks.
+fn webhooks(store: &Store, server: rustcord_model::ServerId) -> bool {
+    store
+        .server_abilities(server)
+        .is_some_and(|abilities| abilities.manage_webhooks.allowed())
+}
+
+/// What `page` asks of the provider as it opens: the server's invitations,
+/// or its webhooks, when the account may read them.
+fn load(
+    ui: &mut Ui,
+    store: &Store,
+    server: rustcord_model::ServerId,
+    page: Page,
+) -> Option<Intent> {
+    let abilities = store.server_abilities(server)?;
+    let request = ui.fresh_request();
+    match page {
+        Page::Invites if abilities.manage_invites.allowed() => {
+            Some(Intent::Command(Command::LoadInvites { request, server }))
+        }
+        Page::Integrations if abilities.manage_webhooks.allowed() => {
+            Some(Intent::Command(Command::LoadWebhooks { request, server }))
+        }
+        _ => None,
+    }
 }
 
 /// The channels of `category` the account sees.

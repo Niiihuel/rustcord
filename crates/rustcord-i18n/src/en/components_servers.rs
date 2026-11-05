@@ -3,7 +3,7 @@
 pub(super) const ENTRIES: super::Entries = &[
     ("Cerrar (Esc)", "Close (Esc)"),
     ("Guarda o restablece los cambios antes de salir", "Save or reset your changes before leaving"),
-    ("¡Cuidado! Tienes cambios sin guardar", "Careful! You have unsaved changes"),
+    ("¡Cuidado! ¡Tienes cambios sin guardar!", "Careful — you have unsaved changes!"),
     ("Restablecer", "Reset"),
     ("Guardar cambios", "Save changes"),
     ("Color predeterminado", "Default color"),

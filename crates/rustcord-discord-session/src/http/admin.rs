@@ -283,24 +283,24 @@ impl Http {
                 if let Some(nsfw) = edit.nsfw {
                     body["nsfw"] = json!(nsfw);
                 }
-                // A forum's tags and
-                // defaults; its flags are written whole, so read fresh.
-                let flags = match edit.forum {
-                    Some(_) => {
-                        let fresh = self
-                            .read(
-                                secret,
-                                Method::GET,
-                                &format!("/channels/{channel}"),
-                                None,
-                                ANSWER,
-                            )
-                            .await?;
-                        Some(fresh["flags"].as_u64().unwrap_or(0))
-                    }
-                    None => None,
+                // A forum's defaults and the spoiler mark: the flags are
+                // written whole, so read fresh.
+                let flags = if edit.forum.is_some() || edit.spoiler.is_some() {
+                    let fresh = self
+                        .read(
+                            secret,
+                            Method::GET,
+                            &format!("/channels/{channel}"),
+                            None,
+                            ANSWER,
+                        )
+                        .await?;
+                    Some(fresh["flags"].as_u64().unwrap_or(0))
+                } else {
+                    None
                 };
                 rest::forum_fields(&mut body, edit, flags);
+                rest::options_fields(&mut body, edit, flags);
                 let value = self
                     .send(
                         secret,

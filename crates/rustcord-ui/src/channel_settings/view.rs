@@ -1,21 +1,23 @@
 //! What the settings of a channel show, from their state and the store.
 
 use limn::{
-    AlertDialog, Button, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element,
+    Button, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element, Empty,
     FontFamily, Icon, Modal, TextArea, TextField, TextSpan,
 };
 use rustcord_components::channel_settings::{
-    self as own, AccessLine, AddChoice, FieldSelect, PrivateCard, TargetItem, TargetMark, SLOWMODE,
-    TARGET_GAP, TOPIC_LIMIT,
+    self as own, AccessLine, AddChoice, FieldSelect, InviteRow, PrivateCard, TargetItem,
+    TargetMark, Visibility, AFTER_CHOICES, AFTER_SLOWMODE, FIELD_GAP, SLOWMODE, TARGET_GAP,
+    TOPIC_LIMIT,
 };
 use rustcord_components::server_menu::{audience_picker, Audience, Choice};
 use rustcord_components::server_settings::{
-    self as parts, MenuAction, Metrics, SidebarEntry, UnsavedBar, DEFAULT_ROLE_COLOR,
+    self as parts, ItemLine, MenuAction, Metrics, SidebarEntry, UnsavedBar, DEFAULT_ROLE_COLOR,
 };
-use rustcord_components::{gap, line, text, Look};
+use rustcord_components::{gap, line, strong_line, text, Look};
 use rustcord_i18n::{t, tr};
 use rustcord_model::{
-    Channel, ChannelKind, OverwriteTarget, Permissions, RemoteImage, Role, Server, UserId,
+    Channel, ChannelKind, OverwriteTarget, Permissions, RemoteImage, Role, Server, Timestamp,
+    UserId, WebhookKind,
 };
 use rustcord_provider::ProviderKind;
 use rustcord_state::{Abilities, Store};
@@ -27,9 +29,10 @@ use super::{
 use crate::{Ui, ViewContext};
 
 /// The height of the settings' text fields, as Discord's client measures them.
-const FIELD_HEIGHT: f32 = 41.0;
-/// The topic's field: Discord's editor without its 35 px of format buttons.
-const TOPIC_HEIGHT: f32 = 214.0;
+const FIELD_HEIGHT: f32 = 40.0;
+/// The topic's field: Discord's editor (233 px) without its 32 px of format
+/// buttons.
+const TOPIC_HEIGHT: f32 = 201.0;
 
 /// The settings over the whole window, while they are open.
 pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
@@ -57,6 +60,8 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Option<Element> {
         Page::Forum => {
             super::forum::page(settings, channel, &server.emojis, &abilities, look, metrics)
         }
+        Page::Invites => view.invites(context.wall),
+        Page::Integrations => view.integrations(),
     };
     let bar = settings.dirty(store).then(|| {
         parts::unsaved_bar_for(
@@ -222,7 +227,11 @@ impl View<'_> {
         if self.channel.kind == ChannelKind::Forum {
             entries.push(page("forum", t("Foro"), Page::Forum));
         }
-        // Invitations, integrations and webhooks: the provider has none.
+        // A category has neither invitations nor integrations of its own.
+        if !self.category() {
+            entries.push(page("invites", t("Invitaciones"), Page::Invites));
+            entries.push(page("integrations", t("Integraciones"), Page::Integrations));
+        }
         if self.abilities.manage.allowed() {
             entries.push(SidebarEntry::Separator);
             entries.push(SidebarEntry::Item {
@@ -247,15 +256,22 @@ impl View<'_> {
         parts::sidebar(&entries, &footnote, self.look)
     }
 
+    /// The channel's options can be changed here: with the provider's
+    /// support and the right to manage it.
+    fn options(&self) -> bool {
+        self.abilities.channel_options.allowed()
+    }
+
     fn overview(&self) -> Element {
         let look = self.look;
         let settings = self.settings;
         let channel = self.channel;
         let denied = self.abilities.manage.reason();
         let can = denied.is_none();
-        let mut children = vec![parts::page_title(t("Vista general"), None, look)];
+        let mut column = vec![parts::page_title(t("Vista general"), None, look)];
         if let Some(reason) = denied {
-            children.push(parts::denied(reason, look));
+            column.push(gap(0.0, 16.0));
+            column.push(parts::denied(reason, look));
         }
         let name = settings
             .edit
@@ -264,78 +280,59 @@ impl View<'_> {
             .unwrap_or_else(|| channel.name.clone());
         let (label, placeholder) = match channel.kind {
             ChannelKind::Category => (t("Nombre de la categoría"), t("Nueva categoría")),
-            ChannelKind::Voice => (t("Nombre del canal"), t("Canal nuevo")),
+            ChannelKind::Voice | ChannelKind::Stage => (t("Nombre del canal"), t("Canal nuevo")),
             _ => (t("Nombre del canal"), t("canal-nuevo")),
         };
-        children.push(
-            Element::column(vec![
-                parts::field_label(label, false, look),
-                TextField::new(NAME, name.clone(), placeholder, look.palette())
-                    .height(FIELD_HEIGHT)
-                    .accessibility_label(label)
-                    .enabled(can)
-                    .render(),
-            ])
-            .gap(8.0),
-        );
+        let (border, focus) = rustcord_components::user_settings::field_outline(look);
+        // shortcut: limn's field writes 14 px at its largest, Discord's 16.
+        let field = TextField::new(NAME, name.clone(), placeholder, look.palette())
+            .size(ControlSize::Spacious)
+            .height(FIELD_HEIGHT)
+            .radius(8.0)
+            .outline(border, focus)
+            .accessibility_label(label)
+            .enabled(can)
+            .render();
         let saved_as = final_name(channel.kind, &name);
-        if saved_as.is_empty() {
-            children.push(text(
+        let name_note = if saved_as.is_empty() {
+            Some(text(
                 t("El nombre no puede quedar vacío."),
-                13.0,
+                12.0,
                 look.danger,
-            ));
+            ))
         } else if channel.kind == ChannelKind::Text && saved_as != name {
             // Text channels take their names lowercase and dashed: say how it will be.
-            children.push(line(
+            Some(line(
                 tr!("Se va a llamar #{saved_as}", saved_as),
                 12.0,
                 look.muted,
-            ));
+            ))
+        } else {
+            None
+        };
+        column.push(gap(0.0, FIELD_GAP));
+        column.push(own::field(label, field, name_note, look));
+        match channel.kind {
+            ChannelKind::Text | ChannelKind::Announcement | ChannelKind::Forum => {
+                column.extend(self.text_overview(can))
+            }
+            ChannelKind::Voice | ChannelKind::Stage => column.extend(self.voice_overview(can)),
+            _ => {}
         }
-        if channel.kind == ChannelKind::Text {
-            children.extend(self.text_overview(can));
-        }
-        parts::page("cs:scroll:overview", self.metrics.content, children)
+        parts::page(
+            "cs:scroll:overview",
+            self.metrics.content,
+            vec![Element::column(column)],
+        )
     }
 
-    /// The topic, slow mode and age restriction of a text channel.
-    fn text_overview(&self, can: bool) -> Vec<Element> {
+    /// The slow mode's field, with what it means for this kind of channel.
+    fn slowmode(&self, can: bool) -> Element {
         let look = self.look;
         let settings = self.settings;
         let channel = self.channel;
-        let topic = settings
-            .edit
-            .topic
-            .clone()
-            .unwrap_or_else(|| channel.topic.clone())
-            .unwrap_or_default();
-        let left = TOPIC_LIMIT.saturating_sub(topic.chars().count());
-        let topic_field = Element::stack(vec![
-            TextArea::new(
-                TOPIC,
-                topic,
-                t("Cuéntale a todos para qué es este canal."),
-                look.palette(),
-            )
-            .accessibility_label(t("Tema del canal"))
-            .height(TOPIC_HEIGHT)
-            .enabled(can)
-            .render(),
-            // What is left to write, at the field's lower right.
-            Element::column(vec![
-                Element::spacer().flex(1.0),
-                Element::row(vec![
-                    Element::spacer().flex(1.0),
-                    line(left.to_string(), 14.0, look.muted).font_family(FontFamily::SansBold),
-                    gap(14.0, 0.0),
-                ]),
-                gap(0.0, 10.0),
-            ]),
-        ])
-        .size(None, Some(TOPIC_HEIGHT));
         let slowmode = settings.edit.slowmode_secs.unwrap_or(channel.slowmode_secs);
-        let slowmode_select = own::field_select(
+        let select = own::field_select(
             &FieldSelect {
                 id: "cs:slowmode".into(),
                 name: t("Modo lento").into(),
@@ -357,33 +354,512 @@ impl View<'_> {
             },
             look,
         );
-        let nsfw = settings.edit.nsfw.unwrap_or(channel.nsfw);
-        vec![
+        let meaning = if channel.kind == ChannelKind::Forum {
+            t("Los miembros solo podrán crear una publicación por intervalo, a menos que tengan el permiso de Omitir el modo lento.")
+        } else {
+            t("Los miembros solo podrán enviar un mensaje y crear un hilo durante este intervalo, a menos que tengan el permiso de Omitir el modo lento.")
+        };
+        own::field(
+            t("Modo lento"),
+            select,
+            Some(own::note(&[(meaning, false)], look)),
+            look,
+        )
+    }
+
+    /// «Visibilidad del contenido», each choice enabled when what it
+    /// changes may be changed.
+    fn visibility(&self) -> Element {
+        let settings = self.settings;
+        let channel = self.channel;
+        let chosen = Visibility::of(
+            settings.edit.spoiler.unwrap_or(channel.options.spoiler),
+            settings.edit.nsfw.unwrap_or(channel.nsfw),
+        );
+        let allowed = |spoiler, nsfw| {
+            super::visibility_allowed(settings, channel, self.abilities, spoiler, nsfw)
+        };
+        own::visibility(
+            chosen,
+            [
+                allowed(false, false),
+                allowed(true, false),
+                allowed(false, true),
+            ],
+            self.look,
+        )
+    }
+
+    /// The topic (a forum's guidelines), slow mode, content visibility,
+    /// announcements and when new threads hide, as Discord's text channel
+    /// shows them.
+    fn text_overview(&self, can: bool) -> Vec<Element> {
+        let look = self.look;
+        let settings = self.settings;
+        let channel = self.channel;
+        let topic = settings
+            .edit
+            .topic
+            .clone()
+            .unwrap_or_else(|| channel.topic.clone())
+            .unwrap_or_default();
+        let left = TOPIC_LIMIT.saturating_sub(topic.chars().count());
+        let (title, placeholder) = if channel.kind == ChannelKind::Forum {
+            (
+                t("Directivas de publicación"),
+                t("¡Crea directivas de publicación!"),
+            )
+        } else {
+            (
+                t("Tema del canal"),
+                t("¡Hazle saber a todos cómo usar este canal!"),
+            )
+        };
+        let (border, _) = rustcord_components::user_settings::field_outline(look);
+        let topic_field = Element::stack(vec![
+            TextArea::new(TOPIC, topic, placeholder, look.palette())
+                .accessibility_label(title)
+                .height(TOPIC_HEIGHT)
+                .enabled(can)
+                .render(),
+            // What is left to write, at the field's lower right.
             Element::column(vec![
-                parts::field_label(t("Tema del canal"), false, look),
-                topic_field,
-            ])
-            .gap(8.0),
-            Element::column(vec![
-                parts::field_label(t("Modo lento"), false, look),
-                slowmode_select,
-                text(
-                    t("Cuánto tiene que esperar cada miembro entre un mensaje y el siguiente en este canal."),
-                    12.0,
-                    look.muted,
-                ),
-            ])
-            .gap(8.0),
-            parts::divider(look),
-            parts::switch_row(
-                "cs:nsfw",
-                t("Canal con restricción de edad"),
-                Some(t("Marca el contenido de este canal como solo para personas mayores de edad.")),
-                nsfw,
-                can,
+                Element::spacer().flex(1.0),
+                Element::row(vec![
+                    Element::spacer().flex(1.0),
+                    line(left.to_string(), 14.0, look.text).font_family(FontFamily::SansSemibold),
+                    gap(16.0, 0.0),
+                ]),
+                gap(0.0, 8.0),
+            ]),
+        ])
+        .size(None, Some(TOPIC_HEIGHT))
+        .radius(8.0)
+        .border(border, 1.0)
+        .clip_children();
+        let mut children = vec![
+            gap(0.0, FIELD_GAP),
+            own::field(title, topic_field, None, look),
+        ];
+        // An announcement channel has no slow mode.
+        if channel.kind != ChannelKind::Announcement {
+            children.push(gap(0.0, FIELD_GAP));
+            children.push(self.slowmode(can));
+        }
+        children.push(gap(0.0, AFTER_SLOWMODE));
+        children.push(self.visibility());
+        if super::announcements(self.store, channel) {
+            let kind = settings.edit.kind.unwrap_or(channel.kind);
+            children.push(gap(0.0, FIELD_GAP));
+            children.push(rustcord_components::user_settings::toggle(
+                "cs:announcement",
+                t("Canal de anuncios"),
+                Some(t("Publica mensajes que llegan a servidores fuera del tuyo: quien sigue este canal recibe en su servidor las publicaciones que elijas.")),
+                kind == ChannelKind::Announcement,
+                self.abilities.channel_options.reason(),
+                look,
+            ));
+        }
+        // A forum hides its posts on its own page.
+        if channel.kind != ChannelKind::Forum {
+            let minutes = settings
+                .edit
+                .archive_after
+                .or(channel.options.archive_after)
+                // Discord's own when it says nothing: three days.
+                .unwrap_or(4320);
+            let select = own::field_select(
+                &FieldSelect {
+                    id: "cs:hide".into(),
+                    name: t("Ocultar después de inactividad").into(),
+                    value: own::archive_label(minutes),
+                    options: rustcord_model::ARCHIVE_AFTER
+                        .iter()
+                        .map(|after| {
+                            (
+                                format!("cs:hide:{after}"),
+                                own::archive_label(*after),
+                                *after == minutes,
+                            )
+                        })
+                        .collect(),
+                    open: settings.hide_open,
+                    dismiss: "cs:hide:dismiss".into(),
+                    enabled: self.options(),
+                    width: self.metrics.content,
+                },
+                look,
+            );
+            children.push(gap(0.0, AFTER_CHOICES));
+            children.push(own::field(
+                t("Ocultar después de inactividad"),
+                select,
+                Some(own::note(
+                    &[(
+                        t("Los hilos nuevos no aparecerán en la lista de canales tras estar inactivos durante el tiempo especificado."),
+                        false,
+                    )],
+                    look,
+                )),
+                look,
+            ));
+        }
+        if let Some(reason) = self.abilities.channel_options.reason().filter(|_| can) {
+            children.push(gap(0.0, FIELD_GAP));
+            children.push(parts::denied(reason, look));
+        }
+        children
+    }
+
+    /// Slow mode, content visibility and, apart, the sound, cameras, size
+    /// and region of a voice channel, as Discord's shows them.
+    fn voice_overview(&self, can: bool) -> Vec<Element> {
+        let look = self.look;
+        let settings = self.settings;
+        let channel = self.channel;
+        let options = self.options();
+        let width = self.metrics.content;
+        let mut children = vec![
+            gap(0.0, FIELD_GAP),
+            self.slowmode(can),
+            gap(0.0, AFTER_SLOWMODE),
+            self.visibility(),
+            own::group_divider(look),
+        ];
+        if let Some(reason) = self.abilities.channel_options.reason().filter(|_| can) {
+            children.push(parts::denied(reason, look));
+            children.push(gap(0.0, FIELD_GAP));
+        }
+        // The sound: the least, the usual and the most, in kilobits.
+        let (least, usual, most) = super::bitrates(self.store, channel);
+        let bitrate = settings.edit.bitrate.unwrap_or(channel.options.bitrate);
+        let bitrate = if bitrate == 0 { usual } else { bitrate };
+        let span = |value: u32| (value - least) as f32 / (most - least).max(1) as f32;
+        let kbps = |value: u32| tr!("{kbps}kbps", kbps = value / 1000);
+        let mut marks = vec![(0.0, kbps(least))];
+        if usual > least && usual < most {
+            marks.push((span(usual), kbps(usual)));
+        }
+        marks.push((1.0, kbps(most)));
+        children.push(own::field(
+            t("Velocidad de transferencia"),
+            own::marked_slider(
+                "cs:bitrate",
+                t("Velocidad de transferencia"),
+                span(bitrate.clamp(least, most)),
+                &marks,
+                options,
+                width,
                 look,
             ),
-        ]
+            Some(own::note(
+                &[(
+                    &tr!(
+                        "¡TODAS LAS VELOCIDADES! Exceder una velocidad de {kbps} kbps puede afectar negativamente a personas con una mala conexión.",
+                        kbps = usual / 1000
+                    ),
+                    false,
+                )],
+                look,
+            )),
+            look,
+        ));
+        // The cameras.
+        let full = settings
+            .edit
+            .full_video
+            .unwrap_or(channel.options.full_video);
+        children.push(gap(0.0, FIELD_GAP));
+        children.push(own::field(
+            t("Calidad del video"),
+            own::radio(
+                "cs:video",
+                t("Calidad del video"),
+                &[
+                    ("cs:video:auto".into(), t("Automática").into(), None, options),
+                    ("cs:video:full".into(), "720p".into(), None, options),
+                ],
+                if full { "cs:video:full" } else { "cs:video:auto" },
+                look,
+            ),
+            Some(own::note(
+                &[
+                    (
+                        t("Establece la calidad de video de la cámara para todos los participantes del canal. Selecciona "),
+                        false,
+                    ),
+                    (t("Automática"), true),
+                    (t(" para un rendimiento óptimo."), false),
+                ],
+                look,
+            )),
+            look,
+        ));
+        // How many fit.
+        let limit = settings
+            .edit
+            .user_limit
+            .unwrap_or(channel.options.user_limit)
+            .min(super::USER_LIMIT);
+        let (lead, tail) = if channel.kind == ChannelKind::Stage {
+            (
+                t("Limita el número de usuarios que pueden conectarse a este canal de escenario. Los usuarios con el permiso "),
+                t(" pueden ignorar este límite e incluir a otros usuarios en el canal."),
+            )
+        } else {
+            (
+                t("Limita el número de usuarios que pueden conectarse a este canal de voz. Los usuarios con el permiso "),
+                t(" pueden ignorar este límite e incluir a otros usuarios en el canal."),
+            )
+        };
+        children.push(gap(0.0, FIELD_GAP));
+        children.push(own::field(
+            t("Límite de usuarios"),
+            own::marked_slider(
+                "cs:user-limit",
+                t("Límite de usuarios"),
+                limit as f32 / super::USER_LIMIT as f32,
+                &[(0.0, "∞".into()), (1.0, super::USER_LIMIT.to_string())],
+                options,
+                width,
+                look,
+            ),
+            Some(own::note(
+                &[(lead, false), (t("Mover miembros"), true), (tail, false)],
+                look,
+            )),
+            look,
+        ));
+        // Where its calls run, when the provider offers regions.
+        let regions = super::regions(self.store);
+        if !regions.is_empty() {
+            let region = settings
+                .edit
+                .region
+                .clone()
+                .unwrap_or_else(|| channel.options.region.clone());
+            let name = region.as_deref().map_or_else(
+                || t("Automática").to_owned(),
+                |id| {
+                    regions
+                        .iter()
+                        .find(|(known, _)| *known == id)
+                        .map_or_else(|| id.to_owned(), |(_, name)| t(name).to_owned())
+                },
+            );
+            let mut choices = vec![(
+                "cs:region:auto".to_owned(),
+                t("Automática").to_owned(),
+                region.is_none(),
+            )];
+            choices.extend(regions.iter().map(|(id, name)| {
+                (
+                    format!("cs:region:{id}"),
+                    t(name).to_owned(),
+                    region.as_deref() == Some(*id),
+                )
+            }));
+            children.push(gap(0.0, FIELD_GAP));
+            children.push(Element::column(vec![
+                strong_line(t("Excepción de región"), 16.0, look.text),
+                gap(0.0, 4.0),
+                text(
+                    t("Cualquier persona de este canal intentará conectarse a la región que establezcas, sin importar dónde viva. Las regiones influyen en la calidad de voz y video. Si lo dejas en automático, el servicio decidirá qué funciona mejor."),
+                    14.0,
+                    look.muted,
+                ),
+                gap(0.0, 8.0),
+                own::field_select(
+                    &FieldSelect {
+                        id: "cs:region".into(),
+                        name: t("Excepción de región").into(),
+                        value: name,
+                        options: choices,
+                        open: settings.region_open,
+                        dismiss: "cs:region:dismiss".into(),
+                        enabled: options,
+                        width,
+                    },
+                    look,
+                ),
+            ]));
+        }
+        children
+    }
+
+    /// The channel's invitations, as Discord's list: who made each, its
+    /// code, its uses and what is left of it; «crear uno» makes one.
+    fn invites(&self, wall: Timestamp) -> Element {
+        let look = self.look;
+        let server = self.server.id;
+        let manage = self
+            .store
+            .server_abilities(server)
+            .map(|abilities| abilities.manage_invites);
+        let mut children = vec![
+            parts::page_title(t("Invitaciones"), None, look),
+            gap(0.0, 16.0),
+            Element::row(vec![
+                text(
+                    t("Aquí tienes una lista de todos los enlaces de invitación activos. Puedes revocar cualquiera o"),
+                    14.0,
+                    look.muted,
+                )
+                .shrink_to_fit(),
+                gap(4.0, 0.0),
+                rustcord_components::user_settings::link(
+                    "cs:invite:create",
+                    t("crear uno."),
+                    t("Crear una invitación"),
+                    look,
+                ),
+            ]),
+            gap(0.0, 24.0),
+        ];
+        if let Some(reason) = manage.as_ref().and_then(|permit| permit.reason()) {
+            children.push(parts::denied(reason, look));
+            return parts::page(
+                "cs:scroll:invites",
+                self.metrics.content,
+                vec![Element::column(children)],
+            );
+        }
+        match self.store.invites(server) {
+            None => children.push(line(t("Cargando…"), 14.0, look.muted)),
+            Some(invites) => {
+                let rows: Vec<InviteRow> = invites
+                    .iter()
+                    .filter(|invite| invite.channel == Some(self.channel.id))
+                    .map(|invite| InviteRow {
+                        code: invite.code.clone(),
+                        inviter: invite.inviter.map(|user| {
+                            (
+                                self.name_of(user),
+                                self.accent_of(user),
+                                self.image_of(user),
+                            )
+                        }),
+                        uses: invite
+                            .uses
+                            .map_or_else(|| "?".into(), |uses| uses.to_string()),
+                        expires: invite
+                            .expires
+                            .map_or_else(|| "∞".into(), |when| countdown(when, wall)),
+                        revoke: Some(format!("cs:invite:{}:revoke", invite.code)),
+                    })
+                    .collect();
+                if rows.is_empty() {
+                    children.push(
+                        Empty::new(
+                            t("No hay invitaciones"),
+                            t("Nadie creó un enlace a este canal todavía."),
+                            look.palette(),
+                        )
+                        .icon(Icon::Users)
+                        .framed()
+                        .render(),
+                    );
+                } else {
+                    children.push(own::invite_table(&rows, look));
+                }
+            }
+        }
+        parts::page(
+            "cs:scroll:invites",
+            self.metrics.content,
+            vec![Element::column(children)],
+        )
+    }
+
+    /// The webhooks that post in the channel and the channels it follows,
+    /// as Discord's cards, with the webhooks listed under them.
+    fn integrations(&self) -> Element {
+        let look = self.look;
+        let server = self.server.id;
+        let manage = self
+            .store
+            .server_abilities(server)
+            .map(|abilities| abilities.manage_webhooks);
+        let denied = manage.as_ref().and_then(|permit| permit.reason());
+        let mut children = vec![
+            parts::page_title(t("Integraciones"), None, look),
+            gap(0.0, 20.0),
+            text(
+                t("Personaliza tu servidor con integraciones. Administra los webhooks y canales que sigues que hacen publicaciones en este canal."),
+                14.0,
+                look.text,
+            ),
+            gap(0.0, 32.0),
+            Element::panel(Element::spacer())
+                .size(None, Some(1.0))
+                .background(look.border),
+            gap(0.0, 32.0),
+        ];
+        let own: Vec<&rustcord_model::Webhook> = self
+            .store
+            .webhooks(server)
+            .unwrap_or_default()
+            .iter()
+            .filter(|webhook| webhook.channel == self.channel.id)
+            .collect();
+        let incoming: Vec<_> = own
+            .iter()
+            .filter(|webhook| webhook.kind != WebhookKind::Follower)
+            .collect();
+        let followed = own
+            .iter()
+            .filter(|webhook| webhook.kind == WebhookKind::Follower)
+            .count();
+        let webhooks = match incoming.len() {
+            1 => t("1 webhook").to_owned(),
+            n => tr!("{n} webhooks", n),
+        };
+        children.push(own::integration_card(
+            Icon::Bolt,
+            "Webhooks",
+            &webhooks,
+            Some(("cs:webhook:new", t("Crear Webhook"), denied.is_none())),
+            look,
+        ));
+        for webhook in &incoming {
+            let mut notes = Vec::new();
+            if let Some(creator) = webhook.creator {
+                notes.push(tr!("Creado por {name}", name = self.name_of(creator)));
+            }
+            children.push(gap(0.0, 8.0));
+            children.push(parts::item_row_for(
+                "cs",
+                &ItemLine {
+                    key: format!("webhook:{}", webhook.id),
+                    name: webhook.name.clone(),
+                    notes,
+                    glyph: Icon::Bolt,
+                    actions: vec![("delete", Icon::Trash, t("Eliminar"))],
+                    denied: denied.map(str::to_owned),
+                },
+                look,
+            ));
+        }
+        children.push(gap(0.0, 16.0));
+        children.push(own::integration_card(
+            Icon::Custom(rustcord_components::glyphs::MEGAPHONE),
+            t("Canales que sigues"),
+            &match followed {
+                1 => t("1 canal").to_owned(),
+                n => tr!("{n} canales", n),
+            },
+            None,
+            look,
+        ));
+        if let Some(reason) = denied {
+            children.push(gap(0.0, 16.0));
+            children.push(parts::denied(reason, look));
+        }
+        parts::page(
+            "cs:scroll:integrations",
+            self.metrics.content,
+            vec![Element::column(children)],
+        )
     }
 
     fn role(&self, target: OverwriteTarget) -> Option<&Role> {
@@ -467,12 +943,12 @@ impl View<'_> {
         let (title, description) = if self.category() {
             (
                 t("Ajustes de la categoría"),
-                t("Usa los permisos para elegir quién puede hacer qué en esta categoría."),
+                t("Usa los permisos para personalizar quién puede hacer qué en esta categoría."),
             )
         } else {
             (
                 t("Permisos del canal"),
-                t("Usa los permisos para elegir quién puede hacer qué en este canal."),
+                t("Usa los permisos para personalizar quién puede hacer qué en este canal."),
             )
         };
         let mut children = vec![parts::page_title(title, Some(description), look)];
@@ -892,39 +1368,89 @@ impl View<'_> {
             .initial_focus("cs:sync:cancel")
             .render();
         }
-        let (title, confirm, description) = if self.category() {
+        if !settings.delete {
+            return root;
+        }
+        // Discord's: the name in bold within the question, and the two
+        // buttons side by side, as wide as the dialog.
+        let (title, lead, name, tail) = if self.category() {
             (
                 t("Eliminar categoría"),
-                t("Eliminar categoría"),
-                tr!(
-                    "¿Seguro que quieres eliminar la categoría {name}? Sus canales quedan sin categoría. No se puede deshacer.",
-                    name = self.channel.name
-                ),
+                t("¿Realmente quieres eliminar la categoría "),
+                self.channel.name.clone(),
+                t("? Sus canales quedan sin categoría. Esta acción no se puede deshacer."),
             )
         } else {
             (
                 t("Eliminar canal"),
-                t("Eliminar canal"),
-                tr!(
-                    "¿Seguro que quieres eliminar {name}? No se puede deshacer.",
-                    name = self.title()
-                ),
+                t("¿Realmente quieres eliminar "),
+                self.title(),
+                t("? Esta acción no se puede deshacer."),
             )
         };
+        let question = Element::formatted_text(vec![
+            TextSpan::new(lead, look.muted, 16.0, FontFamily::Sans),
+            TextSpan::new(name, look.text, 16.0, FontFamily::SansSemibold),
+            TextSpan::new(tail, look.muted, 16.0, FontFamily::Sans),
+        ]);
+        let danger = ComponentPalette {
+            text: Color::rgb(255, 255, 255),
+            surface: look.danger,
+            hover: look.danger,
+            selected: look.danger,
+            ..palette
+        };
         // Cancelar takes the focus: Enter does not delete.
-        AlertDialog::new(
-            root,
-            settings.delete,
-            title,
-            description,
-            "cs:delete:confirm",
-            "cs:delete:cancel",
-            palette,
-        )
-        .confirm_label(confirm)
-        .cancel_label(t("Cancelar"))
-        .destructive(look.danger)
-        .width(Modal::fit_width(window_width, 425.0))
-        .render()
+        Modal::new(root, true, title, "", "cs:delete:cancel", palette)
+            .width(Modal::fit_width(window_width, 400.0))
+            .body(question)
+            .footer(
+                Element::row(vec![
+                    Button::new("cs:delete:cancel", t("Cancelar"), palette)
+                        .variant(ButtonVariant::Secondary)
+                        .size(ControlSize::Spacious)
+                        .render()
+                        .flex(1.0),
+                    Button::new("cs:delete:confirm", title, danger)
+                        .variant(ButtonVariant::Solid)
+                        .size(ControlSize::Spacious)
+                        .render()
+                        .center_content()
+                        .flex(1.0),
+                ])
+                .gap(8.0),
+            )
+            .initial_focus("cs:delete:cancel")
+            .render()
+    }
+}
+
+/// What is left of an invitation until `when`, as Discord counts it down:
+/// days, hours, minutes and seconds, two digits each.
+fn countdown(when: Timestamp, now: Timestamp) -> String {
+    let left = (when.0 - now.0).max(0) / 1000;
+    format!(
+        "{:02}:{:02}:{:02}:{:02}",
+        left / 86_400,
+        left % 86_400 / 3600,
+        left % 3600 / 60,
+        left % 60
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_invitation_counts_down_in_days_hours_minutes_and_seconds() {
+        let now = Timestamp(1_000_000);
+        let later = Timestamp(now.0 + ((8 * 24 + 4) * 3600 + 40 * 60 + 49) * 1000);
+        assert_eq!(countdown(later, now), "08:04:40:49");
+        assert_eq!(
+            countdown(now, later),
+            "00:00:00:00",
+            "an expired one ends at zero"
+        );
     }
 }

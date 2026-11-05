@@ -79,6 +79,7 @@ fn session() -> Snapshot {
             kind: ChannelKind::Text,
             name: "general".into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 0,

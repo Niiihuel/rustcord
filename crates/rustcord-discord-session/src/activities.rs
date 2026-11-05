@@ -84,6 +84,7 @@ mod tests {
             kind,
             name: "c".into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 0,

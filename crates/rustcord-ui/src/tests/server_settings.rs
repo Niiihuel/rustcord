@@ -169,7 +169,7 @@ fn renaming_the_owned_server_saves_and_shows_the_name_the_provider_confirms() {
     host.write(NAME, "Laboratorio de limn");
     assert!(painted_has(
         &mut host,
-        "¡Cuidado! Tienes cambios sin guardar"
+        "¡Cuidado! ¡Tienes cambios sin guardar!"
     ));
     host.click("ss:save");
     assert!(matches!(

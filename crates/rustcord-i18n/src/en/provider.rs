@@ -641,6 +641,20 @@ pub(super) const ENTRIES: super::Entries = &[
         "slowmode goes up to 6 hours",
     ),
     (
+        "esa opción de voz no está disponible aquí",
+        "that voice option isn't available here",
+    ),
+    (
+        "ese canal no tiene esa opción",
+        "that channel doesn't have that option",
+    ),
+    (
+        "solo un canal de texto de una comunidad pasa a ser de anuncios",
+        "only a community's text channel becomes an announcement channel",
+    ),
+    ("Norte (simulada)", "North (simulated)"),
+    ("Sur (simulada)", "South (simulated)"),
+    (
         "@everyone solo cambia sus permisos",
         "@everyone only changes its permissions",
     ),

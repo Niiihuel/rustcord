@@ -8,11 +8,11 @@
 //! whether filtering by tags asks for all of them.
 
 use limn::{Button, ButtonSize, ButtonVariant, Component, Element, Icon, TextField};
-use rustcord_components::channel_settings::{field_select, FieldSelect};
+use rustcord_components::channel_settings::{archive_label, field_select, FieldSelect};
 use rustcord_components::server_admin::{self as admin_parts, TagLine};
 use rustcord_components::server_settings::{self as parts, Metrics};
 use rustcord_components::{text, Look};
-use rustcord_i18n::{t, tr};
+use rustcord_i18n::t;
 use rustcord_model::{
     Channel, CustomEmoji, ForumDefaults, ForumTag, TagId, ARCHIVE_AFTER, MAX_TAGS,
 };
@@ -88,17 +88,6 @@ fn reaction_text(forum: &ForumDefaults, emojis: &[CustomEmoji]) -> String {
             .map(|emoji| format!(":{}:", emoji.name))
             .unwrap_or_default(),
         None => forum.reaction.clone().unwrap_or_default(),
-    }
-}
-
-/// How an archive time reads.
-fn archive_label(minutes: u32) -> String {
-    match minutes {
-        60 => t("1 hora").into(),
-        1440 => t("24 horas").into(),
-        4320 => t("3 días").into(),
-        10080 => t("1 semana").into(),
-        other => tr!("{n} minutos", n = other),
     }
 }
 

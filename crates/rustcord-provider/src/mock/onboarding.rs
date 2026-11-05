@@ -233,6 +233,7 @@ impl World {
             kind: ChannelKind::Text,
             name: "fotos".into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 2,

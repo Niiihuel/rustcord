@@ -296,6 +296,7 @@ mod tests {
             kind: ChannelKind::Text,
             name: "anuncios".into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 0,

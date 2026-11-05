@@ -2,7 +2,7 @@
 
 pub(super) const ENTRIES: super::Entries = &[
     // Slowmode.
-    ("Apagado", "Off"),
+    ("Apagar", "Off"),
     ("1 segundo", "1 second"),
     ("5 segundos", "5 seconds"),
     ("10 segundos", "10 seconds"),
@@ -317,14 +317,30 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sincronizar ahora", "Sync now"),
     ("Categoría privada", "Private category"),
     (
-        "Si la haces privada, solo los roles y miembros que elijas van a poder verla. Los canales sincronizados con ella toman los mismos permisos.",
-        "If you make it private, only the roles and members you choose will be able to see it. Channels synced with it take the same permissions.",
+        "Al convertir una categoría en privada, solo los miembros y roles seleccionados podrán verla. Los canales vinculados a esta categoría pasarán a tener los mismos ajustes de forma automática.",
+        "By making a category private, only select members and roles will be able to view this category. Linked channels in this category will automatically match to this setting.",
     ),
     ("Canal privado", "Private channel"),
+    ("Visibilidad del contenido", "Content Visibility"),
+    ("Predeterminado", "Default"),
+    ("El contenido del canal siempre es visible.", "Channel content is always visible."),
+    ("Canal de spoilers", "Spoiler Channel"),
+    (
+        "Indica que este canal contiene spoilers para que los giros de trama, temas delicados u otras discusiones sensibles permanezcan ocultos hasta que los usuarios decidan verlos.",
+        "Mark this channel as containing spoilers, so that plot twists, heavy topics, or other sensitive discussions are hidden until users choose to view.",
+    ),
+    (
+        "Los usuarios deberán confirmar que son mayores de edad para ver el contenido de este canal. Los canales con restricción de edad están exentos del filtro de contenido explícito.",
+        "Users will need to confirm they are over the legal age to view the content in this channel. Age-restricted channels are exempt from the explicit content filter.",
+    ),
+    ("Persona que invita", "Inviter"),
+    ("Código de invitación", "Invite Code"),
+    ("Usos", "Uses"),
+    ("Caduca", "Expires"),
     ("Buscar o iniciar una conversación", "Find or start a conversation"),
     (
-        "Si lo haces privado, solo los roles y miembros que elijas van a poder verlo.",
-        "If you make it private, only the roles and members you choose will be able to see it.",
+        "Al convertir un canal en privado, solo los miembros y roles seleccionados podrán verlo.",
+        "By making a channel private, only select members and roles will be able to view this channel.",
     ),
     (
         "¿Quién puede acceder a esta categoría?",
