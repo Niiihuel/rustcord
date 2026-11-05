@@ -1756,8 +1756,8 @@ pub(crate) fn header_tools(
     tools
 }
 
-/// The «más» of a narrow header: the inbox and the list of
-/// threads, which take the room the title needs. `None` with neither.
+/// The «más» of a narrow header: the inbox, the list of threads and an
+/// update offered, which take the room the title needs. `None` with none.
 pub(crate) fn header_more(
     ui: &Ui,
     store: &Store,
@@ -1770,6 +1770,7 @@ pub(crate) fn header_more(
         entries.push(Item::new("inbox:open", t("Bandeja")).into());
     }
     entries.extend(crate::threads::header_entry(store, channel));
+    entries.extend(crate::updates::more_entry(ui));
     (!entries.is_empty()).then(|| parts::more(ui.channel_list.more == Some(channel), entries, look))
 }
 

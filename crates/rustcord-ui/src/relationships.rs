@@ -361,6 +361,7 @@ pub(crate) fn view(
             tab,
             pending,
             store.create_group().allowed(),
+            crate::updates::header_stage(ui).as_ref(),
             crate::title_bar::room(ui),
             look,
         ),

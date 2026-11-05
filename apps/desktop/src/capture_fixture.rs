@@ -14,6 +14,45 @@ pub fn signed_out(store: &mut Store) {
     store.authentication = AuthenticationState::SignedOut;
 }
 
+/// `--action offer-update:{stage}`: a newer Rustcord offered to an installed
+/// copy, where `stage` says (`offered`, `downloading`, `installed` or
+/// `failed`), for pictures of the header's button. Only the interface hears
+/// of it: the host has no release, so nothing downloads or installs.
+pub fn offer_update(ui: &mut Ui, stage: &str) {
+    use rustcord_components::updates::{Stage, UpdateView};
+    let stage = match stage {
+        "downloading" => Stage::Downloading {
+            have: 12 << 20,
+            whole: 48 << 20,
+        },
+        "installed" => Stage::Installed,
+        "failed" => Stage::Failed(
+            rustcord_i18n::t("No se pudo conectar con el servidor de actualizaciones.").into(),
+        ),
+        _ => Stage::Offered,
+    };
+    ui.updates.installation = Some("/opt/rustcord".into());
+    ui.updates.offered = Some(UpdateView {
+        version: "9.9.9".into(),
+        installed: env!("CARGO_PKG_VERSION").into(),
+        notes: String::new(),
+        stage,
+    });
+}
+
+/// `--action notices`: three notices, an error with its detail between two
+/// plain ones, as the window stacks them.
+pub fn notices(ui: &mut Ui, now: std::time::Instant) {
+    ui.notify("Enlace copiado", None, false, now);
+    ui.notify(
+        "No se pudo enviar el mensaje",
+        Some("Revisa tu conexión e inténtalo de nuevo.".into()),
+        true,
+        now,
+    );
+    ui.notify("Imagen guardada en Descargas", None, false, now);
+}
+
 /// `--capture-accounts`: a provider that remembers five accounts, the open one
 /// and four invented, so every surface that lists them can be captured.
 pub fn accounts(store: &mut Store) {

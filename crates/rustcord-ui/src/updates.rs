@@ -1,13 +1,17 @@
 //! What the interface
-//! knows of them, which the host keeps current; the notice of an optional
-//! one over the window; and what that notice and Ajustes › Actualizaciones
-//! ask for. A mandatory update never reaches this window: the host shows
-//! its screen (`rustcord_components::updates::screen`) before anything opens.
+//! knows of them, which the host keeps current; the header's button of an
+//! optional one, with the question it asks over a call; and what that
+//! button and Ajustes › Actualizaciones ask for. A mandatory update never
+//! reaches this window: the host shows its screen
+//! (`rustcord_components::updates::screen`) before anything opens.
 
-use limn::{Element, UiAction};
-use rustcord_components::updates::{ids, notice, Stage, UpdateView};
+use limn::{Element, Icon, UiAction};
+use rustcord_components::channel_menu::{Entry, Item};
+use rustcord_components::updates::{ids, voice_confirm, Stage, UpdateView};
 use rustcord_components::Look;
+use rustcord_i18n::t;
 use rustcord_model::Timestamp;
+use rustcord_state::Store;
 
 use crate::{Intent, Ui};
 
@@ -31,10 +35,9 @@ pub struct Updates {
     /// The latest release the last check found, newer or not: its version
     /// and notes, for Ajustes › Actualizaciones to say what it brought.
     pub latest: Option<(String, String)>,
-    /// «Más tarde»: no notice until the next start; the settings still
-    /// offer it.
-    pub later: bool,
-    pub notes_open: bool,
+    /// The header's button was pressed in a call: the question whether to
+    /// leave it shows.
+    pub voice_confirm: bool,
 }
 
 impl Default for Updates {
@@ -49,8 +52,7 @@ impl Default for Updates {
             error: None,
             offered: None,
             latest: None,
-            later: false,
-            notes_open: false,
+            voice_confirm: false,
         }
     }
 }
@@ -80,10 +82,23 @@ impl Updates {
                 .as_ref()
                 .is_some_and(|offered| matches!(offered.stage, Stage::Offered | Stage::Failed(_)))
     }
+
+    /// What the header's button asks for where the update stands: install
+    /// it (or try again), or start the version installed.
+    fn proceed(&self) -> Vec<Intent> {
+        if self.installable() {
+            vec![Intent::InstallUpdate]
+        } else if matches!(&self.offered, Some(offered) if offered.stage == Stage::Installed) {
+            vec![Intent::RestartForUpdate]
+        } else {
+            Vec::new()
+        }
+    }
 }
 
-/// What the notice and the settings ask for; `None` for other actions.
-pub(crate) fn update(ui: &mut Ui, action: &UiAction) -> Option<Vec<Intent>> {
+/// What the header's button, its question and the settings ask for;
+/// `None` for other actions.
+pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Vec<Intent>> {
     let UiAction::Clicked { id } = action else {
         return None;
     };
@@ -96,12 +111,18 @@ pub(crate) fn update(ui: &mut Ui, action: &UiAction) -> Option<Vec<Intent>> {
             vec![Intent::RestartForUpdate]
         }
         ids::CHECK | ids::INSTALL | ids::RETRY | ids::RESTART => Vec::new(),
-        ids::LATER => {
-            updates.later = true;
+        // Installing closes Rustcord, and the call with it: Discord asks first.
+        ids::BUTTON if store.call().is_some() && !updates.proceed().is_empty() => {
+            updates.voice_confirm = true;
             Vec::new()
         }
-        ids::NOTES => {
-            updates.notes_open = !updates.notes_open;
+        ids::BUTTON => updates.proceed(),
+        ids::VOICE_CONFIRM => {
+            updates.voice_confirm = false;
+            updates.proceed()
+        }
+        ids::VOICE_CANCEL => {
+            updates.voice_confirm = false;
             Vec::new()
         }
         // Its page on GitHub, with the pictures and videos of its notes.
@@ -119,19 +140,46 @@ pub(crate) fn update(ui: &mut Ui, action: &UiAction) -> Option<Vec<Intent>> {
     })
 }
 
-/// The notice of an optional update, for the corner, until it is put off;
-/// only for a copy that can install it, and not over the settings, whose
-/// page offers it already. The other notices stack over it there
-/// (`view::with_notices`), never on its buttons.
-pub(crate) fn card(ui: &Ui, look: &Look) -> Option<Element> {
+/// Where the update offered stands, for the header's button; only for a
+/// copy that can install it: a build from source hears of it in the
+/// settings alone.
+pub(crate) fn header_stage(ui: &Ui) -> Option<Stage> {
     let updates = &ui.updates;
-    match &updates.offered {
-        Some(offered)
-            if !updates.later && updates.installation.is_some() && ui.settings.is_none() =>
-        {
-            Some(notice(offered, updates.notes_open, look))
-        }
-        _ => None,
+    updates
+        .installation
+        .as_ref()
+        .and(updates.offered.as_ref())
+        .map(|offered| offered.stage.clone())
+}
+
+/// The header's button as an item of a narrow header's «más», whose title
+/// needs its room: while it can be pressed, the same action and words.
+pub(crate) fn more_entry(ui: &Ui) -> Option<Entry> {
+    let stage = header_stage(ui)?;
+    let mut item = Item::new(
+        ids::BUTTON,
+        match &stage {
+            Stage::Offered => t("Hay una actualización disponible"),
+            Stage::Installed => t("¡Actualización lista!"),
+            Stage::Failed(_) => t("No se pudo actualizar"),
+            // Ajustes › Actualizaciones shows its progress.
+            Stage::Downloading { .. } | Stage::Installing | Stage::Restarting => return None,
+        },
+    );
+    item.icon = Some(Icon::Custom(rustcord_components::glyphs::DOWNLOAD));
+    if let Stage::Failed(reason) = stage {
+        item.detail = Some(reason);
+    }
+    Some(item.into())
+}
+
+/// The question before an update leaves the call, over `root`, while it is
+/// asked.
+pub(crate) fn overlay(ui: &Ui, root: Element, look: &Look) -> Element {
+    if ui.updates.voice_confirm {
+        voice_confirm(root, look)
+    } else {
+        root
     }
 }
 
@@ -140,7 +188,7 @@ mod tests {
     use super::*;
 
     fn click(ui: &mut Ui, id: &str) -> Option<Vec<Intent>> {
-        update(ui, &UiAction::Clicked { id: id.into() })
+        update(ui, &Store::new(), &UiAction::Clicked { id: id.into() })
     }
 
     fn offered(stage: Stage) -> Option<UpdateView> {
@@ -212,20 +260,32 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_shows_until_put_off_and_never_for_a_build_from_source() {
+    fn the_header_button_is_only_for_a_copy_that_can_install_and_asks_for_its_stage() {
         let mut ui = Ui::new();
-        let look = Look::DARK;
-        let shown = |ui: &Ui| card(ui, &look).is_some();
+        assert_eq!(header_stage(&ui), None, "nothing offered");
         ui.updates.offered = offered(Stage::Offered);
-        assert!(!shown(&ui));
+        assert_eq!(header_stage(&ui), None, "a build from source");
+        assert_eq!(click(&mut ui, ids::BUTTON), Some(Vec::new()));
         ui.updates.installation = Some("/opt".into());
-        assert!(shown(&ui));
-        ui.settings = Some(crate::SettingsPage::System);
-        assert!(!shown(&ui), "the page offers it");
-        ui.settings = None;
-        assert_eq!(click(&mut ui, ids::NOTES), Some(Vec::new()));
-        assert!(ui.updates.notes_open);
-        assert_eq!(click(&mut ui, ids::LATER), Some(Vec::new()));
-        assert!(!shown(&ui));
+        assert_eq!(header_stage(&ui), Some(Stage::Offered));
+        for (stage, asked) in [
+            (Stage::Offered, vec![Intent::InstallUpdate]),
+            (Stage::Downloading { have: 1, whole: 2 }, Vec::new()),
+            (Stage::Installing, Vec::new()),
+            (Stage::Restarting, Vec::new()),
+            (Stage::Installed, vec![Intent::RestartForUpdate]),
+            (Stage::Failed("No.".into()), vec![Intent::InstallUpdate]),
+        ] {
+            ui.updates.offered = offered(stage.clone());
+            assert_eq!(header_stage(&ui), Some(stage.clone()));
+            // A narrow header's «más» has it while it can be pressed.
+            let item = more_entry(&ui).and_then(|entry| match entry {
+                Entry::Item(item) => Some(item.id),
+                _ => None,
+            });
+            assert_eq!(item.is_some(), !asked.is_empty(), "{stage:?}");
+            assert_eq!(click(&mut ui, ids::BUTTON), Some(asked), "{stage:?}");
+            assert!(!ui.updates.voice_confirm, "no call, no question");
+        }
     }
 }

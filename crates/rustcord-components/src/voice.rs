@@ -2953,6 +2953,8 @@ pub struct Stage {
     pub camera_panel: Option<Element>,
     /// Room kept free at the header's end for the window's own buttons.
     pub end: f32,
+    /// Where an update offered stands: its button ends the header's tools.
+    pub update: Option<crate::updates::Stage>,
     /// The account may invite people to the channel: the bar offers it.
     pub invite: bool,
     /// The pointer rested on the stage a while: its header, the bar and the
@@ -3120,6 +3122,9 @@ pub fn stage(view: Stage, look: &Look) -> Element {
                     .centered_y(),
             );
         }
+    }
+    if let Some(stage) = &view.update {
+        header.push(crate::updates::header_button(stage, look).centered_y());
     }
     // The window's own buttons end where the row's padding does.
     if view.end > 0.0 {
@@ -5140,6 +5145,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5267,6 +5273,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5352,6 +5359,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5408,6 +5416,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5467,6 +5476,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         }
@@ -5647,6 +5657,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
             previews: vec![
@@ -5763,6 +5774,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5796,6 +5808,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5911,6 +5924,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -5954,6 +5968,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -6272,6 +6287,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -6408,6 +6424,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -6561,6 +6578,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -6609,6 +6627,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -7436,6 +7455,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -7573,6 +7593,7 @@ mod tests {
                     end: 0.0,
                     invite: false,
                     idle: false,
+                    update: None,
                 };
                 let (_, laid) = frame(stage(view, &look), size);
                 let case = format!("{size:?} hidden {tiles_hidden}");
@@ -7816,6 +7837,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -7885,6 +7907,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -7974,6 +7997,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -8082,6 +8106,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -8138,6 +8163,7 @@ mod tests {
                 quick: None,
                 camera_panel: None,
                 end: 0.0,
+                update: None,
                 invite,
                 idle: false,
             };
@@ -8215,6 +8241,7 @@ mod tests {
             quick: None,
             camera_panel: None,
             end: 0.0,
+            update: None,
             invite: false,
             idle: false,
         };
@@ -8315,6 +8342,7 @@ mod tests {
                 quick: None,
                 camera_panel: None,
                 end: 0.0,
+                update: None,
                 invite: false,
                 idle: false,
             };

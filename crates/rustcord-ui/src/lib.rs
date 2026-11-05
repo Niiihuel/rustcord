@@ -1499,7 +1499,7 @@ fn answer_action(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant
     if let Some(intents) = providers::update(ui, action) {
         return intents;
     }
-    if let Some(intents) = updates::update(ui, action) {
+    if let Some(intents) = updates::update(ui, store, action) {
         return intents;
     }
     // Before the sign-in page and the splash, which answer every click of theirs.

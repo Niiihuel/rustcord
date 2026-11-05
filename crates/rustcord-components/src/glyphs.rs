@@ -35,6 +35,8 @@ pub const USER_PROFILE: &str = glyph!("user-profile");
 pub const INBOX: &str = glyph!("inbox");
 /// An open eye: who watches a stream, beside their count.
 pub const EYE: &str = glyph!("eye");
+/// An arrow down onto a line: the header's button of an update offered.
+pub const DOWNLOAD: &str = glyph!("download");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

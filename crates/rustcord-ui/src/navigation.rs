@@ -191,6 +191,10 @@ pub(crate) fn header(
                 .channel()
                 .and_then(|channel| store.channel(channel))
                 .is_some_and(|channel| channel.kind.has_messages()),
+        // A narrow header has it in its «más» (`updates::more_entry`).
+        update: (!narrow)
+            .then(|| crate::updates::header_stage(ui))
+            .flatten(),
     }
 }
 

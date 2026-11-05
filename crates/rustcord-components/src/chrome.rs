@@ -33,6 +33,9 @@ pub struct HeaderNav {
     /// The inbox at the header's end, after the search, where Discord's title
     /// bar has it.
     pub inbox: bool,
+    /// Where an update offered stands: its button ends the header's tools
+    /// ([`crate::updates::header_button`]).
+    pub update: Option<crate::updates::Stage>,
 }
 
 /// The header's button that shows or hides the profile beside a direct
@@ -237,6 +240,11 @@ pub fn channel_header(
             .render()
             .centered_y(),
         );
+        parts.push(gap(8.0, 0.0));
+    }
+    // Last, as the update ends Discord's title bar.
+    if let Some(stage) = &nav.update {
+        parts.push(crate::updates::header_button(stage, look).centered_y());
         parts.push(gap(8.0, 0.0));
     }
     parts.push(gap(nav.end, 0.0));
@@ -672,6 +680,63 @@ pub fn connection_pill(
         .background(look.raised)
         .border(look.border, 1.0)
         .radius(16.0)
+}
+
+/// A notice as Discord's toast, `width` wide: 12 around its words, rounded
+/// 12, on its highest surface (`#17181b`) ringed by its normal border and
+/// lifted by its high shadow. An error lies on the ground tinted red at
+/// 12 % and ringed in red, its circled «!» before the words. Title 16 in the
+/// text's ink, the detail 14 muted under it; both wrap, never cut. An alert,
+/// named by its title, that fades in and out where it stands.
+pub fn toast(title: &str, detail: Option<&str>, error: bool, width: f32, look: &Look) -> Element {
+    let detail = detail.filter(|detail| !detail.trim().is_empty());
+    let mut words = vec![crate::text(title, 16.0, look.text)];
+    words.extend(detail.map(|detail| crate::text(detail, 14.0, look.muted)));
+    let mut row = Vec::new();
+    if error {
+        row.push(
+            icon(Icon::ErrorCircle, look.danger)
+                .large_icon(18.0)
+                .centered_y(),
+        );
+    }
+    row.push(Element::column(words).gap(2.0).flex(1.0));
+    let body = Element::row(row).gap(8.0).padding(12.0);
+    let card = if error {
+        // Discord's base layer: the red tint and its ring over the ground.
+        Element::panel(
+            Element::panel(body)
+                .background(Color::rgba(210, 45, 57, 31))
+                .border(Color::rgb(226, 77, 80), 1.0)
+                .radius(12.0),
+        )
+        .background(look.canvas)
+    } else {
+        let surface = if look.canvas.r > 128 {
+            look.menu
+        } else {
+            Color::rgb(23, 24, 27)
+        };
+        Element::panel(body)
+            .background(surface)
+            .border(Color::rgba(149, 149, 162, 61), 1.0)
+    };
+    let said = limn::Access::new(limn::Role::Alert)
+        .id(format!("toast:{title}"))
+        .name(title);
+    card.radius(12.0)
+        .shadow(
+            Color::rgba(0, 0, 0, 61),
+            limn::Point::new(0.0, 12.0),
+            24.0,
+            0.0,
+        )
+        .size(Some(width), None)
+        .animate_presence(format!("toast:{title}"))
+        .accessible(match detail {
+            Some(detail) => said.description(detail),
+            None => said,
+        })
 }
 
 /// The button that takes the conversation back to its newest message.
