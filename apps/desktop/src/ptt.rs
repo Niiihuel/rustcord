@@ -791,13 +791,21 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_os = "linux"))]
-    fn a_plain_key_stays_in_the_window_and_says_why() {
+    fn a_plain_push_to_talk_key_goes_global_as_discord_s() {
         let mut global = GlobalPushToTalk::default();
         let mut ui = ptt("V");
-        global.sync(&mut ui, Some(UserId(1)), true, |_| {
-            panic!("a plain key is never global")
+        let mut asked = Vec::new();
+        global.sync(&mut ui, Some(UserId(1)), true, |shortcuts| {
+            asked = shortcuts
+                .into_iter()
+                .map(|shortcut| (shortcut.id, shortcut.preferred_trigger))
+                .collect();
+            None
         });
-        assert!(matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)));
+        assert!(
+            asked.contains(&(ID.to_owned(), Some("v".to_owned()))),
+            "{asked:?}"
+        );
+        assert!(matches!(ui.audio.global_keys, GlobalKeys::Waiting));
     }
 }
