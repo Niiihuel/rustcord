@@ -345,7 +345,7 @@ impl View<'_> {
                         .selected(index == draft.length)
                 })
                 .collect();
-            root = AlertDialog::new(
+            root = look.confirm(AlertDialog::new(
                 root,
                 true,
                 tr!("Aislar a {name}", name),
@@ -353,7 +353,7 @@ impl View<'_> {
                 "ss:timeout:confirm",
                 "ss:timeout:cancel",
                 palette,
-            )
+            ))
             .body(
                 Element::column(vec![
                     FormField::new(
@@ -650,39 +650,40 @@ impl View<'_> {
                     days = days_label(days).to_lowercase()
                 ),
             };
-            root = AlertDialog::new(
-                root,
-                true,
-                t("Podar miembros"),
-                t("Pueden volver a entrar con una invitación nueva."),
-                "ss:prune:confirm",
-                "ss:prune:cancel",
-                palette,
-            )
-            .body(
-                Element::column(vec![
-                    FormField::new(
-                        t("Sin conectarse durante"),
-                        self.choice("prune-days", days_label(days), options, t("Días")),
-                        palette,
-                    )
-                    .render(),
-                    text(said, 14.0, look.text),
-                ])
-                .gap(10.0),
-            )
-            .confirm_label(if draft.removing {
-                t("Podando…")
-            } else {
-                t("Podar")
-            })
-            .cancel_label(t("Cancelar"))
-            .confirm_enabled(
-                !draft.removing && draft.count.is_some() && draft.count.flatten() != Some(0),
-            )
-            .destructive(look.danger)
-            .width(440.0)
-            .render();
+            root = look
+                .confirm(AlertDialog::new(
+                    root,
+                    true,
+                    t("Podar miembros"),
+                    t("Pueden volver a entrar con una invitación nueva."),
+                    "ss:prune:confirm",
+                    "ss:prune:cancel",
+                    palette,
+                ))
+                .body(
+                    Element::column(vec![
+                        FormField::new(
+                            t("Sin conectarse durante"),
+                            self.choice("prune-days", days_label(days), options, t("Días")),
+                            palette,
+                        )
+                        .render(),
+                        text(said, 14.0, look.text),
+                    ])
+                    .gap(10.0),
+                )
+                .confirm_label(if draft.removing {
+                    t("Podando…")
+                } else {
+                    t("Podar")
+                })
+                .cancel_label(t("Cancelar"))
+                .confirm_enabled(
+                    !draft.removing && draft.count.is_some() && draft.count.flatten() != Some(0),
+                )
+                .destructive(look.danger)
+                .width(440.0)
+                .render();
         }
         if let Some(draft) = &advanced.webhook {
             let channels = webhook_channels(self.store, self.server.id)
@@ -757,7 +758,7 @@ impl View<'_> {
                 .and_then(|list| list.iter().find(|known| known.id == webhook))
                 .map(|known| known.name.clone())
                 .unwrap_or_default();
-            root = AlertDialog::new(
+            root = look.confirm(AlertDialog::new(
                 root,
                 true,
                 t("Eliminar webhook"),
@@ -765,7 +766,7 @@ impl View<'_> {
                 "ss:webhook-delete:confirm",
                 "ss:webhook-delete:cancel",
                 palette,
-            )
+            ))
             .confirm_label(t("Eliminar"))
             .cancel_label(t("Cancelar"))
             .destructive(look.danger)
@@ -779,30 +780,31 @@ impl View<'_> {
                 .and_then(|list| list.iter().find(|known| known.id == integration));
             let name = found.map(|known| known.name.clone()).unwrap_or_default();
             let bot = found.is_some_and(|known| known.bot.is_some());
-            root = AlertDialog::new(
-                root,
-                true,
-                t("Quitar integración"),
-                if bot {
-                    tr!(
+            root = look
+                .confirm(AlertDialog::new(
+                    root,
+                    true,
+                    t("Quitar integración"),
+                    if bot {
+                        tr!(
                         "¿Seguro que quieres quitar «{name}»? Su bot también sale del servidor.",
                         name
                     )
-                } else {
-                    tr!(
+                    } else {
+                        tr!(
                         "¿Seguro que quieres quitar «{name}»? Deja de estar conectada al servidor.",
                         name
                     )
-                },
-                "ss:integration-delete:confirm",
-                "ss:integration-delete:cancel",
-                palette,
-            )
-            .confirm_label(t("Quitar"))
-            .cancel_label(t("Cancelar"))
-            .destructive(look.danger)
-            .width(425.0)
-            .render();
+                    },
+                    "ss:integration-delete:confirm",
+                    "ss:integration-delete:cancel",
+                    palette,
+                ))
+                .confirm_label(t("Quitar"))
+                .cancel_label(t("Cancelar"))
+                .destructive(look.danger)
+                .width(425.0)
+                .render();
         }
         root
     }

@@ -2,7 +2,7 @@
 //! (`docs/discord-reference.md`, «Animated icons»): its Lottie animations
 //! reimplemented as limn icon motions, not copied.
 
-use limn::{IconKeyframe, IconMotion};
+use limn::{IconKeyframe, IconMotion, Point};
 
 /// The settings gear: still for 120 ms, then half a turn clockwise, held.
 pub fn gear() -> IconMotion {
@@ -25,4 +25,15 @@ pub fn headphones() -> IconMotion {
         .keyframe(IconKeyframe::at(150).scale(1.06, 0.88))
         .keyframe(IconKeyframe::at(350).scale(1.0, 1.04))
         .keyframe(IconKeyframe::at(600))
+}
+
+/// The update's arrow while it downloads, as Discord's `arrowBounce`
+/// (`docs/discord-reference.md`, «Update button»): 2 px up at the start of
+/// each 2 s round, home half way, eased in and out; played in a loop.
+pub fn download_bob() -> IconMotion {
+    let up = Point::new(0.0, -2.0);
+    IconMotion::new()
+        .keyframe(IconKeyframe::at(0).offset(up))
+        .keyframe(IconKeyframe::at(1000))
+        .keyframe(IconKeyframe::at(2000).offset(up))
 }

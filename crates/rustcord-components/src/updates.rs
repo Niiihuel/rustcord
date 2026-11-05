@@ -19,6 +19,8 @@ pub mod ids {
     /// The header's button: install, start the installed version or try
     /// again, as the update stands.
     pub const BUTTON: &str = "update:button";
+    /// The header button's arrow bobbing while the update downloads.
+    pub const BOB: &str = "update:button:bob";
     /// Update anyway, leaving the voice channel (the question over a call).
     pub const VOICE_CONFIRM: &str = "update:voice-confirm";
     pub const VOICE_CANCEL: &str = "update:voice-cancel";
@@ -252,7 +254,8 @@ fn stage(view: &UpdateView, look: &Look) -> Element {
 /// Discord's title bar ends with: its download glyph in the look's green,
 /// named by its hint. Offered or failed (in red, the reason under its hint)
 /// it installs, installed it starts the new version; while it downloads,
-/// installs or restarts it waits at half its ink, as Discord's disabled one.
+/// installs or restarts it waits at half its ink, as Discord's disabled one,
+/// its arrow bobbing while it downloads or installs.
 pub fn header_button(stage: &Stage, look: &Look) -> Element {
     let (hint, enabled) = match stage {
         Stage::Offered => (t("Hay una actualización disponible"), true),
@@ -276,20 +279,27 @@ pub fn header_button(stage: &Stage, look: &Look) -> Element {
         muted: Look::alpha(ink, 128),
         ..look.palette()
     };
-    IconButton::new(ids::BUTTON, Icon::Custom(crate::glyphs::DOWNLOAD), palette)
+    let button = IconButton::new(ids::BUTTON, Icon::Custom(crate::glyphs::DOWNLOAD), palette)
         .variant(ButtonVariant::Ghost)
         .tooltip_with(hint)
         .ink(ink)
         .hover_ink(ink)
         .enabled(enabled)
-        .render()
+        .render();
+    // While it downloads, its arrow bobs as Discord's does.
+    match stage {
+        Stage::Downloading { .. } | Stage::Installing => {
+            button.icon_loop(ids::BOB, crate::motion::download_bob())
+        }
+        _ => button,
+    }
 }
 
 /// Before an update leaves the call, over `root`: Discord's question, with
 /// its red «¡Actualizar de todas formas!». The new version joins the
 /// channel again once connected (the desktop's `rejoin_step`).
 pub fn voice_confirm(root: Element, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         t("¿Salir del canal de voz por un momento?"),
@@ -297,7 +307,7 @@ pub fn voice_confirm(root: Element, look: &Look) -> Element {
         ids::VOICE_CONFIRM,
         ids::VOICE_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(crate::friends::CONFIRM_WIDTH)
     .confirm_label(t("¡Actualizar de todas formas!"))
     .cancel_label(t("Cancelar"))
@@ -610,6 +620,38 @@ mod tests {
             shown.iter().any(|text| text == "Sin conexión."),
             "{shown:?}"
         );
+    }
+
+    #[test]
+    fn its_arrow_bobs_only_while_the_update_downloads_or_installs() {
+        let size = Size::new(200.0, 60.0);
+        let start = std::time::Instant::now();
+        // How far the arrow is from its place `ms` into the button's life,
+        // and whether the window is kept painting for it.
+        let arrow = |stage: &Stage, ms: u64| {
+            let top = |reduced: bool| {
+                let mut tree = limn::UiTree::new(header_button(stage, &Look::ONYX));
+                tree.set_reduced_motion(reduced);
+                tree.layout_at(size, start);
+                let laid = tree.layout_at(size, start + std::time::Duration::from_millis(ms));
+                let top = laid.commands.iter().find_map(|command| match command {
+                    limn::DrawCommand::Icon { rect, .. } => Some(rect.y),
+                    _ => None,
+                });
+                (top.expect("the arrow is painted"), tree.is_animating())
+            };
+            let ((moved, painting), (place, still)) = (top(false), top(true));
+            assert!(!still, "nothing moves under reduced motion");
+            (moved - place, painting)
+        };
+        for stage in [Stage::Downloading { have: 1, whole: 2 }, Stage::Installing] {
+            assert_eq!(arrow(&stage, 0), (-2.0, true), "{stage:?} up");
+            assert_eq!(arrow(&stage, 1000), (0.0, true), "{stage:?} home");
+            assert_eq!(arrow(&stage, 2000), (-2.0, true), "{stage:?} up again");
+        }
+        for stage in [Stage::Offered, Stage::Restarting, Stage::Installed] {
+            assert_eq!(arrow(&stage, 0), (0.0, false), "{stage:?}");
+        }
     }
 
     #[test]

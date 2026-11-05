@@ -1537,22 +1537,23 @@ impl View<'_> {
                 .find(|candidate| candidate.id == role)
                 .map_or_else(String::new, |role| role.name.clone())
         };
-        let mut root = AlertDialog::new(
-            root,
-            settings.delete_role.is_some(),
-            t("Eliminar rol"),
-            tr!(
-                "¿Seguro que quieres eliminar el rol «{name}»? No se puede deshacer.",
-                name = settings.delete_role.map(role_name).unwrap_or_default()
-            ),
-            "ss:role-delete:confirm",
-            "ss:role-delete:cancel",
-            palette,
-        )
-        .confirm_label(t("Eliminar"))
-        .destructive(look.danger)
-        .width(425.0)
-        .render();
+        let mut root = look
+            .confirm(AlertDialog::new(
+                root,
+                settings.delete_role.is_some(),
+                t("Eliminar rol"),
+                tr!(
+                    "¿Seguro que quieres eliminar el rol «{name}»? No se puede deshacer.",
+                    name = settings.delete_role.map(role_name).unwrap_or_default()
+                ),
+                "ss:role-delete:confirm",
+                "ss:role-delete:cancel",
+                palette,
+            ))
+            .confirm_label(t("Eliminar"))
+            .destructive(look.danger)
+            .width(425.0)
+            .render();
         if let (Some(chosen), Some(role)) = (&settings.add_members, settings.role) {
             let candidates: Vec<Element> = self
                 .store
@@ -1714,36 +1715,38 @@ impl View<'_> {
                     t("Expulsar"),
                 )
             };
-            root = AlertDialog::new(
-                root,
-                true,
-                title,
-                description,
-                "ss:removal:confirm",
-                "ss:removal:cancel",
-                palette,
-            )
-            .body(body)
-            .confirm_label(confirm)
-            .destructive(look.danger)
-            .render();
+            root = look
+                .confirm(AlertDialog::new(
+                    root,
+                    true,
+                    title,
+                    description,
+                    "ss:removal:confirm",
+                    "ss:removal:cancel",
+                    palette,
+                ))
+                .body(body)
+                .confirm_label(confirm)
+                .destructive(look.danger)
+                .render();
         }
         if let Some(user) = settings.unban {
-            root = AlertDialog::new(
-                root,
-                true,
-                tr!("Revocar el veto a {name}", name = self.name_of(user)),
-                t("Va a poder volver a entrar al servidor con una invitación."),
-                "ss:unban:confirm",
-                "ss:unban:cancel",
-                palette,
-            )
-            .confirm_label(t("Revocar veto"))
-            .width(425.0)
-            .render();
+            root = look
+                .confirm(AlertDialog::new(
+                    root,
+                    true,
+                    tr!("Revocar el veto a {name}", name = self.name_of(user)),
+                    t("Va a poder volver a entrar al servidor con una invitación."),
+                    "ss:unban:confirm",
+                    "ss:unban:cancel",
+                    palette,
+                ))
+                .confirm_label(t("Revocar veto"))
+                .width(425.0)
+                .render();
         }
         if let Some(code) = &settings.revoke_invite {
-            root = AlertDialog::new(
+            root = look.confirm(AlertDialog::new(
                 root,
                 true,
                 t("Revocar invitación"),
@@ -1751,7 +1754,7 @@ impl View<'_> {
                 "ss:invite-revoke:confirm",
                 "ss:invite-revoke:cancel",
                 palette,
-            )
+            ))
             .confirm_label(t("Revocar"))
             .destructive(look.danger)
             .width(425.0)
@@ -1802,7 +1805,7 @@ impl View<'_> {
                     (t("Eliminar sticker"), tr!("el sticker «{name}»", name))
                 }
             };
-            root = AlertDialog::new(
+            root = look.confirm(AlertDialog::new(
                 root,
                 true,
                 title,
@@ -1810,7 +1813,7 @@ impl View<'_> {
                 "ss:expression-delete:confirm",
                 "ss:expression-delete:cancel",
                 palette,
-            )
+            ))
             .confirm_label(t("Eliminar"))
             .destructive(look.danger)
             .width(425.0)
@@ -1831,24 +1834,25 @@ impl View<'_> {
             if let Some(reason) = self.abilities.delete.reason() {
                 body.push(text(reason, 13.0, look.danger));
             }
-            root = AlertDialog::new(
-                root,
-                true,
-                tr!("Eliminar «{name}»", name),
-                tr!(
-                    "¿Seguro que quieres eliminar {name}? No se puede deshacer.",
-                    name
-                ),
-                "ss:delete-server:confirm",
-                "ss:delete-server:cancel",
-                palette,
-            )
-            .body(Element::column(body).gap(8.0))
-            .confirm_label(t("Eliminar servidor"))
-            .confirm_enabled(matches && self.abilities.delete.allowed())
-            .destructive(look.danger)
-            .width(510.0)
-            .render();
+            root = look
+                .confirm(AlertDialog::new(
+                    root,
+                    true,
+                    tr!("Eliminar «{name}»", name),
+                    tr!(
+                        "¿Seguro que quieres eliminar {name}? No se puede deshacer.",
+                        name
+                    ),
+                    "ss:delete-server:confirm",
+                    "ss:delete-server:cancel",
+                    palette,
+                ))
+                .body(Element::column(body).gap(8.0))
+                .confirm_label(t("Eliminar servidor"))
+                .confirm_enabled(matches && self.abilities.delete.allowed())
+                .destructive(look.danger)
+                .width(510.0)
+                .render();
         }
         let root = self.admin_dialogs(root);
         self.automod_dialogs(root)

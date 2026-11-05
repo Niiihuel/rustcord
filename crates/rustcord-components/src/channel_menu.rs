@@ -669,7 +669,7 @@ pub fn delete_dialog(root: Element, name: &str, doomed: Doomed, look: &Look) -> 
             ),
         ),
     };
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         title,
@@ -677,7 +677,7 @@ pub fn delete_dialog(root: Element, name: &str, doomed: Doomed, look: &Look) -> 
         ids::DELETE_CONFIRM,
         ids::DELETE_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(CONFIRM_WIDTH)
     .confirm_label(title)
     .destructive(look.danger)
@@ -689,7 +689,7 @@ pub fn delete_dialog(root: Element, name: &str, doomed: Doomed, look: &Look) -> 
 /// place of its own, moves keeping them, or does not move. Its focus starts
 /// on «Cancelar».
 pub fn sync_dialog(root: Element, name: &str, category: &str, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         t("¿Sincronizar permisos?"),
@@ -701,7 +701,7 @@ pub fn sync_dialog(root: Element, name: &str, category: &str, look: &Look) -> El
         ids::SYNC_CONFIRM,
         ids::SYNC_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(CONFIRM_WIDTH)
     .confirm_label(t("Sincronizar permisos"))
     .alternative(ids::SYNC_KEEP, t("Mover sin sincronizar"))

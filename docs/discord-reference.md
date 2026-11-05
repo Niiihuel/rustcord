@@ -777,6 +777,15 @@ gg sans is Discord's own and not free, so Rustcord does not ship it.
 | Composer | 16 / 22 | 400 |
 | "New" divider | 12 / 13 | 600 |
 
+A message's lines are `--chat-markup-line-height`, 1.375rem on its 1rem text:
+22 at 16, and in proportion when the chat's text is larger or smaller.
+Rustcord sets them with limn's `Markdown::line_height` (1.375 × the text
+size), and lays the compact row, the gutters and the skeleton against the
+same height. An embed's description and its fields' values are
+`text-sm/normal`: 14 px on 18 (line height 1.2857), as Rustcord's embeds now
+are too. Bios, pins, topics and release notes keep limn's leading: their
+measures were not read.
+
 gg sans' vertical metrics are 1.02 em above the baseline and 0.32 below
 (1.34 em); limn's Ubuntu was 1.12 em, which made text look cramped.
 
@@ -789,6 +798,22 @@ metrics, rounder, 5 % wider). The bundled file
 given gg sans' vertical metrics (1020 / −320). Its weights are drawn where
 their stems match gg sans' (the `l`, `o` and `n` at 100 px): regular at
 `wght` 360, medium 440, semibold 560, bold 670.
+
+## Questions (confirmation dialogs)
+
+Read from the web bundle (2026-11-05): a confirmation (`ConfirmModal`'s
+`show`, used by the update's question in a call and most «¿…?» dialogs) is
+its `Modal` at `size: "sm"` with a `title`, a `subtitle` and its actions
+(Cancel `secondary`, the confirm `primary` or `critical-primary`).
+
+- Title: `heading-lg/semibold`, 20 px, weight 600, line height 1.2 (24).
+- Backdrop: `--background-scrim`, black at 72 % (`--opacity-black-72`) in
+  the dark themes and at 52 % in the light one; a lightbox's is 92 %
+  (`--background-scrim-lightbox`).
+- Rustcord: every `AlertDialog` and the questions built on a `Modal` (the
+  voice channel switch, opening a link, syncing a channel's permissions)
+  go through `Look::confirm` / `Look::confirm_modal`: a 20 px semibold title
+  (limn's `title_size` and `title_family`) over `Look::scrim`.
 
 ## Toasts (in-app notices)
 
@@ -837,7 +862,13 @@ icons).
   downloads: the settings show that). Rustcord does not download by
   itself, so it shows from the offer («Hay una actualización disponible»,
   a click installs); a failure shows in red, its hint «No se pudo
-  actualizar» with the reason under it, and a click tries again. It does
-  not bob (limn has no looping motion for an icon yet),
-  and the call's question says the person leaves the call and has to
-  join again: Rustcord does not rejoin it after the restart.
+  actualizar» with the reason under it, and a click tries again. Its arrow
+  bobs while it downloads or installs: the button's `colorClass` is
+  `bounce` while `UPDATE_AVAILABLE`, `animation: arrowBounce 2s ease-in-out
+  infinite` with `@keyframes arrowBounce { 0% { translate3d(0, -2px, 0) }
+  50% { translateZ(0) } to { translate3d(0, -2px, 0) } }`: 2 px up at the
+  start of each round, home half way, eased in and out on each half.
+  Rustcord plays it as limn's `Element::icon_loop` (`motion::download_bob`,
+  `Easing::InOutSine` within 0.02 of `ease-in-out`), held still under
+  reduced motion. The call's question says the person leaves the call and
+  has to join again: Rustcord does not rejoin it after the restart.

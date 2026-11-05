@@ -729,7 +729,7 @@ pub fn nickname_dialog(root: Element, name: &str, value: &str, look: &Look) -> E
 
 /// The question before ending something with someone, over `root`.
 pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         title.to_owned(),
@@ -737,7 +737,7 @@ pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Loo
         ids::CONFIRM,
         ids::CONFIRM_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(CONFIRM_WIDTH)
     .confirm_label(confirm.to_owned())
     .destructive(look.danger)
@@ -781,7 +781,7 @@ pub fn ignore(root: Element, name: &str, look: &Look) -> Element {
         .gap(4.0),
     ])
     .gap(8.0);
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         tr!("¿Deseas ignorar a {name}?", name),
@@ -789,7 +789,7 @@ pub fn ignore(root: Element, name: &str, look: &Look) -> Element {
         ids::CONFIRM,
         ids::CONFIRM_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(CONFIRM_WIDTH)
     .confirm_label(t("Ignorar"))
     .body(body)

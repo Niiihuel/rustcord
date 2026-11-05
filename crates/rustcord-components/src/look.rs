@@ -3,9 +3,9 @@
 //! the owner authorized on 2026-11-04 (see `docs/discord-reference.md`).
 
 use limn::{
-    BoxShadow, Color, ComponentPalette, ContextMenuMetrics, Easing, FontFamily, Point, Radius,
-    ScrollbarAppearance, Select, SelectVariant, Size, Tokens, TooltipOptions, TooltipShape,
-    TooltipStyle,
+    AlertDialog, BoxShadow, Color, ComponentPalette, ContextMenuMetrics, Easing, FontFamily, Modal,
+    Point, Radius, ScrollbarAppearance, Select, SelectVariant, Size, Tokens, TooltipOptions,
+    TooltipShape, TooltipStyle,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::{Rgb, Status};
@@ -22,6 +22,9 @@ const FLOATING_SHADOW: BoxShadow = BoxShadow {
     blur: 24.0,
     spread: 0.0,
 };
+
+/// The title of Discord's questions (`heading-lg/semibold`: 20 px on 24).
+const CONFIRM_TITLE: f32 = 20.0;
 
 /// The density of every context menu, as Discord's menus:
 /// rows of at least 34 with 14 px medium labels, 8 around the rows and 8 on
@@ -285,6 +288,31 @@ impl Look {
             .menu_metrics(SELECT_METRICS)
             .menu_gap(SELECT_GAP)
             .filled_choice(self.accent, self.on_accent)
+    }
+
+    /// A question before an action as Discord asks it: its title
+    /// `heading-lg/semibold` (20 px, semibold) over the window dimmed by
+    /// [`Self::scrim`].
+    pub fn confirm(&self, dialog: AlertDialog) -> AlertDialog {
+        dialog
+            .title_size(CONFIRM_TITLE)
+            .title_family(FontFamily::SansSemibold)
+            .scrim(self.scrim())
+    }
+
+    /// [`Self::confirm`] for a question built on a `Modal`, such as one with
+    /// a check box beside its actions.
+    pub fn confirm_modal(&self, modal: Modal) -> Modal {
+        modal
+            .title_size(CONFIRM_TITLE)
+            .title_family(FontFamily::SansSemibold)
+            .scrim(self.scrim())
+    }
+
+    /// What dims the window under a dialog: Discord's `--background-scrim`,
+    /// black at 72 % on a dark look and at 52 % on a light one.
+    pub fn scrim(&self) -> Color {
+        Color::rgba(0, 0, 0, if self.canvas.r > 128 { 133 } else { 184 })
     }
 
     /// Every hint's colors: the floating black of [`Self::hint`], the ring
@@ -559,6 +587,32 @@ pub fn activity_line(activity: &rustcord_model::Activity) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_question_has_discords_semibold_title_over_its_scrim() {
+        use limn::Component;
+        for (look, alpha) in [(Look::ONYX, 184), (Look::DARK, 184), (Look::LIGHT, 133)] {
+            assert_eq!(look.scrim(), Color::rgba(0, 0, 0, alpha));
+            let dialog = AlertDialog::new(
+                limn::Element::spacer(),
+                true,
+                "¿Seguro?",
+                "",
+                "ok",
+                "cancel",
+                look.menu_palette(),
+            );
+            let (_, laid) =
+                crate::testing::frame(look.confirm(dialog).render(), Size::new(800.0, 600.0));
+            let painted =
+                |wanted: &dyn Fn(&limn::DrawCommand) -> bool| laid.commands.iter().any(wanted);
+            assert!(painted(&|command| matches!(command,
+                limn::DrawCommand::Text { text, font_size, font_family, .. }
+                    if text == "¿Seguro?" && *font_size == 20.0 && *font_family == FontFamily::SansSemibold)));
+            assert!(painted(&|command| matches!(command,
+                limn::DrawCommand::FillRect { color, .. } if *color == look.scrim())));
+        }
+    }
 
     /// CIE L*, 0 (black) to 100 (white), of an opaque color.
     fn lightness(color: Color) -> f32 {
