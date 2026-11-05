@@ -650,9 +650,7 @@ impl Desktop {
         if !self.enabled {
             return false;
         }
-        let base = self
-            .base_fonts
-            .get_or_insert_with(limn_egui::font_definitions);
+        let base = self.base_fonts.get_or_insert_with(rustcord_fonts);
         self.fallbacks.scan(base, frame);
         let wake = self.wake.clone();
         match self.fallbacks.step(base, |work| background(wake, work)) {
@@ -674,7 +672,7 @@ impl Desktop {
                 None => {
                     self.font_loading = None;
                     self.font = None;
-                    self.install(ctx, limn_egui::font_definitions());
+                    self.install(ctx, rustcord_fonts());
                     return true;
                 }
                 Some(family) => {
@@ -713,7 +711,7 @@ impl Desktop {
                 rustcord_ui::desktop::font_problem(ui, None);
             }
             None => {
-                self.install(ctx, limn_egui::font_definitions());
+                self.install(ctx, rustcord_fonts());
                 rustcord_ui::desktop::font_problem(
                     ui,
                     Some(tr!(
@@ -725,6 +723,29 @@ impl Desktop {
         }
         true
     }
+}
+
+/// Mada, the free face nearest Discord's gg sans, with gg sans' line
+/// height, in place of limn's Ubuntu: one variable file drawn at the weights
+/// whose stems match gg sans' 400, 500, 600 and 700
+/// (`docs/discord-reference.md`).
+const MADA: &[u8] = include_bytes!("../../../assets/fonts/Mada-Rustcord.ttf");
+
+/// Rustcord's own fonts: limn's, with Mada first for interface text.
+pub fn rustcord_fonts() -> egui::FontDefinitions {
+    let weight = |wght: f32| egui::FontData {
+        tweak: egui::FontTweak {
+            coords: egui::epaint::text::VariationCoords::new([(b"wght", wght)]),
+            ..Default::default()
+        },
+        ..egui::FontData::from_static(MADA)
+    };
+    limn_egui::font_definitions_with(limn_egui::UiFaces {
+        regular: weight(360.0),
+        medium: Some(weight(440.0)),
+        semibold: Some(weight(560.0)),
+        bold: Some(weight(670.0)),
+    })
 }
 
 /// The games to look for: the person's own first, so their name wins, then

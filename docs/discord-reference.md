@@ -729,3 +729,36 @@ and its pictures' colors; nothing copied.
 - The application icon (`discord.png`, 256 px) fills its whole box, as
   Windows' and the desktops' icons do; Rustcord's tile is cut to its edges
   at 32 px and up (16 and 24 keep their pixel-fitted drawings).
+
+## Typography
+
+Measured in the web client (2026-11-04). Discord sets everything in **gg
+sans** (400, 500, 600, 700; `--font-primary: "gg sans", "Noto Sans",
+"Helvetica Neue", Helvetica, Arial, sans-serif`), code in **gg mono**
+(fallback Source Code Pro) and a few marketing headlines in ABC Ginto Nord.
+gg sans is Discord's own and not free, so Rustcord does not ship it.
+
+| Text | Size / line height | Weight |
+| --- | --- | --- |
+| Message | 16 / 22 | 400 |
+| Author's name | 16 / 22 | 500 |
+| Timestamp | 12 | 500 |
+| Channel header title | 16 / 20 | 500 |
+| Sidebar section title | 14 / 18 | 500 |
+| Account panel name / status | 16 / 18, 12 / 13 | 500 |
+| Composer | 16 / 22 | 400 |
+| "New" divider | 12 / 13 | 600 |
+
+gg sans' vertical metrics are 1.02 em above the baseline and 0.32 below
+(1.34 em); limn's Ubuntu was 1.12 em, which made text look cramped.
+
+Rustcord's face is **Mada** (OFL), chosen among 85 free families by
+rendering each beside gg sans: same humanist shapes and close widths
+(a sentence 0.98 as wide; Hanken Grotesk, Figtree, Noto Sans and Ubuntu are
+5–7 % wider and wrap differently). Red Hat Text came second (same vertical
+metrics, rounder, 5 % wider). The bundled file
+(`assets/fonts/Mada-Rustcord.ttf`) is Mada's variable font cut to Latin and
+given gg sans' vertical metrics (1020 / −320). Its weights are drawn where
+their stems match gg sans' (the `l`, `o` and `n` at 100 px): regular at
+`wght` 360, medium 440, semibold 560, bold 670.
+

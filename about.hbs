@@ -36,6 +36,14 @@ fuentes predeterminadas de egui:
 - **emoji-icon-font** 1.1: «Copyright (c) 2014 John Slegers», bajo la
   licencia MIT. Texto completo [más abajo](#textos-de-las-licencias-de-esta-sección).
 
+### Mada, la fuente de la interfaz
+
+Rustcord embebe una versión recortada de **Mada** 1.5 (sólo latín, con otras
+métricas verticales): «Copyright 2015-2022 The Mada Project Authors
+(https://github.com/aliftype/mada), with Reserved Font Name "Source"», bajo la
+SIL Open Font License 1.1. Texto completo, procedencia, cambios y SHA-256:
+`assets/licenses/Mada-OFL.txt` y `assets/licenses/FONT-NOTICES.md`.
+
 ### Fuentes e íconos de limn (`limn-egui`)
 
 [limn](https://github.com/Niiihuel/limn), la biblioteca de interfaz de Rustcord

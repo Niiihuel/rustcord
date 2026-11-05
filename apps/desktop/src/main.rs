@@ -748,7 +748,7 @@ fn main() -> eframe::Result {
         "Rustcord",
         options,
         Box::new(move |creation| {
-            limn_egui::install_fonts(&creation.egui_ctx);
+            creation.egui_ctx.set_fonts(desktop::rustcord_fonts());
             limn_egui::set_color_emoji(Some(rustcord_components::twemoji::picture));
             limn_egui::set_icon_pack(rustcord_components::glyphs::pack);
             let mut app = App::new(&creation.egui_ctx, started, arguments, provider, mock);

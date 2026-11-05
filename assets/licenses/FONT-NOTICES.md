@@ -44,6 +44,33 @@ completo; la copia de limn sólo recorta un espacio al final de una línea.
 | NotoSansMath-Regular.ttf | `3f495fe933c06786e4d5f6d86b8ee70b6753a68ee3b9d87528726de0f6e2c47d` |
 | NotoSansMath-OFL.txt | `5b18c06210e575a638ec293b5c824a4e1084a7ec5a3d67098b15dae51d2df24b` |
 
+## Mada 1.5 (fuente de la interfaz de Rustcord)
+
+Ésta la añade Rustcord, no limn: `assets/fonts/Mada-Rustcord.ttf`, embebida
+por `rustcord_fonts` en `apps/desktop/src/desktop.rs`.
+
+> Copyright 2015-2022 The Mada Project Authors (https://github.com/aliftype/mada),
+> with Reserved Font Name "Source".
+
+Licencia completa, SIL Open Font License 1.1:
+[Mada-OFL.txt](Mada-OFL.txt).
+
+Fuente de distribución:
+[Google Fonts, commit 4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9](https://github.com/google/fonts/tree/4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9/ofl/mada),
+archivo `Mada[wght].ttf` (SHA-256
+`bf4d193ee78cea2fd8bdc9e64e5cb7e8a19ff76ab74f97a9a4a0e80f8f4cefde`).
+
+Versión modificada, como permite la licencia: se quitaron los glifos árabes
+(quedan el latín, sus extensiones A y B, la puntuación general y las
+monedas), se conserva el eje `wght` y las métricas verticales (`hhea` y
+`OS/2`) pasan a 1020/−320 sin interlineado extra. El nombre de la familia
+sigue siendo «Mada», que no es un nombre reservado; «Source» no se usa.
+
+| Archivo | SHA-256 |
+| --- | --- |
+| Mada-Rustcord.ttf | `492cb5c9cf29743674ca0cae0782a78ab620e421e559fe0523a43a288a389572` |
+| Mada-OFL.txt | `e15f74b13b1a30c878f162b2ce10aff4668d0e8ec8dae41dc61c1c12aa6d9eb9` |
+
 ## Alcance de estos avisos
 
 Este inventario cubre las fuentes que limn añade explícitamente. Las

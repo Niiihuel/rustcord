@@ -461,7 +461,9 @@ pub fn mandatory(startup: &Startup, capture: Option<PathBuf>) -> Option<eframe::
         "Rustcord",
         options,
         Box::new(move |creation| {
-            limn_egui::install_fonts(&creation.egui_ctx);
+            creation
+                .egui_ctx
+                .set_fonts(crate::desktop::rustcord_fonts());
             limn_egui::set_icon_pack(rustcord_components::glyphs::pack);
             let wake_ctx = creation.egui_ctx.clone();
             let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(move || wake_ctx.request_repaint());
