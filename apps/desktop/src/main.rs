@@ -2852,7 +2852,7 @@ impl App {
                 && !self.global_ptt.bound(shortcut)
                 && shortcut
                     .binding(&self.ui.prefs)
-                    .filter(|key| ptt::global_allowed(key))
+                    .filter(|key| ptt::global_allowed(key, false))
                     .is_some_and(|key| ptt::window_pressed(&window_presses, key));
             if pressed {
                 toggles.push(shortcut);
@@ -4513,12 +4513,13 @@ fn follow_zoom(
 impl eframe::App for App {
     /// While hidden in the tray only this runs: what arrives is still
     /// applied and may notify, and the tray and later starts still answer.
+    /// Events, voice and push to talk run here, before `ui`, and also when
+    /// eframe runs no `ui`: the window minimized, in the tray, or on a
+    /// Wayland desktop that asks no frame of a window it does not show.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.desktop.hidden {
-            let now = Instant::now();
-            self.drain(ctx, now);
-            self.desktop_step(ctx, now);
-        }
+        let now = Instant::now();
+        self.drain(ctx, now);
+        self.desktop_step(ctx, now);
     }
 
     /// Own themes: a window the desktop may show through
@@ -4573,8 +4574,6 @@ impl eframe::App for App {
         let area = self.frame.content(ui, &mut self.ui.desktop, rim);
         let window = Size::new(area.width(), area.height());
 
-        self.drain(&ctx, now);
-        self.desktop_step(&ctx, now);
         // The splash grows into the usual window once the opening screen
         // says why it waits, or gives way to the login or the interface.
         if self.frame.compact && !rustcord_ui::splash::compact(&self.ui, &self.store, now) {

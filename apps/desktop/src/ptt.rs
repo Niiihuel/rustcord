@@ -144,6 +144,9 @@ fn trigger(binding: &str) -> Option<String> {
     let name = key.name();
     let keysym = match key {
         Key::Space => "space".to_owned(),
+        Key::Tab => "Tab".to_owned(),
+        Key::Enter => "Return".to_owned(),
+        Key::Backspace => "BackSpace".to_owned(),
         Key::Backtick => "grave".to_owned(),
         Key::Minus => "minus".to_owned(),
         Key::Equals => "equal".to_owned(),
@@ -190,16 +193,19 @@ fn function_key(key: Key) -> bool {
     name.len() > 1 && name.starts_with('F') && name[1..].bytes().all(|b| b.is_ascii_digit())
 }
 
-/// On Windows a key held everywhere would also type everywhere, so only a
-/// combination or a function key is asked. The Linux desktop takes any key.
-pub fn global_allowed(binding: &str) -> bool {
+/// Whether `binding` goes to the desktop. A `held` shortcut (push to talk or
+/// to mute) takes any key, as Discord's: Windows' hook never takes the key
+/// from the window it goes to. On Windows a toggle on a plain key would fire
+/// at each one typed anywhere, so it needs a combination or a function key.
+/// The Linux desktop takes any key.
+pub fn global_allowed(binding: &str, held: bool) -> bool {
     // The Linux portal takes no mouse button; Windows' hook takes these three.
     if mouse(binding).is_some() {
         return cfg!(windows);
     }
-    cfg!(target_os = "linux")
-        || parse(binding)
-            .is_some_and(|(key, modifiers)| modifiers != Modifiers::default() || function_key(key))
+    parse(binding).is_some_and(|(key, modifiers)| {
+        held || cfg!(target_os = "linux") || modifiers != Modifiers::default() || function_key(key)
+    })
 }
 
 /// `binding` as Hyprland's Lua binds name keys: `CTRL + SHIFT + t`, `mouse:275`.
@@ -335,7 +341,7 @@ impl GlobalPushToTalk {
             .flatten()
             .filter(|_| account.is_some());
         let mut keys: Vec<(String, String)> = key
-            .filter(|key| global_allowed(key))
+            .filter(|key| global_allowed(key, true))
             .map(|key| (ID.to_owned(), key.to_owned()))
             .into_iter()
             .collect();
@@ -344,7 +350,7 @@ impl GlobalPushToTalk {
             keys.extend(VoiceKey::GLOBAL.into_iter().filter_map(|shortcut| {
                 shortcut
                     .binding(&ui.prefs)
-                    .filter(|key| global_allowed(key))
+                    .filter(|key| global_allowed(key, held_shortcut(shortcut.key())))
                     .map(|key| (shortcut.key().to_owned(), key.to_owned()))
             }));
         }
@@ -417,8 +423,7 @@ impl GlobalPushToTalk {
                 None => ui.audio.global_keys = GlobalKeys::Off,
                 Some(_) if !matches!(ui.audio.global_keys, GlobalKeys::Unavailable(_)) => {
                     ui.audio.global_keys = GlobalKeys::Unavailable(
-                        es("el atajo necesita Ctrl, Alt o Shift, o ser una tecla F, para no escribirse en otras ventanas.")
-                            .into(),
+                        es("el escritorio no da los botones del ratón fuera de la ventana.").into(),
                     );
                 }
                 Some(_) => {}
@@ -532,19 +537,20 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_os = "linux"))]
-    fn only_combinations_and_function_keys_go_global() {
-        assert!(global_allowed("Ctrl+V"));
-        assert!(global_allowed("F9"));
-        assert!(!global_allowed("V"), "it would type everywhere");
-        assert!(!global_allowed("Backtick"));
-    }
-
-    #[test]
-    #[cfg(target_os = "linux")]
-    fn the_linux_desktop_takes_any_key() {
-        assert!(global_allowed("V"));
-        assert!(global_allowed("Backtick"));
+    fn push_to_talk_goes_global_on_any_key_and_a_toggle_on_a_combination() {
+        for held in [true, false] {
+            assert!(global_allowed("Ctrl+V", held));
+            assert!(global_allowed("F9", held));
+            assert!(!global_allowed("Ctrl+Nothing", held));
+        }
+        // Held, as Discord's push to talk on `V` while a game has the focus.
+        assert!(global_allowed("V", true));
+        assert!(global_allowed("Backtick", true));
+        assert!(global_allowed("Tab", true));
+        assert_eq!(trigger("Tab").as_deref(), Some("Tab"));
+        assert_eq!(trigger("Shift+Enter").as_deref(), Some("SHIFT+Return"));
+        // A toggle on a plain key would fire at each one typed elsewhere.
+        assert_eq!(global_allowed("V", false), cfg!(target_os = "linux"));
     }
 
     #[test]
@@ -579,7 +585,7 @@ mod tests {
             Some(r#"hl.bind("mouse:274", hl.dsp.global("rustcord:push-to-talk"))"#)
         );
         assert_eq!(
-            global_allowed("MOUSE5"),
+            global_allowed("MOUSE5", true),
             cfg!(windows),
             "the portal takes no mouse"
         );

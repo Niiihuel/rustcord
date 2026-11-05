@@ -169,8 +169,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ("{shortcut} en Rustcord", "{shortcut} in Rustcord"),
     ("Atajo", "Shortcut"),
     (
-        "el atajo necesita Ctrl, Alt o Shift, o ser una tecla F, para no escribirse en otras ventanas.",
-        "the shortcut needs Ctrl, Alt or Shift, or to be an F key, so it doesn't type into other windows.",
+        "el escritorio no da los botones del ratón fuera de la ventana.",
+        "the desktop doesn't give mouse buttons outside the window.",
     ),
     // Uploads.
     (

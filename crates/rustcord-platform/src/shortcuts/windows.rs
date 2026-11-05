@@ -3,9 +3,9 @@
 //! consume input: every event goes on with `CallNextHookEx`, and is only
 //! compared with the bound shortcuts. Nothing is stored, buffered, sent or
 //! logged: the state is one flag per shortcut and the modifiers held, both
-//! from the same events. Injected input counts too. Windows may not send the
-//! input of an elevated program to these hooks, so Rustcord runs elevated too
-//! when that matters. The matching is pure and is
+//! from the same events. Injected input counts too. Windows does not send
+//! the input of an elevated program (a game run as administrator) to these
+//! hooks, so Rustcord runs elevated too when that matters, as Discord. The matching is pure and is
 //! tested on every platform.
 
 use super::Shortcut;
@@ -58,6 +58,9 @@ fn key_code(key: &str) -> Option<u32> {
         }
         _ => match key {
             "space" => 0x20,
+            "Tab" => 0x09,
+            "Return" => 0x0d,
+            "BackSpace" => 0x08,
             "grave" => 0xc0,
             "minus" => 0xbd,
             "equal" => 0xbb,
@@ -163,8 +166,10 @@ pub(super) enum Edge {
     Released(usize),
 }
 
-/// Starts a shortcut when its main input goes down with exactly its modifiers
-/// held, and stops it when that main input or one of its modifiers goes up.
+/// Starts a shortcut when its main input goes down with at least its
+/// modifiers held, as the window does: push to talk on `V` holds while Shift
+/// runs in a game. It stops when that main input or one of its modifiers
+/// goes up.
 pub(super) struct Matcher {
     hotkeys: Vec<Hotkey>,
     active: Vec<bool>,
@@ -209,7 +214,7 @@ impl Matcher {
             if hotkey.main != main {
                 continue;
             }
-            if down && !self.active[place] && hotkey.modifiers == flags {
+            if down && !self.active[place] && hotkey.modifiers & !flags == 0 {
                 self.active[place] = true;
                 edges.push(Edge::Pressed(place));
             } else if !down && self.active[place] {
@@ -466,7 +471,6 @@ mod tests {
             "CTRL+CTRL+a",
             "CTRL+",
             "CTRL+ñ",
-            "Tab",
             "MOUSE6",
             "KP_1",
             "CapsLock",
@@ -506,14 +510,20 @@ mod tests {
     }
 
     #[test]
-    fn extra_modifiers_do_not_start_it_and_the_modifiers_must_be_held_first() {
+    fn an_extra_modifier_still_starts_it_and_the_modifiers_must_be_held_first() {
         let mut matcher = matcher(&["CTRL+t"]);
         matcher.step(key(CTRL, true));
         matcher.step(key(SHIFT_KEY, true));
-        assert!(matcher.step(key(T, true)).is_empty(), "Shift is extra");
-        matcher.step(key(SHIFT_KEY, false));
-        assert!(matcher.step(key(T, false)).is_empty());
-        assert_eq!(matcher.step(key(T, true)), [Edge::Pressed(0)]);
+        assert_eq!(
+            matcher.step(key(T, true)),
+            [Edge::Pressed(0)],
+            "Shift is extra"
+        );
+        assert!(
+            matcher.step(key(SHIFT_KEY, false)).is_empty(),
+            "Shift was not needed"
+        );
+        assert_eq!(matcher.step(key(T, false)), [Edge::Released(0)]);
         let mut late = self::matcher(&["CTRL+t"]);
         assert!(late.step(key(T, true)).is_empty(), "Ctrl pressed after T");
     }
@@ -542,12 +552,29 @@ mod tests {
     }
 
     #[test]
-    fn a_plain_key_is_not_the_same_with_a_modifier_held() {
-        let mut matcher = matcher(&["F9"]);
-        matcher.step(key(CTRL, true));
-        assert!(matcher.step(key(F9, true)).is_empty(), "Ctrl is extra");
-        matcher.step(key(CTRL, false));
-        assert_eq!(matcher.step(key(F9, true)), [Edge::Pressed(0)]);
+    fn a_plain_key_holds_while_a_game_runs_with_shift() {
+        let v = u32::from(b'V');
+        let mut matcher = matcher(&["v"]);
+        matcher.step(key(SHIFT_KEY, true));
+        assert_eq!(matcher.step(key(v, true)), [Edge::Pressed(0)]);
+        assert!(matcher.step(key(SHIFT_KEY, false)).is_empty());
+        assert!(
+            matcher.step(key(CTRL, true)).is_empty(),
+            "a modifier pressed meanwhile"
+        );
+        assert_eq!(matcher.step(key(v, false)), [Edge::Released(0)]);
+        assert_eq!(
+            hotkey("Tab").map(|hotkey| hotkey.main),
+            Some(Main::Key(0x09))
+        );
+        assert_eq!(
+            hotkey("Return").map(|hotkey| hotkey.main),
+            Some(Main::Key(0x0d))
+        );
+        assert_eq!(
+            hotkey("BackSpace").map(|hotkey| hotkey.main),
+            Some(Main::Key(0x08))
+        );
     }
 
     #[test]
@@ -574,9 +601,6 @@ mod tests {
         matcher.step(key(CTRL, true));
         assert_eq!(matcher.step(key(T, true)), [Edge::Pressed(0)]);
         assert_eq!(matcher.step(key(T, false)), [Edge::Released(0)]);
-        // F9 with Ctrl held is not F9 alone, so it waits for Ctrl to go up.
-        assert!(matcher.step(key(F9, true)).is_empty());
-        assert!(matcher.step(key(F9, false)).is_empty());
         matcher.step(key(CTRL, false));
         assert_eq!(matcher.step(key(F9, true)), [Edge::Pressed(1)]);
         assert_eq!(matcher.step(key(F9, false)), [Edge::Released(1)]);

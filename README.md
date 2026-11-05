@@ -298,7 +298,9 @@ Sobre el proveedor no oficial, concretamente:
   datos y su clave.
 - **Pulsar para hablar global**: en Windows, un gancho de teclado y ratón de
   bajo nivel que nunca consume la entrada, sólo compara cada evento con la
-  combinación elegida y no guarda, envía ni registra teclas.
+  tecla o combinación elegida y no guarda, envía ni registra teclas. Como en
+  Discord, sirve cualquier tecla, y un juego abierto como administrador
+  sólo deja oírla si Rustcord también lo está.
 - **Actualizaciones**: el manifiesto de cada versión va firmado con Ed25519 y
   Rustcord comprueba la firma con la clave que lleva compilada antes de
   instalar nada.
