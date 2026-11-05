@@ -90,6 +90,10 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         es("volumen de los sonidos avisos llamada ensordecido probar"),
     ),
     (
+        "ptt-sound-volume",
+        es("volumen de pulsar para hablar sonido al pulsar soltar tecla ptt"),
+    ),
+    (
         "sound-folder",
         es("carpeta de sonidos propios archivos personalizados reemplazar ogg opus mp3 wav"),
     ),
@@ -132,6 +136,7 @@ pub(super) fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
     }
     match key {
         "sound-volume" => Some(volume(ctx)),
+        "ptt-sound-volume" => Some(ptt_volume(ctx)),
         "sound-folder" => Some(folder(ctx)),
         // Discord's: the message and call sounds are Notificaciones'.
         "related-notifications" => Some(parts::related(
@@ -201,6 +206,34 @@ fn volume(ctx: &Ctx) -> Element {
         parts::slider("us:sound-volume", volume, look)
             .width(ctx.geometry.column)
             .accessibility_label(t("Volumen de los sonidos"))
+            .render(),
+        line(
+            tr!("{percent} %", percent = format!("{:.0}", volume * 100.0)),
+            13.0,
+            look.muted,
+        ),
+        Element::spacer().size(None, Some(8.0)),
+    ])
+    .gap(8.0)
+}
+
+/// How loud push to talk's two sounds are, under the sounds' volume.
+fn ptt_volume(ctx: &Ctx) -> Element {
+    let (ui, look) = (ctx.ui, ctx.look);
+    let volume = ui.prefs.ptt_sound_volume;
+    Element::column(vec![
+        parts::setting(
+            t("Volumen de pulsar para hablar"),
+            Some(t(
+                "Los sonidos al pulsar y al soltar la tecla, dentro del volumen de los sonidos.",
+            )),
+            None,
+            true,
+            look,
+        ),
+        parts::slider("us:ptt-sound-volume", volume, look)
+            .width(ctx.geometry.column)
+            .accessibility_label(t("Volumen de pulsar para hablar"))
             .render(),
         line(
             tr!("{percent} %", percent = format!("{:.0}", volume * 100.0)),

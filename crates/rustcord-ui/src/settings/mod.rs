@@ -258,6 +258,8 @@ pub struct Prefs {
     pub sounds_off: Vec<crate::CallSound>,
     /// How loud they play, 0 to 1, under the output's volume.
     pub sound_volume: f32,
+    /// How loud push to talk's two sounds play, 0 to 1, under `sound_volume`.
+    pub ptt_sound_volume: f32,
     /// A folder whose files named as the events (`join.ogg`…) play instead
     /// of Rustcord's, absolute or from the home folder (`~/`).
     pub sound_folder: Option<String>,
@@ -432,6 +434,7 @@ impl Default for Prefs {
             language: None,
             sounds_off: Vec::new(),
             sound_volume: 1.0,
+            ptt_sound_volume: 1.0,
             sound_folder: None,
             video_hardware: true,
             convert_emoticons: false,
@@ -1112,6 +1115,10 @@ fn slid(ui: &mut Ui, id: &str, fraction: f32, committed: bool) -> Vec<Intent> {
             prefs.sound_volume = (fraction.clamp(0.0, 1.0) * 100.0).round() / 100.0;
             ("sound_volume", prefs.sound_volume.to_string())
         }
+        "us:ptt-sound-volume" => {
+            prefs.ptt_sound_volume = (fraction.clamp(0.0, 1.0) * 100.0).round() / 100.0;
+            ("ptt_sound_volume", prefs.ptt_sound_volume.to_string())
+        }
         "us:output-volume" => {
             // Whole percents, so 100 % is easy to land on.
             let percent = (fraction.clamp(0.0, 1.0) * rustcord_media::MAX_VOLUME * 100.0).round();
@@ -1689,6 +1696,7 @@ mod tests {
             language: Some(rustcord_i18n::Language::English),
             sounds_off: vec![crate::CallSound::UserJoin, crate::CallSound::Disconnect],
             sound_volume: 0.6,
+            ptt_sound_volume: 0.3,
             sound_folder: Some("/home/vos/sonidos".into()),
             video_hardware: false,
             convert_emoticons: true,

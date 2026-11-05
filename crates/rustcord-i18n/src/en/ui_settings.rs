@@ -451,6 +451,11 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Probar «{sound}»", "Try “{sound}”"),
     ("Suena {file}, de tu carpeta.", "Plays {file}, from your folder."),
     ("Volumen de los sonidos", "Sound volume"),
+    ("Volumen de pulsar para hablar", "Push to talk volume"),
+    (
+        "Los sonidos al pulsar y al soltar la tecla, dentro del volumen de los sonidos.",
+        "The sounds when you press and release the key, within the sound volume.",
+    ),
     (
         "Se mezcla con el volumen de salida. Suenan al ensordecer, al dejar de ensordecer y con una llamada entrante.",
         "Mixed with the output volume. Sounds play when deafening, undeafening and on an incoming call.",
@@ -469,6 +474,10 @@ pub(super) const ENTRIES: super::Entries = &[
     (
         "volumen de los sonidos avisos llamada ensordecido probar",
         "sound volume alerts call deafened try",
+    ),
+    (
+        "volumen de pulsar para hablar sonido al pulsar soltar tecla ptt",
+        "push to talk volume sound press release key ptt",
     ),
     ("sonido entrar a la llamada unirse conectar", "sound join the call connect"),
     ("sonido salir de la llamada colgar", "sound leave the call hang up"),

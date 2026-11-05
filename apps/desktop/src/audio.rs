@@ -325,7 +325,7 @@ impl Audio {
         }
         self.step_call(ui, store, now);
         // After the call's media is steered: a call that just ended sounds alone.
-        self.step_sounds(ui.prefs.sound_volume, ui.deafened);
+        self.step_sounds(&ui.prefs, ui.deafened);
         if let (false, Some(capture), Some(playback)) = (self.linked, &self.capture, &self.playback)
         {
             capture.set_echo_reference(playback.echo_reference());
@@ -363,7 +363,7 @@ impl Audio {
     /// alone on the output, at `volume`, and let go of those that ended.
     /// Deafened only deafening and undeafening sound, and what «Probar»
     /// asked for.
-    fn step_sounds(&mut self, volume: f32, deafened: bool) {
+    fn step_sounds(&mut self, prefs: &rustcord_ui::Prefs, deafened: bool) {
         let running = self
             .playback
             .as_ref()
@@ -373,6 +373,7 @@ impl Audio {
             .take()
             .filter(|(sound, tried)| !deafened || *tried || sound.heard_deafened());
         if let Some((sound, _)) = wanted {
+            let volume = prefs.sound_level(sound);
             let ogg: Arc<[u8]> = self.library.bytes(sound);
             let started = match (&self.call, &self.playback) {
                 (Some((channel, media, _)), _) => {

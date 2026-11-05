@@ -125,6 +125,15 @@ impl CallSound {
         })
     }
 
+    /// How loud it plays before the settings' volumes, as Discord's: its
+    /// call and message sounds at 0.4, the rings whole.
+    pub fn gain(self) -> f32 {
+        match self {
+            Self::Ring | Self::RingOut => 1.0,
+            _ => 0.4,
+        }
+    }
+
     /// Heard while deafened: only deafening and undeafening, as in Discord,
     /// and a call coming in, which nothing else would announce.
     pub fn heard_deafened(self) -> bool {
@@ -180,6 +189,14 @@ impl Prefs {
             sound => !self.sounds_off.contains(&sound),
         }
     }
+
+    /// How loud `sound` plays: its own gain under the sounds' volume, and
+    /// push to talk's under its own too.
+    pub fn sound_level(&self, sound: CallSound) -> f32 {
+        let ptt = matches!(sound, CallSound::PttStart | CallSound::PttStop);
+        let own = if ptt { self.ptt_sound_volume } else { 1.0 };
+        self.sound_volume * sound.gain() * own
+    }
 }
 
 /// A folder as Rustcord keeps it: absolute, or from the home folder (`~/`),
@@ -196,6 +213,7 @@ pub(crate) fn kept(prefs: &Prefs) -> Vec<(&'static str, Option<String>)> {
     vec![
         ("sounds_off", Some(off.join(","))),
         ("sound_volume", Some(prefs.sound_volume.to_string())),
+        ("ptt_sound_volume", Some(prefs.ptt_sound_volume.to_string())),
         ("sound_folder", prefs.sound_folder.clone()),
     ]
 }
@@ -229,6 +247,10 @@ pub(crate) fn restore(prefs: &mut Prefs, setting: &impl Fn(&str) -> Option<Strin
         .and_then(|value| value.parse::<f32>().ok())
         .filter(|value| (0.0..=1.0).contains(value))
         .unwrap_or(Prefs::default().sound_volume);
+    prefs.ptt_sound_volume = setting("ptt_sound_volume")
+        .and_then(|value| value.parse::<f32>().ok())
+        .filter(|value| (0.0..=1.0).contains(value))
+        .unwrap_or(Prefs::default().ptt_sound_volume);
     prefs.sound_folder = setting("sound_folder").filter(|folder| valid_folder(folder));
 }
 
