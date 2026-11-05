@@ -2040,7 +2040,11 @@ fn tab_label(tab: FullTab, full: &FullProfile) -> String {
 /// window, its card 400 wide, 48 in from the panel's top and sides and 32
 /// from the column of tabs beside it; a column narrower than 280 goes under
 /// the card.
-const FULL_PANEL: f32 = 960.0;
+/// Discord's full profile: 962 wide, up to 800 high, 48 from the window's
+/// top and bottom, radius 16 and a 1 px border.
+const FULL_PANEL: f32 = 962.0;
+const FULL_TALL: f32 = 800.0;
+const FULL_RADIUS: f32 = 16.0;
 const FULL_CARD: f32 = 400.0;
 const FULL_EDGE: f32 = 48.0;
 const FULL_GUTTER: f32 = 32.0;
@@ -2214,12 +2218,13 @@ fn full_tabs(full: &FullProfile, width: f32, look: &Look) -> Element {
     Element::column(vec![tabs, shown]).gap(16.0)
 }
 
-/// Someone's full profile over `root`, as Discord's: a panel as tall as the
-/// `window` on a 72 % scrim, their card on the left and the tabs beside it,
-/// the close button in its top right corner. Escape and a click outside
-/// close it.
+/// Someone's full profile over `root`, as Discord's: a rounded panel
+/// centred on a 72 % scrim, 962 wide and up to 800 high, their card on the
+/// left and the tabs beside it, the close button in its top right corner.
+/// Escape and a click outside close it.
 pub fn full_profile(root: Element, full: &FullProfile, window: Size, look: &Look) -> Element {
     let panel = window.width.min(FULL_PANEL);
+    let tall = (window.height - 2.0 * FULL_EDGE).clamp(0.0, FULL_TALL);
     let beside = panel - 2.0 * FULL_EDGE - FULL_CARD - FULL_GUTTER;
     let body = if beside >= FULL_TABS_MIN {
         Element::row(vec![
@@ -2228,7 +2233,7 @@ pub fn full_profile(root: Element, full: &FullProfile, window: Size, look: &Look
                 "pp:full:card",
                 Element::column(vec![
                     gap(0.0, FULL_EDGE),
-                    full_card(full, window.height - FULL_EDGE, look),
+                    full_card(full, tall - FULL_EDGE, look),
                 ]),
             )
             .appearance(look.scrollbar(false))
@@ -2285,7 +2290,8 @@ pub fn full_profile(root: Element, full: &FullProfile, window: Size, look: &Look
             Element::row(vec![Element::spacer().flex(1.0), close, gap(8.0, 0.0)]),
         ]),
     ])
-    .size(Some(panel), Some(window.height))
+    .size(Some(panel), Some(tall))
+    .radius(FULL_RADIUS)
     .background(Look::alpha(look.canvas, 255))
     .border(look.border, 1.0)
     .clip_children()
@@ -5074,6 +5080,45 @@ mod tests {
             assert!(said.iter().any(|said| said == text), "{text}: {said:?}");
         }
         assert!(!said.iter().any(|text| text == "Sin actividad por ahora."));
+    }
+
+    #[test]
+    fn the_full_profile_is_discord_s_rounded_modal_not_the_window_s_height() {
+        let bare = ada();
+        let full = FullProfile {
+            connections: Default::default(),
+            profile: bare,
+            server: None,
+            friends_since: None,
+            mutual_servers: Mutual::Loading,
+            mutual_friends: Mutual::Loading,
+            tab: FullTab::Activity,
+            loading: false,
+            recent: Vec::new(),
+        };
+        // As measured in Discord: 962×717 at 1440×813, 962×800 at 1920×1080.
+        for (window, expected) in [
+            (Size::new(1440.0, 813.0), (962.0, 717.0)),
+            (Size::new(1920.0, 1080.0), (962.0, 800.0)),
+        ] {
+            let (_, laid) = frame(
+                full_profile(Element::spacer(), &full, window, &LOOK),
+                window,
+            );
+            let dialog = laid
+                .access
+                .iter()
+                .find(|node| node.id == format!("{}:dialog", ids::FULL_CLOSE))
+                .expect("the dialog")
+                .rect;
+            assert_eq!((dialog.width, dialog.height), expected, "{window:?}");
+            assert_eq!(
+                dialog.x,
+                (window.width - expected.0) / 2.0,
+                "centred across"
+            );
+            assert_eq!(dialog.y, (window.height - expected.1) / 2.0, "and down");
+        }
     }
 
     fn games(count: usize) -> Vec<GameIcon> {
