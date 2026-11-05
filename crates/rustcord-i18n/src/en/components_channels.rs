@@ -393,6 +393,7 @@ pub(super) const ENTRIES: super::Entries = &[
     // The column of channels.
     ("Editar canal", "Edit channel"),
     ("Abrir chat", "Open Chat"),
+    ("Bandeja de entrada", "Inbox"),
     // Folders.
     ("Azul", "Blue"),
     ("Ajustes de carpeta", "Folder settings"),

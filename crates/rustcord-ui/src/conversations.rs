@@ -485,6 +485,7 @@ pub(crate) fn header_tool(store: &Store, channel: ChannelId, look: &Look) -> Opt
     Some(
         IconButton::new(ids::of(channel, "manage"), Icon::Users, look.menu_palette())
             .variant(ButtonVariant::Ghost)
+            .sizing(rustcord_components::look::HEADER_TOOL)
             .tooltip(t("Gestionar grupo"))
             .accessibility_label(t("Gestionar grupo"))
             .ink(look.muted)

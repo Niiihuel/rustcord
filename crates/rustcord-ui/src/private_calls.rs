@@ -129,6 +129,7 @@ pub(crate) fn header_tool(store: &Store, channel: ChannelId, look: &Look) -> Opt
     };
     let button = IconButton::new(ids::start(channel.0), Icon::Phone, look.menu_palette())
         .variant(ButtonVariant::Ghost)
+        .sizing(rustcord_components::look::HEADER_TOOL)
         .accessibility_label(hint)
         .ink(if mine(status) {
             look.online

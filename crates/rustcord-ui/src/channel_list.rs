@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use limn::{Component, Element, Modal, Point, UiAction};
+use limn::{Element, Modal, Point, UiAction};
 use rustcord_components::channel_menu::{
     self as parts, grouped, ids, Doomed, DuplicateForm, Entry, Item, PinCard, PinsContent,
 };
@@ -1708,8 +1708,6 @@ pub(crate) fn header_tools(
     channel: ChannelId,
     look: &Look,
     now: Timestamp,
-    // A narrow header: the inbox goes in its «más» (`header_more`).
-    narrow: bool,
 ) -> Vec<Element> {
     let Some(conversation) = store.channel(channel) else {
         return Vec::new();
@@ -1717,15 +1715,8 @@ pub(crate) fn header_tools(
     if !conversation.kind.has_messages() {
         return Vec::new();
     }
+    // The inbox is at the header's end, after the search (`HeaderNav::inbox`).
     let mut tools = Vec::new();
-    if !narrow {
-        tools.push(
-            limn::Button::new("inbox:open", t("Bandeja"), look.menu_palette())
-                .variant(limn::ButtonVariant::Ghost)
-                .size(limn::ControlSize::Compact)
-                .render(),
-        );
-    }
     if conversation.server.is_some() {
         let (_, muted) = effective(ui, store, conversation, now);
         let mut silence: Vec<Entry> = vec![mute_item(ui, store, conversation, now).into()];

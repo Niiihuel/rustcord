@@ -30,6 +30,9 @@ pub struct HeaderNav {
     pub compact: bool,
     /// Room kept free at the header's end for the window's own buttons.
     pub end: f32,
+    /// The inbox at the header's end, after the search, where Discord's title
+    /// bar has it.
+    pub inbox: bool,
 }
 
 /// The header's button that shows or hides the profile beside a direct
@@ -41,6 +44,7 @@ pub fn profile_toggle(open: bool, look: &Look) -> Element {
         look.palette(),
     )
     .variant(ButtonVariant::Ghost)
+    .sizing(crate::look::HEADER_TOOL)
     .tooltip(if open {
         t("Ocultar perfil de usuario")
     } else {
@@ -174,16 +178,17 @@ pub fn channel_header(
     } else {
         parts.push(Element::spacer().flex(1.0));
     }
-    // The header's icons are 45 apart: 32 each and 13 between.
+    // The header's tools, as Discord's: 32 each and 10 between.
     for tool in tools {
-        parts.push(gap(13.0, 0.0));
+        parts.push(gap(10.0, 0.0));
         parts.push(tool.centered_y());
     }
     if let Some(open) = members_open {
-        parts.push(gap(13.0, 0.0));
+        parts.push(gap(10.0, 0.0));
         parts.push(
             IconButton::new("members:toggle", Icon::Users, look.palette())
                 .variant(ButtonVariant::Ghost)
+                .sizing(crate::look::HEADER_TOOL)
                 .tooltip(if open {
                     t("Ocultar miembros")
                 } else {
@@ -197,14 +202,15 @@ pub fn channel_header(
         );
     }
     if wide {
-        parts.push(gap(17.0, 0.0));
+        parts.push(gap(14.0, 0.0));
         parts.push(search_box(nav.search_keys.as_deref(), look).centered_y());
         parts.push(gap(8.5, 0.0));
     } else {
-        parts.push(gap(13.0, 0.0));
+        parts.push(gap(10.0, 0.0));
         parts.push(
             IconButton::new("message-search:open", Icon::Search, look.palette())
                 .variant(ButtonVariant::Ghost)
+                .sizing(crate::look::HEADER_TOOL)
                 .tooltip(t("Buscar mensajes cargados"))
                 .tooltip_shortcut(nav.search_keys.clone().unwrap_or_default())
                 .tooltip_placement(TooltipPlacement::Below)
@@ -214,6 +220,24 @@ pub fn channel_header(
                 .centered_y(),
         );
         parts.push(gap(12.0, 0.0));
+    }
+    if nav.inbox {
+        parts.push(
+            IconButton::new(
+                "inbox:open",
+                Icon::Custom(crate::glyphs::INBOX),
+                look.palette(),
+            )
+            .variant(ButtonVariant::Ghost)
+            .sizing(crate::look::HEADER_TOOL)
+            .tooltip(t("Bandeja de entrada"))
+            .tooltip_placement(TooltipPlacement::Below)
+            .ink(look.dim)
+            .hover_ink(look.text)
+            .render()
+            .centered_y(),
+        );
+        parts.push(gap(8.0, 0.0));
     }
     parts.push(gap(nav.end, 0.0));
     Element::panel(Element::row(parts))

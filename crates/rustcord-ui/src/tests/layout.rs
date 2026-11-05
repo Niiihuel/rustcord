@@ -157,19 +157,25 @@ fn the_columns_and_bands_are_where_the_reference_has_them() {
             && (bar.x + bar.width - 1074.5).abs() <= 1.0,
         "{bar:?}"
     );
-    // The header's search, a box of 258.5×32.5 at the right, and the
-    // member list's toggle 45 before the box's gap.
+    // The header's search, a box of 258.5×32.5, the member list's toggle 14
+    // before it, and the inbox 8 after it, where Discord's title bar has it.
     at(
         region(&frame, "message-search:open"),
-        1093.5,
+        1054.0,
         top(44.5),
         258.5,
         32.5,
     );
+    let search = region(&frame, "message-search:open");
     let toggle = region(&frame, "members:toggle");
     assert!(
-        (toggle.x + toggle.width / 2.0 - 1060.25).abs() <= 1.0,
+        (search.x - 14.0 - (toggle.x + toggle.width)).abs() <= 1.0,
         "{toggle:?}"
+    );
+    let inbox = region(&frame, "inbox:open");
+    assert!(
+        (inbox.x - (search.x + search.width + 8.0)).abs() <= 1.0,
+        "{inbox:?}"
     );
 
     // The member list: its hairline at 1074.5, then 1075.5 to the edge; a

@@ -26,6 +26,15 @@ const FLOATING_SHADOW: BoxShadow = BoxShadow {
 /// The density of every context menu, as Discord's menus:
 /// rows of at least 34 with 14 px medium labels, 8 around the rows and 8 on
 /// each side of a separator, the ring and shadow of its floating surfaces.
+/// A conversation header's tool, as Discord's: a 32 px box with a 20 px glyph.
+pub const HEADER_TOOL: limn::ButtonSizing = limn::ButtonSizing {
+    height: 32.0,
+    font_size: 14.0,
+    icon_size: 20.0,
+    horizontal_padding: 6.0,
+    inner_spacing: 0.0,
+};
+
 pub const MENU_METRICS: ContextMenuMetrics = ContextMenuMetrics {
     row_height: 34.0,
     label_size: 14.0,

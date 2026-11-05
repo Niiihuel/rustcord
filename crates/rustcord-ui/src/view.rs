@@ -634,13 +634,9 @@ fn conversation(
     // threads fold into a «más».
     // The window's own buttons take the header's end.
     let narrow = narrow_header(ui, context.window.width);
-    let mut tools = channel_list::header_tools(ui, store, channel, look, context.wall, narrow);
-    tools.extend(crate::conversations::header_tool(store, channel, look));
-    // Private calls: to call, answer or join.
-    tools.extend(crate::private_calls::header_tool(store, channel, look));
-    if narrow {
-        tools.extend(channel_list::header_more(ui, store, channel, look));
-    } else {
+    // In Discord's order: the threads, the bell, the pinned messages.
+    let mut tools: Vec<Element> = Vec::new();
+    if !narrow {
         tools.extend(crate::threads::header_tool(
             ui,
             store,
@@ -649,6 +645,19 @@ fn conversation(
             context.wall,
             context.window.width,
         ));
+    }
+    tools.extend(channel_list::header_tools(
+        ui,
+        store,
+        channel,
+        look,
+        context.wall,
+    ));
+    tools.extend(crate::conversations::header_tool(store, channel, look));
+    // Private calls: to call, answer or join.
+    tools.extend(crate::private_calls::header_tool(store, channel, look));
+    if narrow {
+        tools.extend(channel_list::header_more(ui, store, channel, look));
     }
     // Last, where a server's member list has its toggle.
     if side_room {

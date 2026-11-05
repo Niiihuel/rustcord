@@ -31,6 +31,8 @@ pub const MORE_VERTICAL: &str = glyph!("more-vertical");
 /// A person in a circle with a status dot: shows or hides the profile beside
 /// a direct conversation.
 pub const USER_PROFILE: &str = glyph!("user-profile");
+/// The inbox: a tray, at the header's end.
+pub const INBOX: &str = glyph!("inbox");
 
 /// A private channel's glyph: its kind's, with a padlock cut into its top
 /// right corner, as the official client draws them.

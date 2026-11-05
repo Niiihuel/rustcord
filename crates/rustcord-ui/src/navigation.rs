@@ -185,6 +185,12 @@ pub(crate) fn header(
         // The header is the
         // window's rightmost.
         end: crate::title_bar::room(ui),
+        // A narrow header has it in its «más».
+        inbox: !narrow
+            && ui
+                .channel()
+                .and_then(|channel| store.channel(channel))
+                .is_some_and(|channel| channel.kind.has_messages()),
     }
 }
 

@@ -264,6 +264,7 @@ pub fn bell(open: bool, muted: bool, entries: Vec<Entry>, look: &Look) -> Elemen
         look.palette(),
     )
     .variant(ButtonVariant::Ghost)
+    .sizing(crate::look::HEADER_TOOL)
     .tooltip(t("Ajustes de notificaciones"))
     .tooltip_placement(TooltipPlacement::Below)
     .ink(if open { look.text } else { look.dim })
@@ -289,6 +290,7 @@ pub fn bell(open: bool, muted: bool, entries: Vec<Entry>, look: &Look) -> Elemen
 pub fn more(open: bool, entries: Vec<Entry>, look: &Look) -> Element {
     let button = IconButton::new(ids::MORE, Icon::More, look.palette())
         .variant(ButtonVariant::Ghost)
+        .sizing(crate::look::HEADER_TOOL)
         .tooltip(t("Más"))
         .tooltip_placement(TooltipPlacement::Below)
         .accessibility_label(t("Más herramientas"))
@@ -347,6 +349,7 @@ pub fn pins(
 ) -> Element {
     let mut control = IconButton::new(ids::PINS, Icon::Pin, look.palette())
         .variant(ButtonVariant::Ghost)
+        .sizing(crate::look::HEADER_TOOL)
         .tooltip(t("Mensajes fijados"))
         .tooltip_placement(TooltipPlacement::Below)
         .ink(if open { look.text } else { look.dim })

@@ -799,6 +799,7 @@ pub(crate) fn header_tool(
         look.menu_palette(),
     )
     .variant(ButtonVariant::Ghost)
+    .sizing(rustcord_components::look::HEADER_TOOL)
     .tooltip(t("Hilos"))
     .tooltip_placement(limn::TooltipPlacement::Below)
     .accessibility_label(t("Hilos"))
