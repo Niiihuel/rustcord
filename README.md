@@ -114,26 +114,26 @@ What's new in each version is in its
 
 ## Performance compared with Discord
 
-Measured on **2026-11-04** on the same machine, with both applications open at
-the same time. Measured figures only; the method, the raw data and the exact
-commands are in [docs/benchmarks.md](docs/benchmarks.md).
+Measured on the same machine: Discord on **2026-11-04**, Rustcord again on
+**2026-11-05** with the same method. Measured figures only; the method, the raw
+data and the exact commands are in [docs/benchmarks.md](docs/benchmarks.md).
 
-| | Discord 1.0.168 | Rustcord 0.2.0 |
+| | Discord 1.0.168 | Rustcord 0.2.4 |
 | --- | ---: | ---: |
-| Memory (PSS, sum of its processes) | 576.6 MiB | 121.9 MiB |
-| Processes / threads | 10 / 177 | 1 / 24 |
-| Mean CPU over 60 s (% of one thread) | 31.9% | 1.0% |
-| On disk | 557.0 MiB + 6.8 MiB of the package | 121.5 MiB |
-| Download | not measured | 51.5 MiB (`rustcord-x86_64-linux.gz`) |
-| Startup to first frame | not measured | 94.9 ms (median of 5) |
+| Memory (PSS, sum of its processes) | 576.6 MiB | 90.1 MiB |
+| Processes / threads | 10 / 177 | 1 / 17 |
+| Mean CPU over 60 s (% of one thread) | 31.9% | 0.8% |
+| On disk | 557.0 MiB + 6.8 MiB of the package | 91.6 MiB |
+| Download | not measured | 43.0 MiB (`gzip -9` of the local build) |
+| Startup to first frame | not measured | 69–75 ms |
 
 ```text
 Memory (PSS)   Discord   ██████████████████████████████  576.6 MiB
-               Rustcord  ██████▍                         121.9 MiB
+               Rustcord  ████▋                           90.1 MiB
 Mean CPU       Discord   ██████████████████████████████  31.9%
-               Rustcord  █                               1.0%
+               Rustcord  ▊                               0.8%
 On disk        Discord   ██████████████████████████████  563.8 MiB
-               Rustcord  ██████▌                         121.5 MiB
+               Rustcord  ████▉                           91.6 MiB
 ```
 
 **The conditions, which matter:**
@@ -145,8 +145,10 @@ On disk        Discord   ██████████████████�
   2880×1800 display at 120 Hz. Only `/proc` was read; it was not touched.
 - **Rustcord** used the **simulated provider**, with sample data and its
   simulated activity on (messages, presences, counters), on a hidden X
-  display and freshly opened. It is the local release build of the `v0.2.0`
-  tag, without the `session-login` feature, so it did not use the account.
+  display and freshly opened. It is the local release build of 0.2.4
+  (whole-program LTO, wgpu on Vulkan only), without the `session-login`
+  feature, so it did not use the account. Two 60 s rounds; 0.2.0 measured
+  121.9 MiB, 24 threads and 1.0% the day before.
 - **It is not the same workload**: take it as an order of magnitude on this
   machine, not as an exact comparison.
 - **Memory as PSS** because RSS counts every shared page in full in every
@@ -162,7 +164,7 @@ On disk        Discord   ██████████████████�
 
 Releases are published on
 [GitHub Releases](https://github.com/Niiihuel/rustcord/releases/latest); the
-current version is 0.2.3. Each one carries the Linux program
+current version is 0.2.4. Each one carries the Linux program
 (`rustcord-x86_64-linux.gz`), the Windows installer
 (`rustcord-x86_64-windows-setup.exe`) when its build is enabled (0.1.1, for
 example, came out for Linux only), and the update manifest that Rustcord's

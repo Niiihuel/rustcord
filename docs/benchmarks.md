@@ -6,6 +6,31 @@ cifras de este documento salen de esas ejecuciones; ninguna es una
 estimación. El resumen está en el
 [README](../README.md#rendimiento-frente-a-discord).
 
+## Actualización del 2026-11-05: Rustcord 0.2.4
+
+Mismo método, misma máquina y misma pantalla oculta (`long.sh`, dos rondas
+de 60 s tras 30 s de espera), con la build de release local (sin
+`session-login`) después de dos cambios: wgpu sólo con la API nativa
+(Vulkan), sin abrir los controladores de OpenGL/EGL, y LTO de todo el
+programa en una unidad (`lto = "fat"`, `codegen-units = 1`). Discord no se
+volvió a medir.
+
+| | Antes de los cambios (main del mismo día) | 0.2.4 |
+| --- | ---: | ---: |
+| PSS mediana | 127,0 MiB | 90,6 / 89,6 MiB |
+| RSS mediana | 170,6 MiB | 109,4 / 108,4 MiB |
+| Hilos | 29 | 17 |
+| CPU (% de un hilo) | 0,91 % | 0,88 / 0,80 % |
+| Primer fotograma | 132,5 ms | 74,9 / 69,2 ms |
+| Binario (`stat`, `gzip -9`) | 128,3 MB | 96,0 MB, 45,1 MB |
+
+Por partes (`/proc/<pid>/smaps`, PSS): sondear OpenGL cargaba los
+controladores EGL de NVIDIA (~20 MiB) y gallium con LLVM (~18 MiB) aunque
+dibujara con Vulkan; el LTO de todo el programa dejó el código (`.text`) en
+53,7 MB en vez de 63,7 MB y el ejecutable en memoria en 35,7 MiB en vez de
+45,8. El PSS de `libLLVM` (el controlador Vulkan de AMD la enlaza) varía
+según qué otros procesos la mapean.
+
 ## Máquina
 
 | | |
