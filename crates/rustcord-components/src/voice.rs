@@ -4823,10 +4823,15 @@ pub fn switch_question(root: Element, channel: &str, dont_ask_again: bool, look:
             .render()
             .centered_y(),
         Element::spacer().flex(1.0),
-        Button::new(ids::SWITCH_CANCEL, t("Cancelar"), palette)
-            .variant(ButtonVariant::Secondary)
-            .size(ControlSize::Spacious)
-            .render(),
+        // Discord's grey secondary: the menu's own fill would vanish on the card.
+        Button::new(
+            ids::SWITCH_CANCEL,
+            t("Cancelar"),
+            crate::user_settings::veil(look),
+        )
+        .variant(ButtonVariant::Secondary)
+        .size(ControlSize::Spacious)
+        .render(),
         Button::new(ids::SWITCH, t("Confirmar"), look.accent_palette())
             .size(ControlSize::Spacious)
             .render(),
@@ -6971,6 +6976,18 @@ mod tests {
             switch_question(Element::spacer(), "Pair programming", false, &look),
             Size::new(800.0, 600.0),
         );
+        // «Cancelar» filled grey, not the card's own colour.
+        let cancel = laid
+            .regions
+            .iter()
+            .find(|region| region.id == ids::SWITCH_CANCEL && region.kind == limn::HitKind::Button)
+            .expect("Cancelar")
+            .rect;
+        let fill = laid.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::FillRect { rect, color, .. } if *rect == cancel => Some(*color),
+            _ => None,
+        });
+        assert_eq!(fill, Some(crate::user_settings::veil(&look).raised));
         let shown = texts(&laid);
         for expected in [
             "¿Confirmas?",
