@@ -771,7 +771,10 @@ fn each_call_sound_turns_off_alone_plays_on_trial_and_a_folder_of_ones_own_is_ke
     // Discord's 0.4 under the volumes, push to talk's under its own too.
     let near = |a: f32, b: f32| (a - b).abs() < 1e-6;
     assert!(near(next.sound_level(CallSound::Mute), 0.35 * 0.4));
-    assert!(near(next.sound_level(CallSound::PttStart), 0.35 * 0.4 * 0.5));
+    assert!(near(
+        next.sound_level(CallSound::PttStart),
+        0.35 * 0.4 * 0.5
+    ));
     assert!(near(next.sound_level(CallSound::Ring), 0.35));
     assert_eq!(next.sound_folder.as_deref(), Some("~/sonidos"));
     host.us_press("us:sound-folder:clear");
