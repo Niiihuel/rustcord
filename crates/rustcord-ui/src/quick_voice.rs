@@ -16,7 +16,6 @@ use rustcord_components::quick_voice::{self as parts, ids, AudioMenu, DeviceList
 use rustcord_components::voice::ids as voice_ids;
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
-use rustcord_provider::VoiceSupport;
 use rustcord_state::Store;
 
 use crate::{settings, Intent, Ui};
@@ -126,16 +125,6 @@ pub(crate) fn on_applied(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     } else {
         Vec::new()
     }
-}
-
-/// A call carrying audio holds the output: what the microphone hears cannot
-/// be played back to oneself meanwhile.
-pub(crate) fn call_holds_output(store: &Store) -> bool {
-    store.call().is_some()
-        && store
-            .provider
-            .as_ref()
-            .is_some_and(|info| info.capabilities.voice == VoiceSupport::Real)
 }
 
 /// The call holds the microphone open now.

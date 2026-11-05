@@ -74,6 +74,10 @@ mod active_now;
 mod settings_apps;
 // Settings › Apariencia, Accesibilidad, Sistema and Idioma y hora.
 mod settings_look;
+// Streamer mode.
+mod streamer;
+// Discord's settings shown dimmed, and the sections around them.
+mod settings_pending;
 // The card of the files of a message being sent.
 mod uploads_progress;
 // The server's menu and its settings, as Discord's.
@@ -82,6 +86,8 @@ mod server_admin;
 /// Each file's entries, by the file's name.
 pub(crate) const ALL: &[(&str, Entries)] = &[
     ("common", common::ENTRIES),
+    ("streamer", streamer::ENTRIES),
+    ("settings_pending", settings_pending::ENTRIES),
     ("components_messages", components_messages::ENTRIES),
     ("components_expressions", components_expressions::ENTRIES),
     ("components_channels", components_channels::ENTRIES),

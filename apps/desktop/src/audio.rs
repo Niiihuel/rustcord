@@ -331,12 +331,22 @@ impl Audio {
             capture.set_echo_reference(playback.echo_reference());
             self.linked = true;
         }
-        // A call owns the output's one feed while it lasts.
-        if let (false, None, Some(capture), Some(playback)) =
-            (self.monitored, &self.call, &self.capture, &self.playback)
-        {
-            capture.set_monitor(playback.feed());
-            self.monitored = true;
+        // A call owns the output's one feed while it lasts: oneself is one
+        // of its sounds then, heard though the test deafens it.
+        if let (false, Some(capture)) = (self.monitored, &self.capture) {
+            match (&self.call, &self.playback) {
+                (Some((_, media, _)), _) => {
+                    let (feed, tap) = rustcord_media::tap(CLIP_QUEUE);
+                    media.play_sound(tap);
+                    capture.set_monitor(feed);
+                    self.monitored = true;
+                }
+                (None, Some(playback)) => {
+                    capture.set_monitor(playback.feed());
+                    self.monitored = true;
+                }
+                (None, None) => {}
+            }
         }
         let snapshot = if let Some(capture) = &mut self.capture {
             capture.configure(request);
@@ -368,10 +378,12 @@ impl Audio {
             .playback
             .as_ref()
             .is_some_and(|playback| playback.snapshot().state == CaptureState::Running);
+        // A sound tried in the settings plays also in streamer mode.
         let wanted = self
             .sound
             .take()
-            .filter(|(sound, tried)| !deafened || *tried || sound.heard_deafened());
+            .filter(|(sound, tried)| !deafened || *tried || sound.heard_deafened())
+            .filter(|(_, tried)| *tried || !prefs.streamer.silences_sounds());
         if let Some((sound, _)) = wanted {
             let volume = prefs.sound_level(sound);
             let ogg: Arc<[u8]> = self.library.bytes(sound);
@@ -587,12 +599,13 @@ impl Audio {
         (ui.audio.testing || (call.is_some() && self.failed.is_none())).then(|| CaptureRequest {
             device: ui.audio.input.clone(),
             mode: processing.suppression,
-            muted: ui.muted,
+            // The test hears the microphone though muted, as Discord's: the
+            // call's gate (`CallControls::open`) still keeps it from going out.
+            muted: ui.muted && !ui.audio.testing,
             echo_cancellation: processing.echo_cancellation,
             automatic_gain: processing.automatic_gain,
-            // Deafened, not oneself either: a sound playing over the feed
-            // has the output undeafened under it.
-            monitor: ui.audio.loopback && !ui.deafened,
+            // Oneself while testing, also deafened: the test deafens a call.
+            monitor: ui.audio.loopback && ui.audio.testing,
             // A channel that asks for push-to-talk goes by the key, not the gate.
             speech_gate: ui.prefs.speech_gate() && !store.push_to_talk_required(),
             // What the PC plays is a reference for the canceller only.
@@ -760,7 +773,9 @@ fn output_request(ui: &Ui, in_call: bool, sound: bool) -> Option<PlaybackRequest
         device: ui.audio.output.clone(),
         source: PlaybackSource::Feed,
         volume: ui.prefs.output_volume,
-        deafened: ui.deafened && !sound,
+        // A call drops what it hears itself while deafened; outside one, the
+        // microphone test is heard though deafened.
+        deafened: ui.deafened && !sound && !(ui.audio.loopback && ui.audio.testing),
     })
 }
 
@@ -908,8 +923,8 @@ mod tests {
         );
         ui.audio.testing = true;
         assert!(
-            audio.request(&ui, &store).unwrap().muted,
-            "test cannot bypass mute"
+            !audio.request(&ui, &store).unwrap().muted,
+            "the test hears the microphone though muted"
         );
     }
 
@@ -1035,11 +1050,15 @@ mod tests {
         assert_eq!(capture.output.as_deref(), Some("headset"));
         ui.prefs.system_echo = false;
         assert!(!audio.request(&ui, &store).unwrap().system_echo);
-        // Deafened, oneself is not heard either, also while the deafen
-        // sound has the output undeafened.
+        // Deafened, the test is still heard, as Discord's (it deafens a
+        // call itself); without it, nothing is fed back.
         ui.deafened = true;
-        assert!(!output_request(&ui, false, true).unwrap().deafened);
-        assert!(!audio.request(&ui, &store).unwrap().monitor);
+        assert!(!output_request(&ui, false, false).unwrap().deafened);
+        assert!(audio.request(&ui, &store).unwrap().monitor);
+        ui.audio.testing = false;
+        assert!(audio
+            .request(&ui, &store)
+            .is_none_or(|capture| !capture.monitor));
     }
 
     #[test]

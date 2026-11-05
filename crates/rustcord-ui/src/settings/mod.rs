@@ -102,6 +102,7 @@ impl SettingsPage {
         Some(match key {
             "audio" => Self::Voice,
             "keybinds" | "shortcuts" | "desktop" | "updates" => Self::System,
+            "streamer" => Self::Appearance,
             // The friends page's note goes to the blocked and ignored people.
             "ignore-block" => Self::Messaging,
             _ => *Self::ALL.iter().find(|page| page.key() == key)?,
@@ -147,6 +148,7 @@ fn section_of_key(key: &str) -> Option<&'static str> {
         "desktop" => Some("desktop"),
         "updates" => Some("updates"),
         "ignore-block" => Some("ignore-block"),
+        "streamer" => Some("streamer"),
         _ => None,
     }
 }
@@ -293,6 +295,8 @@ pub struct Prefs {
     /// The keys chosen in place of the defaults, voice aside; see
     /// [`crate::keybinds`].
     pub shortcuts: Vec<(crate::keybinds::Action, crate::keybinds::Chord)>,
+    /// Discord's streamer mode and what it hides and silences.
+    pub streamer: crate::streamer::Streamer,
 }
 
 /// The cosmetics a person can hide: each one is
@@ -451,6 +455,7 @@ impl Default for Prefs {
             cosmetics: Cosmetics::default(),
             registered_games: Vec::new(),
             shortcuts: Vec::new(),
+            streamer: crate::streamer::Streamer::default(),
         }
     }
 }
@@ -580,6 +585,7 @@ impl Prefs {
         .chain(crate::reading::kept(self))
         .chain(pages::cosmetics::kept(self))
         .chain([(crate::keybinds::SETTING, crate::keybinds::kept(self))])
+        .chain(crate::streamer::kept(self))
         .collect()
     }
 
@@ -675,6 +681,7 @@ impl Prefs {
         crate::reading::restore(self, setting);
         pages::cosmetics::restore(self, setting);
         self.shortcuts = crate::keybinds::restore(setting(crate::keybinds::SETTING));
+        crate::streamer::restore(self, setting);
     }
 
     /// The volume and silence chosen for `user`: 100 % and heard unless chosen.
@@ -947,6 +954,73 @@ fn open_at(
     intents
 }
 
+/// What «Restablecer todos los ajustes de voz y video» takes back to how it
+/// starts, by the names they are kept by; the devices go back to the
+/// system's too.
+const VOICE_KEYS: [&str; 16] = [
+    "input_profile",
+    "noise_suppression",
+    "echo_cancellation",
+    "automatic_gain",
+    "system_echo",
+    "input_volume",
+    "auto_sensitivity",
+    "sensitivity",
+    "push_to_talk",
+    "push_to_talk_key",
+    "push_to_talk_release",
+    "output_volume",
+    "voice_volumes",
+    "hidden_video",
+    "video_hardware",
+    "voice_switch_warning",
+];
+
+/// Whether any voice or video setting is not as it starts.
+pub(crate) fn voice_changed(ui: &Ui) -> bool {
+    let (now, usual) = (ui.prefs.kept(), Prefs::default().kept());
+    ui.audio.input.is_some()
+        || ui.audio.output.is_some()
+        || VOICE_KEYS.iter().any(|key| {
+            let value = |kept: &[(&str, Option<String>)]| {
+                kept.iter()
+                    .find(|(found, _)| found == key)
+                    .map(|(_, value)| value.clone())
+            };
+            value(&now) != value(&usual)
+        })
+}
+
+fn reset_voice(ui: &mut Ui) -> Vec<Intent> {
+    let usual = Prefs::default().kept();
+    let usual_of = |key: &str| {
+        usual
+            .iter()
+            .find(|(found, _)| *found == key)
+            .and_then(|(_, value)| value.clone())
+    };
+    let kept = ui.prefs.kept();
+    ui.prefs.restore(&|key: &str| {
+        if VOICE_KEYS.contains(&key) {
+            usual_of(key)
+        } else {
+            kept.iter()
+                .find(|(found, _)| *found == key)
+                .and_then(|(_, value)| value.clone())
+        }
+    });
+    let mut intents: Vec<Intent> = VOICE_KEYS
+        .iter()
+        .map(|key| Intent::SaveSetting {
+            key: (*key).into(),
+            value: usual_of(key),
+        })
+        .collect();
+    intents.extend(choose_microphone(ui, None));
+    intents.extend(crate::profile::choose_output(ui, None));
+    intents
+}
+
 /// Close the settings, and the microphone or camera being tested.
 pub fn close_settings(ui: &mut Ui) -> Vec<Intent> {
     ui.settings = None;
@@ -1018,9 +1092,16 @@ fn jump(ui: &mut Ui, page: SettingsPage, key: &'static str) -> Intent {
     ui.settings_state.section = Some(key);
     ui.settings_state.jumped = Some((key, None));
     Intent::Reveal {
-        id: anchor(key),
+        id: start(key),
         margin: pages::jump_margin(page),
     }
+}
+
+/// Where a section begins, for its link to bring to the margin: the
+/// section's top, also when it is taller than the room under the margin
+/// (revealing the whole section would lower the margin to fit it).
+pub(crate) fn start(key: &str) -> String {
+    format!("us:section-start:{key}")
 }
 
 /// Keep `key` as `value` for the next run.
@@ -1151,6 +1232,9 @@ pub(crate) fn open_switcher(ui: &mut Ui) -> Vec<Intent> {
 
 /// Actions of the settings, `us:…` or the older `settings:…`, and of the switcher.
 pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<Intent> {
+    if let Some(intents) = crate::streamer::clicked(ui, id) {
+        return intents;
+    }
     // Signing out asks first; the question's own button signs out.
     if id == "us:log-out" {
         ui.settings_state.log_out_asked = can_sign_out(store);
@@ -1335,23 +1419,7 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
             ui.call_sounds.preview = Some(crate::CallSound::Join);
             Vec::new()
         }
-        "loopback" => {
-            // A call carrying audio holds the output: hearing oneself waits.
-            if crate::quick_voice::call_holds_output(store) {
-                return Vec::new();
-            }
-            // Hearing oneself needs the microphone test: it starts it if
-            // stopped, and stopping the test stops this too.
-            let start = !ui.audio.testing;
-            let intents = if start {
-                clicked(ui, store, "us:meter", now)
-            } else {
-                Vec::new()
-            };
-            ui.audio.loopback = !ui.audio.loopback || start;
-            ui.audio.output_starting = ui.audio.loopback;
-            intents
-        }
+        "reset-voice" => reset_voice(ui),
         // The volumes as they start, and
         // noise suppression on or off from the quick panel.
         "reset-levels" => {
@@ -1451,14 +1519,19 @@ pub fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<In
             ui.show_metrics = !ui.show_metrics;
             vec![save("show_metrics", ui.show_metrics)]
         }
+        // As Discord's check: one hears oneself, and a call is deafened
+        // meanwhile (`after_layout` gives it back once the test ends).
         "meter" => {
             ui.audio.testing = !ui.audio.testing;
             ui.audio.starting = ui.audio.testing;
-            ui.audio.loopback = false;
+            ui.audio.loopback = ui.audio.testing;
+            ui.audio.output_starting = ui.audio.testing;
             ui.audio.levels.clear();
             ui.audio.raw_levels.clear();
             if ui.audio.testing {
-                vec![Intent::StartMeter(ui.audio.input.clone())]
+                let mut intents = vec![Intent::StartMeter(ui.audio.input.clone())];
+                intents.extend(crate::deafen_for_test(ui, store));
+                intents
             } else {
                 vec![Intent::StopMeter]
             }
@@ -1727,6 +1800,14 @@ mod tests {
                 crate::keybinds::Action::Back,
                 crate::keybinds::Chord::ctrl(limn::Key::J),
             )],
+            streamer: crate::streamer::Streamer {
+                on: true,
+                auto: true,
+                hide_personal: false,
+                hide_invites: true,
+                mute_sounds: false,
+                mute_notifications: true,
+            },
         };
         let kept = prefs.kept();
         let mut back = Prefs::default();

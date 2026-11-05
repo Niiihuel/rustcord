@@ -97,10 +97,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("número de menciones insignia globo rojo", "mention count number badge red bubble"),
     (
-        "escucharme oírme retorno monitor auriculares acople",
-        "hear myself loopback monitor headphones feedback",
-    ),
-    (
         "perfil aislamiento de voz estudio personalizado procesamiento",
         "profile voice isolation studio custom processing",
     ),
@@ -229,12 +225,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Un globo con el número sobre el servidor y en mensajes directos.",
         "A bubble with the number on the server and on direct messages.",
     ),
-    ("Abriendo la salida…", "Opening the output…"),
-    (
-        "Usa auriculares: con altavoces se produce eco.",
-        "Use headphones: with speakers you get echo.",
-    ),
-    ("Escucharte", "Hear yourself"),
     ("Aislamiento de voz", "Voice isolation"),
     ("Estudio", "Studio"),
     ("Supresión de ruido", "Noise suppression"),
@@ -575,8 +565,8 @@ pub(super) const ENTRIES: super::Entries = &[
         "Settings for checking audio and video: test sound, before and after processing, audio system and hardware acceleration",
     ),
     (
-        "Control automático de ganancia, Escucharte, Cancelar sonido del equipo y sensibilidad automática",
-        "Automatic gain control, Hear yourself, Cancel computer audio and automatic sensitivity",
+        "Control automático de ganancia, Cancelar sonido del equipo y sensibilidad automática",
+        "Automatic gain control, Cancel computer audio and automatic sensitivity",
     ),
     ("Controla cuánto sonido transmite Rustcord desde tu micrófono.", "Controls how much sound Rustcord transmits from your mic."),
     ("Reduce el ruido de fondo de tu micrófono.", "Reduces background noise from your mic."),

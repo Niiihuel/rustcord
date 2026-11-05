@@ -46,6 +46,10 @@ mod themes;
 mod updates;
 // Who is blocked or ignored, and the controls that undo it.
 mod restricted;
+// Streamer mode: «Modo de transmisión en vivo».
+mod streamer;
+// Discord's settings Rustcord does not do yet, muted.
+mod pending;
 
 /// A section of a page: its key, its title, and its settings, each a key
 /// and the words it is found by besides its name.
@@ -113,6 +117,8 @@ const SECTIONS: &[Section] = &[
                 "explicit-content",
                 es("filtros de contenido delicado explícito imágenes difuminar bloquear sensible archivo multimedia sexual para adultos"),
             ),
+            ("age-commands", es("permite el acceso a los comandos limitados por edad desde las aplicaciones en los mensajes directos")),
+            ("age-servers", es("permite el acceso a servidores con restricción de edad en ios")),
             (
                 "related-media",
                 es("ajustes relacionados apariencia mostrar ocultar archivos multimedia en el chat"),
@@ -148,10 +154,22 @@ const SECTIONS: &[Section] = &[
         page: Messaging,
         key: "friend-requests",
         title: es("Permisos de solicitud de amistad"),
-        rows: &[(
-            "friend-requests",
-            es("quién puede mandarte solicitudes de amistad amigos de amigos"),
-        )],
+        rows: &[
+            (
+                "friend-requests",
+                es("quién puede mandarte solicitudes de amistad amigos de amigos"),
+            ),
+            ("friend-messages", es("mostrar mensajes personalizados")),
+        ],
+    },
+    Section {
+        page: Messaging,
+        key: "connected-games",
+        title: es("Chat en juegos conectados"),
+        rows: &[
+            ("game-dms", es("permite que tus amigos de los juegos envíen mensajes directos e invitaciones")),
+            ("game-dm-choice", es("mostrar los mensajes directos en las partidas")),
+        ],
     },
     Section {
         page: Messaging,
@@ -162,15 +180,48 @@ const SECTIONS: &[Section] = &[
             ("ignored-users", es("cuentas ignoradas dejar de ignorar personas ignoradas")),
         ],
     },
-    // Discord's voice encryption category comes first; the rest is Rustcord's own.
+    // Discord's data use and profile privacy (the account's, not offered:
+    // `pending`), then its voice encryption; the rest is Rustcord's own.
+    Section {
+        page: Privacy,
+        key: "data-use",
+        title: es("Cómo se usan mis datos"),
+        rows: &[
+            ("data-basic", es("utilizar mis datos para mejorar el funcionamiento del servicio")),
+            ("data-improve", es("utilizar mis datos para optimizar el servicio")),
+            ("data-personalize", es("utilizar mis datos para personalizar mi experiencia")),
+            ("data-sponsored", es("usar mi actividad para personalizar el contenido patrocinado")),
+            ("data-third-party", es("utiliza datos de terceros para personalizar el contenido patrocinado")),
+            ("data-discovery", es("muestra el contenido de mis mensajes de los canales del descubrimiento en la web")),
+            ("data-clips", es("permite que mi voz se grabe en los clips")),
+            ("data-request", es("solicitar mis datos copia")),
+        ],
+    },
+    Section {
+        page: Privacy,
+        key: "profile-privacy",
+        title: es("Privacidad del perfil"),
+        rows: &[
+            ("profile-share", es("compartir mi perfil completo con amigos servidores pequeños")),
+            ("profile-updates", es("compartir cuando actualice mi perfil")),
+            // Discord's card under the profile's privacy.
+            (
+                "related-activity-privacy",
+                es("ajustes relacionados privacidad de la actividad juegos aplicaciones quién puede verla"),
+            ),
+        ],
+    },
     Section {
         page: Privacy,
         key: "e2ee",
         title: es("Cifrado de extremo a extremo de voz"),
-        rows: &[(
-            "privacy-code",
-            es("código de privacidad cifrado de extremo a extremo dave verificar llamada seguridad"),
-        )],
+        rows: &[
+            (
+                "privacy-code",
+                es("código de privacidad cifrado de extremo a extremo dave verificar llamada seguridad"),
+            ),
+            ("e2ee-persistent", es("activa los códigos de verificación persistentes")),
+        ],
     },
     // Discord's notifications, without its «Notificarme cuando...», email
     // and advanced settings, which no provider offers.
@@ -187,6 +238,13 @@ const SECTIONS: &[Section] = &[
                 "notification-content",
                 es("mostrar el contenido del mensaje privacidad ocultar texto"),
             ),
+            ("notify-when", es("notificarme cuando")),
+            ("notify-streams", es("personas que conozco empiezan a transmitir en servidores pequeños")),
+            ("notify-anniversary", es("un amigo y yo celebramos un aniversario de amistad")),
+            ("notify-online", es("los amigos se conectan en línea")),
+            ("notify-events", es("un servidor tiene un evento próximo")),
+            ("notify-profiles", es("los amigos actualizan su perfil")),
+            ("notify-reactions", es("alguien reacciona a mis mensajes")),
         ],
     },
     // Discord's Sounds category: each sound with its preview, then the
@@ -200,10 +258,12 @@ const SECTIONS: &[Section] = &[
                 "message-sound",
                 es("sonido de mensajes nuevo mensaje menciones privados tono vista previa"),
             ),
+            ("reading-sound", es("nuevo mensaje en el canal que estoy leyendo actualmente")),
             (
                 "ring-sound",
                 es("sonido llamada entrante timbre sonar privado vista previa"),
             ),
+            ("mute-notification-sounds", es("desactivar todos los sonidos de las notificaciones")),
             (
                 "related-voice",
                 es("ajustes relacionados voz y video sonidos de la llamada silenciar ensordecer"),
@@ -221,6 +281,25 @@ const SECTIONS: &[Section] = &[
             ),
             ("mention-badges", es("número de menciones insignia globo rojo")),
         ],
+    },
+    Section {
+        page: Notifications,
+        key: "email",
+        title: es("Correo electrónico"),
+        rows: &[
+            ("email-communication", es("correos de comunicaciones")),
+            ("email-social", es("correos de interacción")),
+            ("email-updates", es("correos de anuncios y actualizaciones")),
+            ("email-tips", es("correos de consejos")),
+            ("email-recommendations", es("correos de recomendaciones")),
+            ("email-unsubscribe", es("cancelar suscripción de todos los correos electrónicos de marketing darse de baja")),
+        ],
+    },
+    Section {
+        page: Notifications,
+        key: "notifications-advanced",
+        title: es("Avanzados"),
+        rows: &[("notifications-advanced", es("mostrar ajustes de notificaciones avanzados"))],
     },
     // Discord's voice page: its sections in its order. The rows of a fold
     // (`FOLDS`) follow each other; a row of `GROUP_STARTS` opens a group
@@ -272,10 +351,6 @@ const SECTIONS: &[Section] = &[
                 es("control automático de ganancia agc volumen nivel parejo"),
             ),
             (
-                "loopback",
-                es("escucharme oírme retorno monitor auriculares acople"),
-            ),
-            (
                 "system-echo",
                 es("cancelar el sonido de la pc juegos música videos eco referencia del sistema salida"),
             ),
@@ -289,10 +364,22 @@ const SECTIONS: &[Section] = &[
         page: Voice,
         key: "video",
         title: es("Cámara"),
-        rows: &[(
-            "camera",
-            es("cámara web webcam dispositivo de video probar vista previa verse"),
-        )],
+        rows: &[
+            (
+                "camera",
+                es("cámara web webcam dispositivo de video probar vista previa verse"),
+            ),
+            ("video-preview", es("siempre mostrar vista previa del video")),
+        ],
+    },
+    Section {
+        page: Voice,
+        key: "streaming",
+        title: es("Transmitiendo"),
+        rows: &[
+            ("stream-previews", es("mostrar vistas previas de transmisiones")),
+            ("stream-advanced", es("mostrar ajustes avanzados de la transmisión atenuación")),
+        ],
     },
     Section {
         page: Voice,
@@ -300,6 +387,17 @@ const SECTIONS: &[Section] = &[
         title: es("Sonidos"),
         // Call sounds (audio): drawn in `sounds`.
         rows: sounds::ROWS,
+    },
+    Section {
+        page: Voice,
+        key: "soundboard",
+        title: es("Panel de sonidos"),
+        rows: &[
+            ("soundboard-volume", es("volumen del panel de sonidos")),
+            ("entrance-sounds", es("sonidos de entrada")),
+            ("entrance-server", es("elige un servidor")),
+            ("entrance-sound", es("elige un sonido")),
+        ],
     },
     Section {
         page: Voice,
@@ -332,6 +430,10 @@ const SECTIONS: &[Section] = &[
                 "reset-levels",
                 es("restablecer niveles reiniciar volumen micrófono altavoz"),
             ),
+            (
+                "reset-voice",
+                es("restablecer todos los ajustes de voz y video configuración predeterminada"),
+            ),
         ],
     },
     Section {
@@ -356,7 +458,10 @@ const SECTIONS: &[Section] = &[
                 es("ocultar los enlaces de imagen y gif vista previa enlace solo url"),
             ),
             ("reactions", es("mostrar reacciones de emojis")),
+            ("spoilers", es("mostrar contenido del spoiler")),
+            ("split-threads", es("abre los hilos en vista dividida")),
             ("avatars", es("mostrar los avatares de los usuarios compacto")),
+            ("favorites-server", es("mostrar servidor de favoritos")),
             (
                 "related-accessibility",
                 es("ajustes relacionados accesibilidad tamaño densidad zoom"),
@@ -368,10 +473,22 @@ const SECTIONS: &[Section] = &[
         page: Appearance,
         key: "chat-box",
         title: es("Cuadro de chat"),
-        rows: &[(
-            "emoticons",
-            es("convertir emoticonos en emojis automáticamente caritas :) al enviar"),
-        )],
+        rows: &[
+            ("markdown-preview", es("vista previa de emojis menciones y la sintaxis markdown mientras escribes")),
+            (
+                "emoticons",
+                es("convertir emoticonos en emojis automáticamente caritas :) al enviar"),
+            ),
+            ("sticker-suggestions", es("mostrar stickers en los resultados de autocompletar")),
+            ("game-suggestions", es("mostrar juegos en los resultados de autocompletar")),
+            ("send-button", es("mostrar botón de enviar mensaje")),
+        ],
+    },
+    Section {
+        page: Appearance,
+        key: "search",
+        title: es("Buscar"),
+        rows: &[("dm-search", es("de forma predeterminada buscando en los md seleccionado todos"))],
     },
     // The profile cosmetics are drawn in `cosmetics`.
     Section {
@@ -384,7 +501,10 @@ const SECTIONS: &[Section] = &[
         page: Accessibility,
         key: "readability",
         title: es("Legibilidad del texto"),
-        rows: &[("text-size", es("tamaño de texto en el chat fuente letra escala"))],
+        rows: &[
+            ("text-size", es("tamaño de texto en el chat fuente letra escala")),
+            ("underline-links", es("siempre subrayar enlaces")),
+        ],
     },
     Section {
         page: Accessibility,
@@ -407,7 +527,10 @@ const SECTIONS: &[Section] = &[
         key: "color",
         title: es("Color y contraste"),
         rows: &[
+            ("high-contrast", es("activar modo de contraste alto")),
             ("role-colors", es("colores de rol nombres")),
+            ("official-messages", es("mensajes oficiales desarrollador")),
+            ("switch-icons", es("mostrar indicadores activar desactivar interruptores íconos")),
             (
                 "related-appearance",
                 es("apariencia cambia el tema de la aplicación tema colores"),
@@ -427,6 +550,16 @@ const SECTIONS: &[Section] = &[
                 "animate-gifs",
                 es("animar gif animaciones reproducir solos automáticamente pasar el puntero stickers emoji"),
             ),
+        ],
+    },
+    Section {
+        page: Accessibility,
+        key: "screen-reader",
+        title: es("Audio y lector de pantalla"),
+        rows: &[
+            ("tts-rate", es("velocidad del texto a voz")),
+            ("image-descriptions", es("mostrar descripciones de imágenes")),
+            ("legacy-input", es("usar la antigua entrada del chat lector de pantalla")),
         ],
     },
     Section {
@@ -479,6 +612,7 @@ const SECTIONS: &[Section] = &[
         title: es("Desarrollador"),
         rows: &[
             ("developer", es("modo desarrollador copiar id identificador")),
+            ("app-test-mode", es("modo de prueba de la aplicación")),
             (
                 "metrics",
                 es("mostrar métricas rendimiento cuadros memoria cpu f12"),
@@ -536,10 +670,9 @@ const FOLDS: &[Fold] = &[
         key: "voice-advanced",
         show: es("Mostrar ajustes avanzados de voz"),
         hide: es("Ocultar ajustes avanzados de voz"),
-        note: es("Control automático de ganancia, Escucharte, Cancelar sonido del equipo y sensibilidad automática"),
+        note: es("Control automático de ganancia, Cancelar sonido del equipo y sensibilidad automática"),
         rows: &[
             "automatic-gain",
-            "loopback",
             "system-echo",
             "auto-sensitivity",
         ],
@@ -713,6 +846,8 @@ fn sections() -> impl Iterator<Item = &'static Section> {
         .chain(desktop::SECTIONS)
         .chain(updates::SECTIONS)
         .chain(reading::SECTIONS)
+        // Last on «Apariencia», as Discord's.
+        .chain(streamer::SECTIONS)
 }
 
 /// The line under a section's title, where it has one.
@@ -979,6 +1114,18 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
     if page == Profiles {
         return profiles(ctx);
     }
+    // Streamer mode hides the account's pages whole, as Discord's: its
+    // drawing, and the button to the mode's settings.
+    if matches!(page, Account | Connection) && ctx.ui.prefs.streamer.hides_personal() {
+        let height = (ctx.geometry.panel.height - parts::HEADER_HEIGHT - 1.0).max(1.0);
+        let hidden = rustcord_components::streamer::hidden("us:page=streamer", ctx.look)
+            .size(Some(ctx.geometry.column), Some(height));
+        return Element::row(vec![
+            Element::spacer().flex(1.0),
+            hidden.anchor(top(page)),
+            Element::spacer().flex(1.0),
+        ]);
+    }
     let query = searching(ctx.ui).unwrap_or("");
     let mut sections = shown(page, query, ctx.ui, ctx.store);
     // What a search found shows as it is, out of its fold.
@@ -996,22 +1143,43 @@ fn content(ctx: &Ctx, page: SettingsPage) -> Element {
             } else {
                 folded(ctx, keys)
             };
-            (!rows.is_empty()).then(|| match section.page {
-                // «Idioma y hora» and «Desarrollador» start with their rows, as
-                // Discord's: the page's name is their heading.
-                Language => parts::rows(rows).anchor(anchor(section.key)),
-                _ if section.key == "developer" => parts::rows(rows).anchor(anchor(section.key)),
-                _ => parts::section(
-                    &anchor(section.key),
-                    t(section.title),
-                    note(section.key).map(t),
-                    None,
-                    rows,
-                    ctx.look,
-                ),
+            (!rows.is_empty()).then(|| {
+                let shown = match section.page {
+                    // «Idioma y hora» and «Desarrollador» start with their rows, as
+                    // Discord's: the page's name is their heading.
+                    Language => parts::rows(rows).anchor(anchor(section.key)),
+                    _ if section.key == "developer" => {
+                        parts::rows(rows).anchor(anchor(section.key))
+                    }
+                    _ => parts::section(
+                        &anchor(section.key),
+                        t(section.title),
+                        note(section.key).map(t),
+                        None,
+                        rows,
+                        ctx.look,
+                    ),
+                };
+                Element::column(vec![
+                    Element::spacer()
+                        .size(None, Some(0.0))
+                        .anchor(super::start(section.key)),
+                    shown,
+                ])
             })
         })
         .collect();
+    // Discord's rows Rustcord does not do yet say so once, at the foot.
+    let pending_shown = shown(page, if found { query } else { "" }, ctx.ui, ctx.store)
+        .iter()
+        .any(|(_, keys)| keys.iter().any(|key| pending::is_pending(key)));
+    let mut sections: Vec<Element> = sections;
+    if pending_shown {
+        sections.push(Element::column(vec![
+            Element::spacer().size(None, Some(16.0)),
+            text(t(pending::FOOTNOTE), 14.0, ctx.look.muted).max_width(560.0),
+        ]));
+    }
     let sticky = (page == Accessibility).then(|| preview(ctx));
     parts::page(
         &page.scroll_id(),
@@ -1122,6 +1290,9 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
             Element::spacer().size(None, Some(12.0)),
         ])
     };
+    if let Some(shown) = pending::setting(ctx, key) {
+        return Some(shown);
+    }
     let open = ui.settings_state.select;
     let server = ui.settings_state.dm_server;
     if let Some(shown) = crate::account::privacy_setting(store, key, look, open, server, width) {
@@ -1149,6 +1320,9 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         return shown;
     }
     if let Some(shown) = updates::setting(ctx, key) {
+        return Some(shown);
+    }
+    if let Some(shown) = streamer::setting(ctx, key) {
         return Some(shown);
     }
     Some(match key {
@@ -1311,23 +1485,6 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
         "meter" => meter(ctx),
         "processing-levels" => processing_levels(ctx),
         "audio-system" => audio_system(ctx),
-        "loopback" => {
-            let note = if ui.audio.loopback && ui.audio.output_starting {
-                t("Abriendo la salida…")
-            } else {
-                t("Usa auriculares: con altavoces se produce eco.")
-            };
-            parts::toggle(
-                "us:loopback",
-                t("Escucharte"),
-                Some(note),
-                ui.audio.loopback,
-                crate::quick_voice::call_holds_output(store).then_some(t(
-                    "En una llamada la salida es suya: puedes escucharte de nuevo al colgar.",
-                )),
-                look,
-            )
-        }
         "input-profile" => Element::column(vec![
             parts::setting(t("Perfil de entrada"), None, None, true, look),
             parts::choices(
@@ -1561,6 +1718,25 @@ fn setting(ctx: &Ctx, key: &str) -> Option<Element> {
                 .render();
             parts::setting_with_note(label, note, Some(switch), false, look)
         }
+        "related-privacy" => parts::related(
+            "us:page=privacy",
+            icon_of(Privacy),
+            t("Datos y privacidad"),
+            t("Controla quién puede ver la información de tu perfil, como tu biografía y tus cuentas vinculadas."),
+            look,
+        ),
+        "reset-voice" => parts::setting(
+            t("Restablecer todos los ajustes de voz y video"),
+            Some(t("Restablece la configuración predeterminada de voz y video.")),
+            Some(parts::destructive_button(
+                "us:reset-voice",
+                t("Reiniciar"),
+                super::voice_changed(ui),
+                look,
+            )),
+            true,
+            look,
+        ),
         "related-accessibility" => parts::related(
             "us:page=accessibility",
             icon_of(Accessibility),
@@ -2057,8 +2233,7 @@ fn meter(ctx: &Ctx) -> Element {
     };
     if audio.testing && ctx.store.call().is_some() {
         caption.push(
-            t("En la llamada mide el mismo micrófono que usa ella, sin cambiar lo que se envía.")
-                .to_owned(),
+            t("Mientras pruebas, la llamada queda ensordecida y no se envía nada.").to_owned(),
         );
     }
     // One pill every 8 px in what the button leaves; a wider button cuts
@@ -2637,10 +2812,12 @@ mod tests {
                 "theme",
                 "messages",
                 "chat-box",
+                "search",
                 "cosmetics",
                 "font",
                 "panels",
-                "reading"
+                "reading",
+                "streamer"
             ]
         );
     }
@@ -2656,8 +2833,11 @@ mod tests {
     }
 
     #[test]
-    fn privacy_shows_voice_encryption_first_then_rustcord_s_own() {
-        assert_eq!(section_keys(SettingsPage::Privacy), ["e2ee", "image-cache"]);
+    fn privacy_shows_discord_s_categories_then_rustcord_s_own() {
+        assert_eq!(
+            section_keys(SettingsPage::Privacy),
+            ["data-use", "profile-privacy", "e2ee", "image-cache"]
+        );
     }
 
     #[test]
@@ -2669,16 +2849,23 @@ mod tests {
                 "spam-filters",
                 "messaging",
                 "friend-requests",
+                "connected-games",
                 "ignore-block"
             ]
         );
     }
 
     #[test]
-    fn notifications_show_overview_sounds_then_badges() {
+    fn notifications_show_overview_sounds_badges_email_then_advanced() {
         assert_eq!(
             section_keys(SettingsPage::Notifications),
-            ["overview", "sounds", "badges"]
+            [
+                "overview",
+                "sounds",
+                "badges",
+                "email",
+                "notifications-advanced"
+            ]
         );
     }
 
@@ -2688,8 +2875,11 @@ mod tests {
     }
 
     #[test]
-    fn activity_privacy_shows_what_i_share() {
-        assert_eq!(section_keys(SettingsPage::Activity), ["activity"]);
+    fn activity_privacy_shows_what_where_and_who_joins() {
+        assert_eq!(
+            section_keys(SettingsPage::Activity),
+            ["activity", "activity-where", "activity-join"]
+        );
     }
 
     #[test]
@@ -2712,7 +2902,14 @@ mod tests {
     fn voice_and_video_shows_discord_s_categories_in_their_order() {
         assert_eq!(
             section_keys(SettingsPage::Voice),
-            ["voice", "video", "call-sounds", "advanced"]
+            [
+                "voice",
+                "video",
+                "streaming",
+                "call-sounds",
+                "soundboard",
+                "advanced"
+            ]
         );
     }
 
@@ -2732,7 +2929,7 @@ mod tests {
     fn accessibility_shows_discord_s_categories_in_their_order() {
         assert_eq!(
             section_keys(SettingsPage::Accessibility),
-            ["readability", "density", "color", "motion"]
+            ["readability", "density", "color", "motion", "screen-reader"]
         );
     }
 

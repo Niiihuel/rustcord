@@ -1898,6 +1898,8 @@ pub struct InviteLine {
     pub denied: Option<String>,
     /// It has a link to copy.
     pub copy: bool,
+    /// Streamer mode hides its code: it shows dotted, and is still copied.
+    pub hidden: bool,
 }
 
 /// The columns of the invitations, as Discord's table at 660 wide: who
@@ -1925,6 +1927,11 @@ pub fn invites_heading(look: &Look) -> Element {
 /// monospaced face, and at the end the buttons that copy its link and
 /// revoke it.
 pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
+    let code = if row.hidden {
+        crate::streamer::dotted(&row.code)
+    } else {
+        row.code.clone()
+    };
     let who = row.inviter.as_ref().map_or_else(
         || avatar("?", look.faint, 24.0),
         |person| person.avatar(24.0),
@@ -1950,7 +1957,7 @@ pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
                 .icon(Icon::Copy)
                 .variant(ButtonVariant::Ghost)
                 .button_size(ButtonSize::Small)
-                .accessibility_label(tr!("Copiar el enlace de {code}", code = row.code))
+                .accessibility_label(tr!("Copiar el enlace de {code}", code))
                 .tooltip(t("Copiar enlace"))
                 .render(),
         );
@@ -1961,7 +1968,7 @@ pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
             .variant(ButtonVariant::Ghost)
             .button_size(ButtonSize::Small)
             .enabled(row.denied.is_none())
-            .accessibility_label(tr!("Revocar la invitación {code}", code = row.code))
+            .accessibility_label(tr!("Revocar la invitación {code}", code))
             .tooltip(row.denied.as_deref().unwrap_or(t("Revocar")))
             .render(),
     );
@@ -1973,7 +1980,7 @@ pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
             ])
             .gap(12.0)
             .size(Some(INVITE_COLUMNS[0]), None),
-            mono(&row.code, INVITE_COLUMNS[1]),
+            mono(&code, INVITE_COLUMNS[1]),
             mono(&row.uses, INVITE_COLUMNS[2]),
             mono(&row.expires, INVITE_COLUMNS[3]),
             Element::spacer().flex(1.0),
@@ -3241,6 +3248,7 @@ mod tests {
             expires: "Nunca".into(),
             denied: None,
             copy: true,
+            hidden: false,
         };
         let (_, frame) = lay(invite_row(&invite, &LOOK), size);
         assert_eq!(

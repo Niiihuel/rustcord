@@ -67,9 +67,30 @@ pub(super) const SECTIONS: &[Section] = &[
         title: es("Qué actividad comparto"),
         rows: &[
             ("activity-sharing", es("compartir mi actividad compartir tu actividad mostrar el juego a los demás visible oculta cuenta")),
+            ("share-online", es("compartir cuando me conecte")),
+            ("share-streaming", es("compartir cuando empiece a transmitir")),
             ("rich-presence", es("rich presence actividad de otros programas juegos reproductores socket local discord ipc")),
             ("game-activity", es("detectar juegos procesos jugando actividad")),
             ("activity-now", es("actividad actual publicada ahora")),
+        ],
+    },
+    // Discord's where and who joins: the account's, not offered (`pending`).
+    Section {
+        page: Activity,
+        key: "activity-where",
+        title: es("Dónde comparto mi actividad"),
+        rows: &[
+            ("activity-servers", es("comparte mi actividad de forma automática cuando me uno a un servidor")),
+            ("related-privacy", es("ajustes relacionados datos y privacidad perfil")),
+        ],
+    },
+    Section {
+        page: Activity,
+        key: "activity-join",
+        title: es("Unirse a la actividad"),
+        rows: &[
+            ("join-friends", es("permite que amigos se unan a mi partida")),
+            ("join-voice", es("permite que los participantes del canal de voz se unan a mi partida")),
         ],
     },
     // Discord's current game and added games categories; the related card closes the page.

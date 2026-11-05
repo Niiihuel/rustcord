@@ -106,6 +106,8 @@ pub mod keybinds;
 pub mod themes;
 
 pub mod updates;
+// Discord's streamer mode: what it hides and silences, and its notice.
+pub mod streamer;
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
@@ -601,6 +603,9 @@ pub struct Audio {
     pub hyprland_bind: Option<String>,
     /// While testing the microphone, one hears it back on the output.
     pub loopback: bool,
+    /// The microphone test deafened the call, as Discord's does: the
+    /// account's `(muted, deafened)` before it, given back when it ends.
+    pub test_deafened: Option<(bool, bool)>,
     /// The output is opening for the loopback.
     pub output_starting: bool,
     /// With the PC's sound cancelled and the microphone open: whether the
@@ -644,6 +649,8 @@ pub struct Notice {
 #[derive(Debug, Default)]
 pub struct Ui {
     uploads: uploads::Uploads,
+    /// What this run remembers of streamer mode.
+    pub streamer: streamer::Session,
     /// Only validated, bounded thumbnails supplied by the host's asset service.
     pub images: HashMap<rustcord_model::RemoteImage, limn::RasterImage>,
     /// The dominant color of each artwork in `images` that has one.
@@ -1384,6 +1391,8 @@ pub fn after_layout(ui: &mut Ui, store: &mut Store, tree: &UiTree, active: bool)
     messages::forget_unshown_menus(ui, tree);
     let blocked_before = context::blocks_reading(ui) || reads::obscured(ui);
     let mut intents = settings::after_layout(ui, tree);
+    // However the test ended: its button, the page left, a failed device.
+    intents.extend(end_test_deafen(ui, store));
     intents.extend(watch_members(ui, tree));
     intents.extend(voice::watch_server(ui));
     // The list the entry counts.
@@ -1765,6 +1774,9 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<Intent
     if id.starts_with("settings:") || id.starts_with("switcher:") {
         return settings::clicked(ui, store, id, now);
     }
+    if let Some(intents) = streamer::clicked(ui, id) {
+        return intents;
+    }
     match id {
         "home" => open_server(ui, store, None),
         "members:toggle" => {
@@ -1787,6 +1799,8 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<Intent
                     return Vec::new();
                 }
             }
+            // The person takes over from the microphone test.
+            ui.audio.test_deafened = None;
             if ui.deafened {
                 // Unmuting while deafened turns the sound back on too.
                 ui.deafened = false;
@@ -1800,6 +1814,7 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Vec<Intent
             if !has_voice_controls(store) {
                 return Vec::new();
             }
+            ui.audio.test_deafened = None;
             if ui.deafened {
                 ui.deafened = false;
                 ui.muted = ui.muted_before_deafen || store.mic_held().is_some();
@@ -1844,6 +1859,39 @@ fn has_voice_controls(store: &Store) -> bool {
         .provider
         .as_ref()
         .is_some_and(|info| info.capabilities.voice != rustcord_provider::VoiceSupport::None)
+}
+
+/// The microphone test in a call deafens it, as Discord's: the others are not
+/// heard over one's own voice, and they see it.
+pub(crate) fn deafen_for_test(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
+    if store.call().is_none() || !has_voice_controls(store) || ui.audio.test_deafened.is_some() {
+        return Vec::new();
+    }
+    ui.audio.test_deafened = Some((ui.muted, ui.deafened));
+    if ui.deafened {
+        return Vec::new();
+    }
+    ui.muted_before_deafen = ui.muted;
+    ui.deafened = true;
+    ui.muted = true;
+    set_self_voice(ui, store)
+}
+
+/// The microphone test ended: the account as it was before it.
+fn end_test_deafen(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
+    if ui.audio.testing {
+        return Vec::new();
+    }
+    let Some((muted, deafened)) = ui.audio.test_deafened.take() else {
+        return Vec::new();
+    };
+    let muted = muted || store.mic_held().is_some();
+    if (ui.muted, ui.deafened) == (muted, deafened) {
+        return Vec::new();
+    }
+    ui.muted = muted;
+    ui.deafened = deafened;
+    set_self_voice(ui, store)
 }
 
 /// Show the account's microphone and sound in its call, and tell the provider.

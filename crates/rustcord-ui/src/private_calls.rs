@@ -684,7 +684,8 @@ pub fn call_alerts(ui: &mut Ui, store: &Store) -> (Vec<Alert>, Vec<ChannelId>) {
         }
         rings
     });
-    let (Some(account), true) = (store.me(), ui.prefs.desktop_notifications) else {
+    let notify = ui.prefs.desktop_notifications && !ui.prefs.streamer.silences_notifications();
+    let (Some(account), true) = (store.me(), notify) else {
         return (Vec::new(), stopped);
     };
     if store.presence(account).status == Status::DoNotDisturb {

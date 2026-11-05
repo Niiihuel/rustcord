@@ -798,7 +798,39 @@ pub fn choices(
             }
         })
         .collect();
-    let group = RadioGroup::new(id, options, Some(selected), look.palette())
+    choice_group(id, label, options, Some(selected), true, look)
+}
+
+/// [`choices`] that cannot be chosen yet: muted, none marked.
+pub fn passive_choices(
+    id: &str,
+    label: &str,
+    options: &[(&str, Option<&str>)],
+    look: &Look,
+) -> Element {
+    let options = options
+        .iter()
+        .map(|(name, note)| {
+            let option = RadioOption::new(*name, *name);
+            match note {
+                Some(note) => option.description(*note),
+                None => option,
+            }
+        })
+        .collect();
+    choice_group(id, label, options, None, false, look)
+}
+
+fn choice_group(
+    id: &str,
+    label: &str,
+    options: Vec<RadioOption>,
+    selected: Option<&str>,
+    enabled: bool,
+    look: &Look,
+) -> Element {
+    let group = RadioGroup::new(id, options, selected, look.palette())
+        .enabled(enabled)
         .variant(RadioVariant::Plain)
         .size(ControlSize::Spacious)
         .metrics(RadioMetrics {

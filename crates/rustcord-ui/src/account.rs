@@ -1205,7 +1205,8 @@ pub(crate) fn note_field(ui: &Ui, store: &Store, user: UserId) -> Option<NoteFie
         .provider
         .as_ref()
         .is_some_and(|info| info.capabilities.notes);
-    if !notes || store.me() == Some(user) {
+    // Streamer mode hides the notes with the rest of what is personal.
+    if !notes || store.me() == Some(user) || ui.prefs.streamer.hides_personal() {
         return None;
     }
     let kept = store.note(user);

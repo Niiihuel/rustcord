@@ -38,6 +38,7 @@ pub mod server_menu;
 pub mod server_settings;
 pub mod sidebar;
 pub mod stage;
+pub mod streamer;
 pub mod text;
 pub mod threads;
 pub mod time;

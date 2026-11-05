@@ -83,6 +83,14 @@ en [limn](https://github.com/Niiihuel/limn).
   «Guardar en Spotify» abren el enlace, preguntando antes de salir. El logo
   de `assets/connections/spotify.png` nombra el servicio en esa tarjeta
   (aprobado por el dueño el 2026-11-05).
+- Modo Streamer (2026-11-05), como el de Discord: oculta la información
+  personal (páginas de la cuenta y conexiones, notas, cuentas vinculadas
+  propias), tapa con puntos las invitaciones y apaga sonidos y
+  notificaciones. Su encendido automático con OBS o XSplit reutiliza la detección de juegos
+  (sólo los nombres de los programas), apagado por defecto con su
+  interruptor. Los ajustes de Discord que Rustcord no hace se muestran
+  atenuados y deshabilitados, sin valor, y la página lo dice; nunca simulan
+  funcionar.
 - Pulsar para hablar global (2026-10-26): en Windows, gancho de bajo nivel de
   teclado y de ratón (`WH_KEYBOARD_LL` y `WH_MOUSE_LL`) que nunca consume la
   entrada (siempre `CallNextHookEx`), sólo compara cada evento con la

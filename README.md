@@ -104,7 +104,9 @@ real people.</sub>
 - 🖥️ **Desktop**: tray icon, start with the session, notifications, a single
   instance that receives links, and on Windows the taskbar button that shows
   the call. Local *Rich Presence* (`discord-ipc`) and game detection, both off
-  by default.
+  by default. Streamer mode, as Discord's: it hides your personal
+  information and invite links, silences sounds and notifications, and can
+  turn itself on while OBS or XSplit runs (off by default).
 - ⚙️ **Under the hood**: an encrypted local cache per account (Rustcord opens
   with what it already had while it connects) and updates with a manifest
   signed with Ed25519.

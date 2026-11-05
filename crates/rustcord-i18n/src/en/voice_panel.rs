@@ -52,10 +52,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "test sound output test speaker headphones call sound",
     ),
     (
-        "En una llamada la salida es suya: puedes escucharte de nuevo al colgar.",
-        "In a call the output is the call's: you can hear yourself again after hanging up.",
-    ),
-    (
         "Con el volumen de salida en 0 % no se oye.",
         "With the output volume at 0 % it can't be heard.",
     ),
@@ -69,8 +65,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Detener la prueba", "Stop test"),
     (
-        "En la llamada mide el mismo micrófono que usa ella, sin cambiar lo que se envía.",
-        "In a call it measures the call's own microphone, without changing what is sent.",
+        "Mientras pruebas, la llamada queda ensordecida y no se envía nada.",
+        "While you test, the call stays deafened and nothing is sent.",
     ),
     (
         "Antes y después del procesamiento",

@@ -422,7 +422,8 @@ impl View<'_> {
         if let Some(draft) = &advanced.invite {
             root = match &draft.made {
                 Some(code) => {
-                    let link = invite_link(self.store, code);
+                    // Copied whole; shown dotted in streamer mode.
+                    let link = crate::streamer::link(self.ui, &invite_link(self.store, code));
                     let mut body = vec![Element::row(vec![
                         TextField::new("ss:invite:link", link.clone(), "", palette)
                             .accessibility_label(t("Enlace de la invitación"))

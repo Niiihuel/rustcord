@@ -44,7 +44,10 @@ pub fn message_alert(
     now: Timestamp,
 ) -> Option<Alert> {
     let prefs = &ui.prefs;
-    if !(prefs.desktop_notifications || prefs.message_sounds) || reading {
+    // Streamer mode keeps them quiet, as the person chose there.
+    let notify = prefs.desktop_notifications && !prefs.streamer.silences_notifications();
+    let sound = prefs.message_sounds && !prefs.streamer.silences_sounds();
+    if !(notify || sound) || reading {
         return None;
     }
     let account = store.me()?;
@@ -98,8 +101,8 @@ pub fn message_alert(
         message: message.id,
         title,
         body,
-        notify: prefs.desktop_notifications,
-        sound: prefs.message_sounds,
+        notify,
+        sound,
         call: false,
     })
 }

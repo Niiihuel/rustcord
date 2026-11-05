@@ -2433,7 +2433,12 @@ fn full_view(ui: &Ui, store: &Store, look: &Look) -> Option<FullProfile> {
         mutual_servers,
         mutual_friends,
         tab: ui.profiles.full_tab,
-        connections: crate::identity::connections(store, user, server),
+        // The account's own linked accounts, hidden in streamer mode.
+        connections: if store.me() == Some(user) && ui.prefs.streamer.hides_personal() {
+            Default::default()
+        } else {
+            crate::identity::connections(store, user, server)
+        },
         recent: store
             .recent_activity(user)
             .unwrap_or_default()

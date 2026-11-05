@@ -325,7 +325,7 @@ fn a_section_s_link_jumps_to_it_and_the_sidebar_follows_the_scroll() {
         .scroll_to_end(&SettingsPage::Accessibility.scroll_id());
     host.frame();
     host.frame();
-    assert_eq!(host.ui.settings_state.section, Some("motion"));
+    assert_eq!(host.ui.settings_state.section, Some("screen-reader"));
 }
 
 #[test]
@@ -891,7 +891,6 @@ fn the_advanced_and_diagnostic_settings_stay_folded_until_opened() {
     }
     for folded in [
         "us:automatic-gain",
-        "us:loopback",
         "us:auto-sensitivity",
         "us:sound=camera_on",
         "us:speaker-test",
@@ -944,7 +943,7 @@ fn the_microphone_test_turns_its_button_and_says_what_it_hears() {
         &mut host,
         "Rustcord no detecta ninguna entrada de tu micrófono."
     ));
-    // Heard back while «Escucharte» is on; otherwise its level.
+    // Heard back while the test plays oneself; otherwise its level.
     host.ui.audio.raw_levels.push(0.5);
     assert!(!painted_has(&mut host, "no detecta ninguna entrada"));
     host.ui.audio.loopback = true;
@@ -1256,10 +1255,10 @@ fn the_speaker_its_volume_and_the_sound_test_are_settings_that_stop_on_leave() {
     assert_eq!(host.ui.prefs.output_volume, 1.0);
     assert_eq!(host.ui.prefs.input_volume, 1.0);
     assert!(!host.us_buttons().contains(&"us:reset-levels".to_owned()));
-    host.us_press("us:loopback");
+    host.us_press("us:meter");
     assert!(
         host.ui.audio.testing && host.ui.audio.loopback,
-        "it starts the microphone test"
+        "the microphone test plays oneself back"
     );
     host.us_press("us:page=appearance");
     assert!(!host.ui.audio.loopback && !host.ui.audio.testing);
@@ -1323,11 +1322,65 @@ fn hearing_oneself_starts_the_test_and_a_blank_click_leaves_the_search_alone() {
     host.send(UiEvent::PointerUp(blank));
     host.frame();
     assert_ne!(host.tree.focused_id(), Some(SEARCH));
-    // Stopped, «Escucharme» starts the test with it, as Discord's check does.
+    // Stopped, it hears nothing back either.
     host.us_press("us:meter");
-    assert!(!host.ui.audio.testing);
-    host.us_press("us:loopback");
+    assert!(!host.ui.audio.testing && !host.ui.audio.loopback);
+}
+
+#[test]
+fn the_microphone_test_deafens_the_call_as_discords_and_gives_it_back() {
+    let mut host = Host::new();
+    let channel = host
+        .store
+        .servers()
+        .iter()
+        .flat_map(|server| host.store.channel_tree(server.id))
+        .flat_map(|(_, channels)| channels)
+        .find(|channel| channel.kind == ChannelKind::Voice)
+        .map(|channel| channel.id)
+        .unwrap();
+    host.click(&format!("voice:{channel}"));
+    host.event(Event::CallPhase {
+        channel,
+        phase: rustcord_model::CallPhase::Connected,
+        quality: None,
+    });
+    host.us_open();
+    host.us_press("us:page=voice");
+    host.us_press("us:meter");
     assert!(host.ui.audio.testing && host.ui.audio.loopback);
+    assert!(host.ui.deafened && host.ui.muted, "the call is deafened");
+    assert!(matches!(
+        host.sent.last(),
+        Some(Command::SetVoiceSelf {
+            muted: true,
+            deafened: true
+        })
+    ));
+    host.us_press("us:meter");
+    host.frame();
+    assert!(!host.ui.deafened && !host.ui.muted, "as it was before");
+    assert!(matches!(
+        host.sent.last(),
+        Some(Command::SetVoiceSelf {
+            muted: false,
+            deafened: false
+        })
+    ));
+    // Leaving the page ends the test and gives the call back too.
+    host.us_press("us:meter");
+    host.us_press("us:page=appearance");
+    host.frame();
+    assert!(!host.ui.audio.testing && !host.ui.deafened);
+    // Hearing again by hand meanwhile is the person's: the end keeps it.
+    host.us_press("us:page=voice");
+    host.us_press("us:meter");
+    host.us_press("me:deafen");
+    assert!(!host.ui.deafened);
+    host.us_press("me:mute");
+    host.us_press("us:meter");
+    host.frame();
+    assert!(host.ui.muted && !host.ui.deafened);
 }
 
 #[test]
@@ -1549,11 +1602,12 @@ fn notification_sounds_are_discord_s_rows_with_previews_and_lead_to_the_call_s()
 }
 
 #[test]
-fn data_and_privacy_ends_with_discord_s_card_to_the_activity_s_privacy() {
+fn the_profile_s_privacy_has_discord_s_card_to_the_activity_s_privacy() {
     let mut host = Host::new();
     host.us_open();
     host.us_press("us:page=privacy");
-    host.tree.scroll_to_end("us:content:privacy");
+    host.frame();
+    host.us_press("us:jump=profile-privacy");
     host.frame();
     assert!(host
         .painted()
@@ -1622,4 +1676,82 @@ fn appearance_offers_rustcord_s_own_themes_and_the_avatars_lead_to_accessibility
     host.send(UiEvent::PointerDown(at));
     host.send(UiEvent::PointerUp(at));
     assert_eq!(host.ui.settings, Some(SettingsPage::Accessibility));
+}
+
+#[test]
+fn streamer_mode_hides_the_account_says_so_over_the_window_and_turns_off_there() {
+    let mut host = Host::new();
+    host.us_open();
+    assert!(painted_has(&mut host, "Nombre de usuario"));
+    host.us_press("us:page=streamer");
+    assert_eq!(host.ui.settings, Some(SettingsPage::Appearance));
+    assert_eq!(host.ui.settings_state.section, Some("streamer"));
+    host.us_press("us:streamer=on");
+    host.us_press("us:page=account");
+    assert!(!painted_has(&mut host, "Nombre de usuario"), "hidden");
+    assert!(painted_has(&mut host, "Modo Streamer activado"));
+    assert!(painted_has(&mut host, "El modo Streamer está activado."));
+    // Its button goes to the mode's settings; the notice's turns it off.
+    assert!(host.us_buttons().contains(&"us:page=streamer".to_owned()));
+    host.us_press("streamer:off");
+    assert!(!host.ui.prefs.streamer.on);
+    assert!(!painted_has(&mut host, "El modo Streamer está activado."));
+    assert!(!host.us_next_run().prefs.streamer.on, "kept");
+    // Showing the information again is the person's choice there.
+    host.us_press("us:streamer=on");
+    host.us_press("us:streamer=personal");
+    assert!(painted_has(&mut host, "Nombre de usuario"));
+    // The × hides the notice, not the mode.
+    host.us_press("streamer:dismiss");
+    assert!(host.ui.prefs.streamer.on);
+    assert!(!painted_has(&mut host, "El modo Streamer está activado."));
+}
+
+#[test]
+fn discord_s_rows_rustcord_lacks_show_dimmed_and_the_page_says_so() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=notifications");
+    host.us_press("us:jump=email");
+    host.frame();
+    assert!(painted_has(&mut host, "Correos de comunicaciones"));
+    host.tree
+        .scroll_to_end(&SettingsPage::Notifications.scroll_id());
+    host.frame();
+    assert!(painted_has(
+        &mut host,
+        "Los ajustes atenuados todavía no están en Rustcord"
+    ));
+    // Disabled: nothing to press.
+    assert!(!host
+        .us_buttons()
+        .iter()
+        .any(|id| id.starts_with("us:pending=")));
+    // A search finds them, as Discord's.
+    host.us_write(SEARCH, "subrayar enlaces");
+    host.click("us:page=accessibility");
+    assert!(painted_has(&mut host, "Siempre subrayar enlaces"));
+}
+
+#[test]
+fn resetting_voice_and_video_takes_back_what_was_changed() {
+    let mut host = Host::new();
+    host.us_open();
+    host.us_press("us:page=voice");
+    host.us_press("us:fold=voice-diagnostics");
+    host.us_press("us:jump=advanced");
+    assert!(!host.us_buttons().contains(&"us:reset-voice".to_owned()));
+    host.ui.prefs.push_to_talk = true;
+    host.ui.prefs.input_profile = crate::InputProfile::Studio;
+    host.ui.prefs.output_volume = 0.5;
+    host.ui.prefs.developer = true;
+    assert!(host.us_buttons().contains(&"us:reset-voice".to_owned()));
+    host.us_press("us:reset-voice");
+    let usual = crate::Prefs::default();
+    assert!(!host.ui.prefs.push_to_talk);
+    assert_eq!(host.ui.prefs.input_profile, usual.input_profile);
+    assert_eq!(host.ui.prefs.output_volume, 1.0);
+    assert!(host.ui.prefs.developer, "only voice and video");
+    let next = host.us_next_run().prefs;
+    assert!(!next.push_to_talk && next.output_volume == 1.0, "kept");
 }

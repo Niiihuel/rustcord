@@ -93,11 +93,40 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     // Every time written from here on, rows built during layout included.
     rustcord_components::time::set_twelve_hour(ui.prefs.twelve_hour);
     let window = context.window;
-    let mut ground = look.canvas;
     // A stream watched shown alone fills the window, full screen.
     if let Some(focused) = crate::video::focused_view(ui, store, window, context.now) {
         return with_notices(focused, ui, look, window);
     }
+    // Streamer mode's notice across the top; the app under it is that much
+    // shorter, its dialogs too.
+    let root = match crate::streamer::notice(ui, look) {
+        Some(notice) => {
+            let under = ViewContext {
+                window: Size::new(
+                    window.width,
+                    (window.height - rustcord_components::streamer::NOTICE_HEIGHT).max(1.0),
+                ),
+                now: context.now,
+                wall: context.wall,
+                at_end: context.at_end,
+                loading_older: context.loading_older,
+                loading_latest: context.loading_latest,
+                metrics: context.metrics.clone(),
+            };
+            Element::column(vec![notice, app(ui, store, &under, look)])
+                .size(Some(window.width), Some(window.height))
+        }
+        None => app(ui, store, context, look),
+    };
+    // The window's own buttons, over everything; a stream
+    // shown alone, above, fills the window without them.
+    crate::title_bar::overlay(ui, with_notices(root, ui, look, window), look)
+}
+
+/// The app under the window's notices and buttons, `context.window` large.
+fn app(ui: &Ui, store: &Store, context: &ViewContext, look: &rustcord_components::Look) -> Element {
+    let window = context.window;
+    let mut ground = look.canvas;
     let body = if let Some(settings) = channel_settings::view(ui, store, context) {
         settings
     } else if let Some(settings) = server_settings::view(ui, store, context) {
@@ -193,10 +222,7 @@ pub fn view(ui: &Ui, store: &Store, context: &ViewContext) -> Element {
     let root = crate::interactions::overlay(ui, store, root, look, context);
     let root = crate::challenges::overlay(ui, store, root, look);
     // Before an update leaves the call.
-    let root = crate::updates::overlay(ui, root, look);
-    // The window's own buttons, over everything; a stream
-    // shown alone, above, fills the window without them.
-    crate::title_bar::overlay(ui, with_notices(root, ui, look, window), look)
+    crate::updates::overlay(ui, root, look)
 }
 
 /// The notices at the window's bottom left, oldest on top, `NOTICE_GAP`

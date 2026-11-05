@@ -1483,6 +1483,7 @@ impl View<'_> {
                                 ),
                                 denied: None,
                                 copy: true,
+                                hidden: self.ui.prefs.streamer.hides_invites(),
                             },
                             look,
                         )

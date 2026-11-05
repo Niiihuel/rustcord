@@ -38,6 +38,16 @@ type Listener = std::convert::Infallible;
 
 /// Links handed over by later starts, kept until an account is there.
 const MAX_LINKS: usize = 8;
+/// The programs that turn streamer mode on: OBS Studio and XSplit, by the
+/// names their programs run as on Linux and Windows.
+const BROADCASTERS: [&str; 6] = [
+    "obs",
+    "obs-studio",
+    "obs64.exe",
+    "obs32.exe",
+    "xsplit.core.exe",
+    "xsplitbroadcaster.exe",
+];
 /// Programs whose activity is remembered at once.
 const MAX_PROGRAMS: usize = 8;
 
@@ -56,6 +66,8 @@ pub struct Desktop {
     programs: BTreeMap<u64, (u64, LocalActivity)>,
     sequence: u64,
     games: Option<GameWatcher>,
+    /// OBS or XSplit, watched while streamer mode follows them.
+    broadcast: Option<GameWatcher>,
     /// This session's list was asked for.
     games_asked: bool,
     playing: Option<Playing>,
@@ -114,6 +126,7 @@ impl Desktop {
             programs: BTreeMap::new(),
             sequence: 0,
             games: None,
+            broadcast: None,
             games_asked: false,
             playing: None,
             told: None,
@@ -336,6 +349,7 @@ impl Desktop {
         self.presence_step(ctx, ui, store);
         intents.extend(self.links_step(ctx, ui, store, now));
         intents.extend(self.games_step(ui, store, wall));
+        intents.extend(self.broadcast_step(ui));
         let chosen = self.chosen();
         if self.told.as_ref() != Some(&chosen) {
             intents.extend(rustcord_ui::desktop::local_activity(
@@ -553,6 +567,29 @@ impl Desktop {
                         .into(),
                 ),
             ),
+        }
+    }
+
+    /// Streamer mode on while OBS or XSplit runs, off once they end, when
+    /// the person asked for it; the same watcher as the games', by the
+    /// programs' names only.
+    fn broadcast_step(&mut self, ui: &mut Ui) -> Vec<Intent> {
+        if !ui.prefs.streamer.auto {
+            self.broadcast = None;
+            return Vec::new();
+        }
+        let watcher = self.broadcast.get_or_insert_with(|| {
+            let watcher = GameWatcher::start(self.wake.clone());
+            watcher.set_games(&[Game {
+                application: None,
+                name: "OBS / XSplit".into(),
+                executables: BROADCASTERS.iter().map(|name| (*name).into()).collect(),
+            }]);
+            watcher
+        });
+        match watcher.poll() {
+            Some(running) => rustcord_ui::streamer::broadcasting(ui, running.is_some()),
+            None => Vec::new(),
         }
     }
 

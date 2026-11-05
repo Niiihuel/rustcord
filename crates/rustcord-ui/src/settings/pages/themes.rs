@@ -48,6 +48,10 @@ pub(super) const ROWS: &[(&str, &str)] = &[
         "theme-related",
         es("accesibilidad saturación colores alto contraste"),
     ),
+    // Discord's rows under the themes Rustcord does not do yet (`pending`).
+    ("theme-sync", es("sincronizar tema en todos mis dispositivos")),
+    ("theme-profiles", es("aplicar tema a los perfiles de otros usuarios")),
+    ("theme-servers", es("tema predeterminado en los servidores")),
 ];
 
 /// The setting `key` of the section; `None` for the rest, `Some(None)` for
