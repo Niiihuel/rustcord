@@ -55,7 +55,7 @@ use rustcord_core::{
     Backoff, Client, ClientConfig, Deadlines, StorageTicket, StorageWriteError, Update,
 };
 use rustcord_i18n::{es, t, tr};
-use rustcord_model::{ChannelId, StreamPhase};
+use rustcord_model::{ChannelId, StreamPhase, Timestamp, UserId};
 use rustcord_provider::mock::{wall_clock, MockConfig, MockControl, MockProvider};
 use rustcord_provider::{AuthenticationState, Provider};
 use rustcord_state::Store;
@@ -1211,6 +1211,9 @@ struct App {
     pending_storage: PendingStorage,
     /// The settings kept on this device, the device's and each account's.
     kept: kept::Kept,
+    /// The voice channel an update's restart took the account out of
+    /// (`REJOIN`), to join again once connected.
+    rejoin: Option<String>,
     /// Bounded native metadata rejection; never retains dropped paths.
     drop_rejection: Option<uploads::NativeDropRejection>,
     read_marks_to_restore: Option<(
@@ -1388,6 +1391,9 @@ impl App {
             zoom: 1.0,
             drafts_kept: Instant::now(),
             pending_storage: PendingStorage::default(),
+            rejoin: kept
+                .get(REJOIN)
+                .filter(|_| arguments.screenshot.is_none() && !arguments.bench),
             kept,
             drop_rejection: None,
             read_marks_to_restore,
@@ -1803,6 +1809,7 @@ impl App {
                 // Closes as any close does, saving first; the next start is the new version.
                 Intent::RestartForUpdate => {
                     self.updates.restarting(&mut self.ui);
+                    self.keep_rejoin();
                     self.desktop.quit = true;
                     ctx.request_repaint();
                 }
@@ -3218,6 +3225,48 @@ impl App {
         }
     }
 
+    /// Before an update's restart: the server voice channel the account is
+    /// in, to join again after it, as Discord does («saldrás del canal por
+    /// un momento»).
+    fn keep_rejoin(&mut self) {
+        let (Some(me), Some(call)) = (self.store.me(), self.store.call()) else {
+            return;
+        };
+        let server_voice = self
+            .store
+            .channel(call.channel)
+            .is_some_and(|channel| channel.server.is_some());
+        if call.phase.is_connected() && server_voice {
+            let kept = rejoin_value(me, call.channel, wall_clock());
+            self.keep_setting(REJOIN, Some(kept));
+        }
+    }
+
+    /// After an update's restart: back into the channel `keep_rejoin` kept,
+    /// once the same account is connected; only once, and only soon after.
+    fn rejoin_step(&mut self, ctx: &egui::Context, now: Instant) {
+        if self.rejoin.is_none()
+            || self.store.connection != rustcord_provider::ConnectionState::Connected
+        {
+            return;
+        }
+        let Some(me) = self.store.me() else {
+            return;
+        };
+        let kept = self.rejoin.take();
+        self.keep_setting(REJOIN, None);
+        let Some(channel) = kept.and_then(|kept| rejoin_channel(&kept, me, wall_clock())) else {
+            return;
+        };
+        if self.store.call().is_none() && self.store.channel(channel).is_some() {
+            let click = limn::UiAction::Clicked {
+                id: format!("voice:{channel}"),
+            };
+            let intents = rustcord_ui::update(&mut self.ui, &mut self.store, &click, now);
+            self.run(ctx, intents);
+        }
+    }
+
     fn request_close(&mut self, ctx: &egui::Context, now: Instant) {
         let settings: Vec<_> = self
             .ui
@@ -4553,6 +4602,7 @@ impl eframe::App for App {
         let now = Instant::now();
         self.drain(ctx, now);
         self.desktop_step(ctx, now);
+        self.rejoin_step(ctx, now);
     }
 
     /// Own themes: a window the desktop may show through
@@ -4615,6 +4665,7 @@ impl eframe::App for App {
         // Rustcord's own updates: installed, Rustcord closes
         // (saving first, as any close) to start the new version.
         if self.updates.step(&mut self.ui) {
+            self.keep_rejoin();
             self.desktop.quit = true;
             ctx.request_repaint();
         }
@@ -5019,6 +5070,56 @@ impl eframe::App for App {
         if let Some(after) = next {
             ctx.request_repaint_after(after);
         }
+    }
+}
+
+/// The device's setting with the voice channel an update's restart left.
+const REJOIN: &str = "rejoin_voice";
+/// How long after the restart the channel is still joined again.
+const REJOIN_WITHIN_MS: i64 = 10 * 60 * 1000;
+
+/// `account`'s channel `channel` at `at`, as `REJOIN` keeps it.
+fn rejoin_value(account: UserId, channel: ChannelId, at: Timestamp) -> String {
+    format!("{}:{}:{}", account.0, channel.0, at.0)
+}
+
+/// The channel `kept` names for `account`, if it was kept for it no more
+/// than `REJOIN_WITHIN_MS` before `now`.
+fn rejoin_channel(kept: &str, account: UserId, now: Timestamp) -> Option<ChannelId> {
+    let mut parts = kept.split(':').map(str::parse::<i64>);
+    let (Some(Ok(who)), Some(Ok(channel)), Some(Ok(at)), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return None;
+    };
+    (u64::try_from(who).ok() == Some(account.0) && (0..=REJOIN_WITHIN_MS).contains(&(now.0 - at)))
+        .then(|| u64::try_from(channel).ok().map(ChannelId))
+        .flatten()
+}
+
+#[cfg(test)]
+mod rejoin_tests {
+    use super::*;
+
+    #[test]
+    fn an_update_rejoins_its_channel_for_the_same_account_soon_after() {
+        let (me, channel) = (UserId(7), ChannelId(42));
+        let kept = rejoin_value(me, channel, Timestamp(1_000));
+        assert_eq!(rejoin_channel(&kept, me, Timestamp(61_000)), Some(channel));
+        assert_eq!(
+            rejoin_channel(&kept, UserId(8), Timestamp(61_000)),
+            None,
+            "another account"
+        );
+        let late = Timestamp(1_000 + REJOIN_WITHIN_MS + 1);
+        assert_eq!(rejoin_channel(&kept, me, late), None, "too late");
+        assert_eq!(
+            rejoin_channel(&kept, me, Timestamp(0)),
+            None,
+            "from the future"
+        );
+        assert_eq!(rejoin_channel("7:42", me, Timestamp(61_000)), None);
+        assert_eq!(rejoin_channel("7:42:1000:9", me, Timestamp(61_000)), None);
     }
 }
 

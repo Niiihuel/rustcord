@@ -65,10 +65,10 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Hay una actualización disponible", "An update is available"),
     ("Descargando la actualización", "Downloading the update"),
     ("¡Actualización lista!", "Update ready!"),
-    ("¿Salir del canal de voz?", "Leave the voice channel?"),
+    ("¿Salir del canal de voz por un momento?", "Briefly leave voice?"),
     (
-        "Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal y tendrás que volver a entrar. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo.",
-        "If you update Rustcord while you're in a voice channel, you'll leave it and have to join again. You'll probably update anyway but, you know, just giving you a heads-up.",
+        "Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal por un momento. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo.",
+        "Updating Rustcord while in a voice channel will cause you to leave briefly. You're probably going to update anyway but, you know, just warning you.",
     ),
     ("¡Actualizar de todas formas!", "Update anyway!"),
     ("Descargando… {have} de {whole}", "Downloading… {have} of {whole}"),

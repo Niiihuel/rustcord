@@ -286,14 +286,14 @@ pub fn header_button(stage: &Stage, look: &Look) -> Element {
 }
 
 /// Before an update leaves the call, over `root`: Discord's question, with
-/// its red «¡Actualizar de todas formas!». Rustcord does not join the call
-/// again once it opens, so it says the person will have to.
+/// its red «¡Actualizar de todas formas!». The new version joins the
+/// channel again once connected (the desktop's `rejoin_step`).
 pub fn voice_confirm(root: Element, look: &Look) -> Element {
     AlertDialog::new(
         root,
         true,
-        t("¿Salir del canal de voz?"),
-        t("Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal y tendrás que volver a entrar. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo."),
+        t("¿Salir del canal de voz por un momento?"),
+        t("Si actualizas Rustcord mientras estás en un canal de voz, saldrás del canal por un momento. Probablemente actualizarás de todos modos pero, ya sabes, solo te estoy advirtiendo."),
         ids::VOICE_CONFIRM,
         ids::VOICE_CANCEL,
         look.menu_palette(),
@@ -620,7 +620,7 @@ mod tests {
         );
         let shown = crate::testing::texts(&laid);
         for wanted in [
-            "¿Salir del canal de voz?",
+            "¿Salir del canal de voz por un momento?",
             "¡Actualizar de todas formas!",
             "Cancelar",
         ] {

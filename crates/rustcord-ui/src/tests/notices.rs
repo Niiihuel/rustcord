@@ -421,7 +421,7 @@ fn updating_from_the_header_in_a_call_asks_first() {
     let painted = host.painted();
     assert!(painted
         .iter()
-        .any(|text| text == "¿Salir del canal de voz?"));
+        .any(|text| text == "¿Salir del canal de voz por un momento?"));
     let frame = host.frame();
     for id in [ids::VOICE_CONFIRM, ids::VOICE_CANCEL] {
         region(&frame, id, HitKind::Button);
