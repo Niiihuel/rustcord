@@ -1,176 +1,180 @@
 <div align="center">
 
-<img src="assets/icons/hicolor/256x256/apps/rustcord.png" width="112" alt="Icono de Rustcord">
+**English** · [Español](README.es.md)
+
+<img src="assets/icons/hicolor/256x256/apps/rustcord.png" width="112" alt="Rustcord icon">
 
 # Rustcord
 
-**Cliente de chat de escritorio nativo, escrito en Rust y dibujado con
-[limn](https://github.com/Niiihuel/limn). Sin Electron.**
+**A native desktop chat client, written in Rust and drawn with
+[limn](https://github.com/Niiihuel/limn). No Electron.**
 
 [![Release](https://img.shields.io/github/v/release/Niiihuel/rustcord?label=release)](https://github.com/Niiihuel/rustcord/releases/latest)
 [![CI](https://img.shields.io/github/actions/workflow/status/Niiihuel/rustcord/ci.yml?branch=main&label=CI)](https://github.com/Niiihuel/rustcord/actions/workflows/ci.yml)
-[![Licencia](https://img.shields.io/badge/licencia-MIT%20%2F%20Apache--2.0-blue)](#licencia)
+[![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue)](#license)
 [![Rust](https://img.shields.io/badge/Rust-1.99.1-orange?logo=rust)](rust-toolchain.toml)
-[![Plataformas](https://img.shields.io/badge/plataformas-Linux%20%7C%20Windows-lightgrey)](#descarga-e-instalación)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey)](#download-and-install)
 [![Sponsors](https://img.shields.io/github/sponsors/Niiihuel?label=Sponsors&logo=githubsponsors)](https://github.com/sponsors/Niiihuel)
 
-[Descargar](https://github.com/Niiihuel/rustcord/releases/latest) ·
-[Capturas](#capturas) ·
-[Rendimiento](#rendimiento-frente-a-discord) ·
-[Compilar](#compilar-desde-el-código) ·
-[English](#english)
+[Download](https://github.com/Niiihuel/rustcord/releases/latest) ·
+[Screenshots](#screenshots) ·
+[Performance](#performance-compared-with-discord) ·
+[Build](#build-from-source)
 
 </div>
 
 > [!WARNING]
-> **Rustcord es un proyecto independiente y personal. No está afiliado a
-> Discord, ni respaldado ni aprobado por Discord.**
+> **Rustcord is an independent, personal project. It is not affiliated with
+> Discord, nor endorsed or approved by Discord.**
 >
-> Su proveedor no oficial (`rustcord-discord-session`) habla con Discord como
-> lo haría el cliente web de Discord en un navegador. Eso puede infringir los
-> Términos de Servicio de Discord y poner en riesgo tu cuenta, y puede dejar de
-> funcionar en cualquier momento. **Úsalo bajo tu propia responsabilidad.**
-> Qué hace y qué no hace, en [Proveedores](#proveedores) y
-> [Privacidad y seguridad](#privacidad-y-seguridad). Rustcord también lo
-> advierte en **Ajustes → Conexiones**.
+> Its unofficial provider (`rustcord-discord-session`) talks to Discord the
+> way Discord's web client in a browser would. That may break Discord's Terms
+> of Service and put your account at risk, and it may stop working at any
+> time. That Rustcord's owner authorized this personal experiment does not
+> mean Discord approves of it. **Use it at your own risk.** What it does and
+> doesn't do is in [Providers](#providers) and
+> [Privacy and security](#privacy-and-security). Rustcord also warns about it
+> in **Settings → Connections**.
 
-## Contenido
+## Contents
 
-- [Qué es](#qué-es)
-- [Capturas](#capturas)
-- [Funciones](#funciones)
-- [Rendimiento frente a Discord](#rendimiento-frente-a-discord)
-- [Descarga e instalación](#descarga-e-instalación)
-- [Compilar desde el código](#compilar-desde-el-código)
-- [Proveedores](#proveedores)
-- [Privacidad y seguridad](#privacidad-y-seguridad)
-- [Contribuir](#contribuir)
-- [Licencia](#licencia)
-- [Apoyar el proyecto](#apoyar-el-proyecto)
-- [English](#english)
+- [What it is](#what-it-is)
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Performance compared with Discord](#performance-compared-with-discord)
+- [Download and install](#download-and-install)
+- [Build from source](#build-from-source)
+- [Providers](#providers)
+- [Privacy and security](#privacy-and-security)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support the project](#support-the-project)
 
-## Qué es
+## What it is
 
-Rustcord es un cliente de chat de escritorio con el aspecto del Discord
-actual, hecho como un programa nativo: un solo ejecutable en Rust cuya
-interfaz entera dibuja [limn](https://github.com/Niiihuel/limn) sobre la GPU
-(wgpu). No hay Electron, ni navegador, ni JavaScript en la interfaz: eframe
-sólo abre la ventana. La única excepción es una WebView aislada y temporal
-para iniciar sesión con el proveedor no oficial y para el hCaptcha que Discord
-pueda pedir, nunca para las conversaciones.
+Rustcord is a desktop chat client that looks like today's Discord, built as a
+native program: a single Rust executable whose whole interface is drawn by
+[limn](https://github.com/Niiihuel/limn) on the GPU (wgpu). There is no
+Electron, no browser and no JavaScript in the interface: eframe only opens the
+window. The one exception is an isolated, temporary WebView for signing in
+with the unofficial provider and for the hCaptcha Discord may ask for, never
+for conversations.
 
-La arquitectura no depende del servicio: todo lo que está por encima de
-`rustcord-provider` habla con un *proveedor* y no conoce a Discord. Hay tres:
-uno simulado, uno oficial (OAuth2) y uno no oficial
-(ver [Proveedores](#proveedores)).
+The architecture does not depend on the service: everything above
+`rustcord-provider` talks to a *provider* and knows nothing about Discord.
+There are three: a simulated one, an official one (OAuth2) and an unofficial
+one (see [Providers](#providers)).
 
-## Capturas
+## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/channel.png" width="100%" alt="Un canal de texto: lista de canales, mensajes con una encuesta y lista de miembros">
+  <img src="docs/screenshots/channel.png" width="100%" alt="A text channel: channel list, messages with a poll, and member list">
 </p>
 <p align="center">
-  <img src="docs/screenshots/call.png" width="49%" alt="Una sala de voz con mosaicos de participantes, cámaras y transmisiones">
-  <img src="docs/screenshots/friends.png" width="49%" alt="Amigos en línea y la columna «Activo ahora»">
+  <img src="docs/screenshots/call.png" width="49%" alt="A voice channel with participant tiles, cameras and streams">
+  <img src="docs/screenshots/friends.png" width="49%" alt="Online friends and the Active Now column">
 </p>
 
-<sub>Capturas de Rustcord 0.2.0 a 1280×800 con el proveedor simulado
-(`--provider mock`): nombres, mensajes, cámaras y transmisiones son de
-ejemplo, no de personas reales.</sub>
+<sub>Screenshots of Rustcord 0.2.0 at 1280×800 with the simulated provider
+(`--provider mock`): names, messages, cameras and streams are sample data, not
+real people.</sub>
 
-## Funciones
+## Features
 
-- 💬 **Chat**: servidores, canales, hilos, mensajes directos y grupos;
-  Markdown con código resaltado, respuestas, reacciones, menciones, mensajes
-  fijados, encuestas, búsqueda, bandeja de entrada e invitaciones; adjuntos
-  arrastrados o pegados (con su miniatura), GIF, emoji, stickers, mensajes de
-  voz y un visor de imágenes y videos.
-- 🎙️ **Voz y video**: salas de voz y escenarios, llamadas privadas, cámara,
-  compartir pantalla y mirar transmisiones, *picture-in-picture*; supresión de
-  ruido (RNNoise, DeepFilterNet o WebRTC) y cancelación de eco; pulsar para
-  hablar también fuera de la ventana; las llamadas del proveedor no oficial
-  usan DAVE, el cifrado de extremo a extremo de Discord.
-- 👥 **Personas**: amigos y solicitudes, «Activo ahora», perfiles con
-  insignias, «Colección de juegos» y «Lista de deseados», el panel de perfil en
-  los mensajes directos, cuentas bloqueadas e ignoradas, y varias cuentas
-  recordadas.
-- 🤖 **Apps y bots**: botones, menús y formularios de los bots, y comandos de
-  aplicación (proveedor no oficial). Rustcord no administra bots.
-- 🎨 **Aspecto**: el tema «Midnight» de Discord con su *blurple* como acento,
-  sus iconos animados y sus medidas; temas propios (colores, color principal y
-  transparencia de la ventana), barra de título propia o del sistema, la
-  fuente de la interfaz a elección, y la interfaz en español o en inglés.
-- 🖥️ **Escritorio**: icono en la bandeja, inicio con la sesión,
-  notificaciones, una sola instancia que recibe los enlaces, y en Windows el
-  botón de la barra de tareas que muestra la llamada. *Rich Presence* local
-  (`discord-ipc`) y detección de juegos, apagadas por defecto.
-- ⚙️ **Por dentro**: caché local cifrada por cuenta (Rustcord abre con lo que
-  ya tenía mientras se conecta) y actualizaciones con un manifiesto firmado
-  con Ed25519.
+- 💬 **Chat**: servers, channels, threads, direct messages and group DMs;
+  Markdown with highlighted code, replies, reactions, mentions, pinned
+  messages, polls, search, inbox and invites; attachments dragged or pasted
+  in (with their thumbnail), GIFs, emoji, stickers, voice messages, and an
+  image and video viewer.
+- 🎙️ **Voice and video**: voice and stage channels, private calls, camera,
+  screen sharing and watching streams, *picture-in-picture*; noise
+  suppression (RNNoise, DeepFilterNet or WebRTC) and echo cancellation;
+  push-to-talk outside the window too; the unofficial provider's calls use
+  DAVE, Discord's end-to-end encryption.
+- 👥 **People**: friends and friend requests, Active Now, profiles with
+  badges, Game Collection and Wishlist, the profile panel in direct messages,
+  blocked and ignored accounts, and several remembered accounts.
+- 🤖 **Apps and bots**: bots' buttons, menus and forms, and application
+  commands (unofficial provider). Rustcord is not a bot manager.
+- 🎨 **Appearance**: Discord's Midnight theme with its *blurple* as the
+  accent, its animated icons and its measurements; custom themes (colors,
+  main color and window transparency), Rustcord's own title bar or the
+  system's, the interface font of your choice (Mada by default), and the
+  interface in Spanish or English.
+- 🖥️ **Desktop**: tray icon, start with the session, notifications, a single
+  instance that receives links, and on Windows the taskbar button that shows
+  the call. Local *Rich Presence* (`discord-ipc`) and game detection, both off
+  by default.
+- ⚙️ **Under the hood**: an encrypted local cache per account (Rustcord opens
+  with what it already had while it connects) and updates with a manifest
+  signed with Ed25519.
 
-Las novedades de cada versión están en sus
-[notas de release](https://github.com/Niiihuel/rustcord/releases).
+What's new in each version is in its
+[release notes](https://github.com/Niiihuel/rustcord/releases).
 
-## Rendimiento frente a Discord
+## Performance compared with Discord
 
-Medido el **2026-11-04** en la misma máquina, con las dos aplicaciones abiertas
-a la vez. Sólo cifras medidas; el método, los datos crudos y los comandos
-exactos están en [docs/benchmarks.md](docs/benchmarks.md).
+Measured on **2026-11-04** on the same machine, with both applications open at
+the same time. Measured figures only; the method, the raw data and the exact
+commands are in [docs/benchmarks.md](docs/benchmarks.md).
 
 | | Discord 1.0.168 | Rustcord 0.2.0 |
 | --- | ---: | ---: |
-| Memoria (PSS, suma de sus procesos) | 576,6 MiB | 121,9 MiB |
-| Procesos / hilos | 10 / 177 | 1 / 24 |
-| CPU media en 60 s (% de un hilo) | 31,9 % | 1,0 % |
-| En disco | 557,0 MiB + 6,8 MiB del paquete | 121,5 MiB |
-| Descarga | no medida | 51,5 MiB (`rustcord-x86_64-linux.gz`) |
-| Arranque hasta el primer fotograma | no medido | 94,9 ms (mediana de 5) |
+| Memory (PSS, sum of its processes) | 576.6 MiB | 121.9 MiB |
+| Processes / threads | 10 / 177 | 1 / 24 |
+| Mean CPU over 60 s (% of one thread) | 31.9% | 1.0% |
+| On disk | 557.0 MiB + 6.8 MiB of the package | 121.5 MiB |
+| Download | not measured | 51.5 MiB (`rustcord-x86_64-linux.gz`) |
+| Startup to first frame | not measured | 94.9 ms (median of 5) |
 
 ```text
-Memoria (PSS)  Discord   ██████████████████████████████  576,6 MiB
-               Rustcord  ██████▍                         121,9 MiB
-CPU media      Discord   ██████████████████████████████  31,9 %
-               Rustcord  █                               1,0 %
-En disco       Discord   ██████████████████████████████  563,8 MiB
-               Rustcord  ██████▌                         121,5 MiB
+Memory (PSS)   Discord   ██████████████████████████████  576.6 MiB
+               Rustcord  ██████▍                         121.9 MiB
+Mean CPU       Discord   ██████████████████████████████  31.9%
+               Rustcord  █                               1.0%
+On disk        Discord   ██████████████████████████████  563.8 MiB
+               Rustcord  ██████▌                         121.5 MiB
 ```
 
-**Condiciones, que importan:**
+**The conditions, which matter:**
 
-- **Máquina**: AMD Ryzen 9 270 (8 núcleos, 16 hilos), 15 265 MiB de RAM,
-  CachyOS con Linux 7.3.1, niri 26.04 (Wayland).
-- **Discord** era la sesión real de su dueño, con su cuenta y sus servidores,
-  abierta desde hacía casi dos horas y con la ventana enfocada en una
-  pantalla de 2880×1800 a 120 Hz. Sólo se leyó `/proc`; no se lo tocó.
-- **Rustcord** usó el **proveedor simulado**, con datos de ejemplo y su
-  actividad simulada encendida (mensajes, presencias, contadores), en una
-  pantalla X oculta y recién abierto. Es la build de release local del tag
-  `v0.2.0`, sin la feature `session-login`, así que no usó la cuenta.
-- **No es la misma carga**: tómalo como orden de magnitud en esta máquina, no
-  como una comparación exacta.
-- **Memoria como PSS** porque RSS cuenta entera cada página compartida en cada
-  proceso que la mapea, y los procesos de Electron comparten muchas: sumar su
-  RSS las contaría varias veces (sumado, daría 752,1 MiB para Discord y
-  161,9 MiB para Rustcord).
-- Tres rondas de 60 s, con muestras cada 10 s; se da la mediana. La CPU es el
-  porcentaje de **un** hilo. El arranque de Discord no se midió, porque habría
-  que reiniciar el Discord de su dueño. «En disco» no cuenta datos de
-  usuario.
+- **Machine**: AMD Ryzen 9 270 (8 cores, 16 threads), 15,265 MiB of RAM,
+  CachyOS with Linux 7.3.1, niri 26.04 (Wayland).
+- **Discord** was its owner's real session, with their account and their
+  servers, open for almost two hours and with the window focused on a
+  2880×1800 display at 120 Hz. Only `/proc` was read; it was not touched.
+- **Rustcord** used the **simulated provider**, with sample data and its
+  simulated activity on (messages, presences, counters), on a hidden X
+  display and freshly opened. It is the local release build of the `v0.2.0`
+  tag, without the `session-login` feature, so it did not use the account.
+- **It is not the same workload**: take it as an order of magnitude on this
+  machine, not as an exact comparison.
+- **Memory as PSS** because RSS counts every shared page in full in every
+  process that maps it, and Electron's processes share many: adding up their
+  RSS would count them several times (added up, it would give 752.1 MiB for
+  Discord and 161.9 MiB for Rustcord).
+- Three 60 s rounds, sampled every 10 s; the median is given. CPU is the
+  percentage of **one** thread. Discord's startup was not measured, because
+  that would mean restarting its owner's Discord. "On disk" does not count
+  user data.
 
-## Descarga e instalación
+## Download and install
 
-Las versiones se publican en
-[GitHub Releases](https://github.com/Niiihuel/rustcord/releases/latest), con
-un manifiesto firmado que usa el actualizador de Rustcord. Una versión se
-publica con el instalador de Windows cuando su compilación está activada (la
-0.1.1, por ejemplo, salió sólo para Linux). No hay versión para macOS.
+Releases are published on
+[GitHub Releases](https://github.com/Niiihuel/rustcord/releases/latest); the
+current version is 0.2.3. Each one carries the Linux program
+(`rustcord-x86_64-linux.gz`), the Windows installer
+(`rustcord-x86_64-windows-setup.exe`) when its build is enabled (0.1.1, for
+example, came out for Linux only), and the update manifest that Rustcord's
+updater reads (`rustcord-update.json`), signed with Ed25519
+(`rustcord-update.json.sig`). There is no macOS version.
 
 ### Linux (x86_64)
 
-`rustcord-x86_64-linux.gz` es el programa entero comprimido. Se compila en
-Ubuntu 24.04, así que pide glibc 2.39 o más nueva, y usa bibliotecas del
-sistema: GStreamer, PipeWire, ALSA, Wayland/xkbcommon y, para el inicio de
-sesión no oficial, GTK 4 y WebKitGTK 6.0.
+`rustcord-x86_64-linux.gz` is the whole program, compressed. It is built on
+Ubuntu 24.04, so it needs glibc 2.39 or newer, and it uses the system's
+libraries: GStreamer, PipeWire, ALSA, Wayland/xkbcommon and, for the
+unofficial sign-in, GTK 4 and WebKitGTK 6.0.
 
 ```sh
 gunzip rustcord-x86_64-linux.gz
@@ -178,65 +182,72 @@ chmod +x rustcord-x86_64-linux
 ./rustcord-x86_64-linux --install
 ```
 
-`--install` lo instala para tu usuario, sin permisos de administrador: el
-programa en `~/.local/share/rustcord/app`, un lanzador en
-`~/.local/bin/rustcord`, una entrada en el menú de aplicaciones y su icono.
-Así instalado, Rustcord busca actualizaciones al abrir (se puede apagar en
-Ajustes) y verifica su firma antes de instalarlas. También se puede ejecutar
-sin instalar, pero entonces no se actualiza solo.
+`--install` installs it for your user, without administrator rights: the
+program in `~/.local/share/rustcord/app`, a launcher in
+`~/.local/bin/rustcord`, an entry in the applications menu and its icon.
+Installed this way, Rustcord checks for updates when it opens (this can be
+turned off in Settings) and verifies their signature before installing them.
+It can also run without being installed, but then it does not update itself.
 
 ### Windows (x86_64)
 
-`rustcord-x86_64-windows-setup.exe` es un instalador por usuario, sin
-permisos de administrador, para Windows 10 o más nuevo. Instala en
-`%LOCALAPPDATA%\Programs\Rustcord`; tus datos quedan en
-`%LOCALAPPDATA%\Rustcord` y `%APPDATA%\Rustcord`, y ni las actualizaciones ni
-la desinstalación los tocan. El inicio de sesión no oficial usa el WebView2
-Runtime de Windows.
+`rustcord-x86_64-windows-setup.exe` is a per-user installer, without
+administrator rights, for Windows 10 or newer. It installs to
+`%LOCALAPPDATA%\Programs\Rustcord`; your data stays in
+`%LOCALAPPDATA%\Rustcord` and `%APPDATA%\Rustcord`, and neither updates nor
+uninstalling touch it. The unofficial sign-in uses Windows' WebView2 Runtime.
 
-### Avisos de licencias
+### License notices
 
-Cada versión lleva sus avisos de terceros: `rustcord --licenses` los imprime, y
-la release también publica `THIRD_PARTY_NOTICES.md` y
+Every version carries its third-party notices: `rustcord --licenses` prints
+them, and the release also publishes `THIRD_PARTY_NOTICES.md` and
 `rustcord-licenses.tar.gz`.
 
-## Compilar desde el código
+## Build from source
 
-Rustup instala solo el compilador que fija
-[`rust-toolchain.toml`](rust-toolchain.toml) (Rust 1.99.1, con rustfmt y
-clippy).
+Rustup installs the compiler pinned by
+[`rust-toolchain.toml`](rust-toolchain.toml) on its own (Rust 1.99.1, with
+rustfmt and clippy).
 
-**Con Nix** (el entorno que usa la CI, en [`shell.nix`](shell.nix) y
-[`flake.nix`](flake.nix)):
-
-```sh
-git clone https://github.com/Niiihuel/rustcord
-cd rustcord
-nix-shell                          # o: nix develop
-cargo run -p rustcord-desktop      # la ventana
-```
-
-**Sin Nix**, en Ubuntu 24.04, las mismas dependencias que instala la
-[release](.github/workflows/release.yml):
+The build uses the system's libraries. On **Ubuntu 24.04 or Debian**, the same packages the [release](.github/workflows/release.yml)
+installs, plus D-Bus and GStreamer's plugins to run the tests and play videos:
 
 ```sh
 sudo apt-get install cmake nasm clang libclang-dev pkg-config \
   libasound2-dev libpipewire-0.3-dev libspa-0.2-dev \
   libwayland-dev libxkbcommon-dev \
   libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-  libgtk-4-dev libwebkitgtk-6.0-dev   # estas dos, sólo para session-login
-cargo run -p rustcord-desktop
+  libgtk-4-dev libwebkitgtk-6.0-dev \
+  dbus gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
 ```
 
-**El proveedor no oficial** se compila sólo con la feature `session-login`
-(Linux o Windows); con Nix, en su propio entorno:
+On **Arch Linux or CachyOS**, the equivalent packages:
 
 ```sh
-nix develop .#session              # o: nix-shell --arg withLogin true
+sudo pacman -S --needed base-devel cmake nasm clang pkgconf \
+  alsa-lib pipewire wayland libxkbcommon \
+  gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
+  gtk4 webkitgtk-6.0 dbus
+```
+
+GTK 4 and WebKitGTK 6 (`libgtk-4-dev libwebkitgtk-6.0-dev`, or `gtk4
+webkitgtk-6.0`) are only needed for `session-login`. Then:
+
+```sh
+git clone https://github.com/Niiihuel/rustcord
+cd rustcord
+cargo run -p rustcord-desktop      # the window
+```
+
+**The unofficial provider** is only built with the `session-login` feature
+(Linux or Windows); on Linux, with the GTK 4 and WebKitGTK 6 development
+packages above installed:
+
+```sh
 cargo run -p rustcord-desktop --features session-login
 ```
 
-**Comprobaciones** (las mismas que la CI):
+**Checks** (the same as CI):
 
 ```sh
 cargo fmt --all -- --check
@@ -244,143 +255,118 @@ cargo clippy --workspace --all-targets
 cargo test --workspace
 ```
 
-En Windows, con la cadena MSVC de Visual Studio y CMake:
+On Windows, with Visual Studio's MSVC toolchain and CMake:
 `cargo build --release -p rustcord-desktop --features session-login`.
 
-Algunas opciones útiles al desarrollar:
+Some options useful while developing:
 
 ```sh
-cargo run -p rustcord-desktop -- --provider mock                       # datos simulados
+cargo run -p rustcord-desktop -- --provider mock                       # simulated data
 cargo run -p rustcord-desktop -- --screenshot shot.png --channel general
-cargo run --release -p rustcord-desktop -- --bench                     # medición de scroll
+cargo run --release -p rustcord-desktop -- --bench                     # scroll benchmark
 ```
 
-## Proveedores
+## Providers
 
-| Proveedor | `--provider` | Qué es |
+| Provider | `--provider` | What it is |
 | --- | --- | --- |
-| **Simulado** | `mock` | Datos de ejemplo locales, sin red. La interfaz lo marca como «Simulación local · sin conexión real». Para probar y desarrollar. |
-| **Oficial** (OAuth2) | `discord` | Experimental y limitado a la identidad: OAuth2 con los permisos `identify guilds`, sin bot ni token personal; no habilita mensajes ni voz. Pide el ID público de tu aplicación (`--discord-client-id` o `RUSTCORD_DISCORD_CLIENT_ID`) y el redirect `http://127.0.0.1:48731/oauth/callback` registrado en el Developer Portal. |
-| **No oficial** (sesión) | `discord-session` | Experimento personal con una cuenta normal: mensajes, voz, video y el resto de las funciones. Habla con Discord como su cliente web en un navegador. Sólo en builds con `session-login`, como las releases. **Lee la advertencia de arriba.** |
+| **Simulated** | `mock` | Local sample data, no network. The interface marks it as "Local simulation · no real connection". For testing and development. |
+| **Official** (OAuth2) | `discord` | Experimental and limited to identity: OAuth2 with the `identify guilds` scopes, no bot and no personal token; it does not enable messages or voice. It needs your application's public ID (`--discord-client-id` or `RUSTCORD_DISCORD_CLIENT_ID`) and the redirect `http://127.0.0.1:48731/oauth/callback` registered in the Developer Portal. |
+| **Unofficial** (session) | `discord-session` | A personal experiment with a regular account: messages, voice, video and the rest of the features. It talks to Discord as its web client in a browser does. Only in builds with `session-login`, like the releases. **Read the warning above.** |
 
-Las releases empiezan en el inicio de sesión del proveedor no oficial;
-el proveedor se cambia en **Ajustes → Conexiones** (o con `--provider`) y
-Rustcord recuerda el último elegido.
+Releases start at the unofficial provider's sign-in; the provider is changed
+in **Settings → Connections** (or with `--provider`) and Rustcord remembers
+the last one chosen.
 
-Sobre el proveedor no oficial, concretamente:
+About the unofficial provider, specifically:
 
-- Se presenta como el cliente web de Discord en un navegador (*user agent*,
-  `X-Super-Properties`, huella y propiedades del *Identify*), con una sola
-  identidad coherente en REST, el Gateway y la WebView del hCaptcha.
-- Puede usar rutas no documentadas (el perfil completo y la lista de miembros
-  por suscripción), los componentes de los bots y los comandos de aplicación.
-- **No** evade ni automatiza CAPTCHA ni MFA: los resuelve la persona. Si
-  Discord pide un hCaptcha, aparece en una página propia de Rustcord; nunca se
-  reenvía a servicios externos, y su respuesta permite un solo reintento de la
-  misma acción.
-- **No** lee sesiones ni datos locales del cliente oficial de Discord ni de
-  navegadores, y no accede a cuentas ajenas.
-- El socket local `discord-ipc` (*Rich Presence*) y la detección de juegos
-  vienen apagados, cada uno con su interruptor.
+- It presents itself as Discord's web client in a browser (*user agent*,
+  `X-Super-Properties`, fingerprint and *Identify* properties), with a single
+  consistent identity across REST, the Gateway and the hCaptcha WebView.
+- It may use undocumented routes (the full profile and the member list by
+  subscription), bots' components and application commands.
+- It does **not** bypass or automate CAPTCHA or MFA: the person solves them.
+  If Discord asks for an hCaptcha, it appears in a page of Rustcord's own; it
+  is never forwarded to external services, and its answer allows a single
+  retry of the same action.
+- It does **not** read sessions or local data of Discord's official client or
+  of browsers, and it does not access other people's accounts.
+- The local `discord-ipc` socket (*Rich Presence*) and game detection are
+  off by default, each with its own switch.
 
-## Privacidad y seguridad
+## Privacy and security
 
-- **Credenciales**: el proveedor no oficial tiene su propio inicio de sesión,
-  en una ventana aislada y temporal. La credencial queda dentro de Rustcord y
-  se guarda **sólo** en el llavero del sistema (Secret Service en Linux, el
-  Administrador de credenciales en Windows) para restaurar la sesión al abrir;
-  nunca en la base de datos, archivos, registros ni configuración. Al cerrar
-  sesión se borra del llavero.
-- **Caché cifrada por cuenta**: mensajes, borradores, la instantánea del
-  estado y las marcas de lectura se guardan cifrados, con una clave por cuenta
-  que vive en el llavero, nunca en disco. Sin llavero, quedan sólo en memoria,
-  nunca en texto plano. Al cerrar sesión u olvidar la cuenta se borran sus
-  datos y su clave.
-- **Pulsar para hablar global**: en Windows, un gancho de teclado y ratón de
-  bajo nivel que nunca consume la entrada, sólo compara cada evento con la
-  tecla o combinación elegida y no guarda, envía ni registra teclas. Como en
-  Discord, sirve cualquier tecla, y un juego abierto como administrador
-  sólo deja oírla si Rustcord también lo está.
-- **Actualizaciones**: el manifiesto de cada versión va firmado con Ed25519 y
-  Rustcord comprueba la firma con la clave que lleva compilada antes de
-  instalar nada.
-- Rustcord no incluye telemetría ni envío automático de errores. Con el
-  proveedor no oficial, lo que hagas llega a Discord como desde su cliente
-  web.
+- **Credentials**: the unofficial provider has its own sign-in, in an
+  isolated, temporary window. The credential stays inside Rustcord and is
+  stored **only** in the system keyring (Secret Service on Linux, Credential
+  Manager on Windows) to restore the session when it opens; never in the
+  database, files, logs or configuration. Signing out deletes it from the
+  keyring.
+- **Encrypted cache per account**: messages, drafts, the state snapshot and
+  read markers are stored encrypted, with one key per account that lives in
+  the keyring, never on disk. Without a keyring, they stay in memory only,
+  never in plain text. Signing out or forgetting the account deletes its data
+  and its key.
+- **Global push-to-talk**: on Windows, a low-level keyboard and mouse hook
+  that never consumes input, only compares each event with the chosen key or
+  combination, and does not store, send or log keys. As in Discord, any key
+  works, and a game running as administrator only lets it be heard if
+  Rustcord is too.
+- **Updates**: each version's manifest is signed with Ed25519 and Rustcord
+  checks the signature with the key compiled into it before installing
+  anything.
+- Rustcord includes no telemetry and no automatic error reporting. With the
+  unofficial provider, what you do reaches Discord as it would from its web
+  client.
 
-## Contribuir
+## Contributing
 
-Las reglas del proyecto están en [AGENTS.md](AGENTS.md), que vale para personas
-y agentes. En corto:
+The project's rules are in [AGENTS.md](AGENTS.md) (in Spanish), which applies
+to people and agents alike. In short:
 
-- Toda la interfaz es limn. Si a limn le falta algo, se implementa en
-  [limn](https://github.com/Niiihuel/limn) con su propio PR; no se parchea
-  dentro de Rustcord.
-- Las capas sólo dependen hacia abajo, la UI es controlada (el estado en
-  `Store` y `Ui`) y nada bloqueante corre en el hilo de la interfaz.
-- Los textos de la interfaz, en español y en inglés a través de
-  `rustcord_i18n`; los comentarios y la documentación del código, en inglés.
-- Una dependencia nueva lleva un comentario que diga por qué.
-- Nada de código copiado de otros clientes o servicios, y nada se da por
-  funcionando sin haberlo probado.
-- Antes de un PR: `cargo fmt --all -- --check`, `cargo clippy --workspace
-  --all-targets` y `cargo test --workspace`.
+- The whole interface is limn. If limn is missing something, it is
+  implemented in [limn](https://github.com/Niiihuel/limn) with its own PR; it
+  is not patched inside Rustcord.
+- Layers only depend downwards, the UI is controlled (the state in `Store`
+  and `Ui`) and nothing blocking runs on the interface thread.
+- Interface texts, in Spanish and English through `rustcord_i18n`; code
+  comments and documentation, in English.
+- A new dependency carries a comment saying why.
+- No code copied from other clients or services, and nothing is taken as
+  working without having tested it.
+- Before a PR: `cargo fmt --all -- --check`, `cargo clippy --workspace
+  --all-targets` and `cargo test --workspace`.
 
-## Licencia
+## License
 
-El código de Rustcord está bajo **MIT o Apache-2.0**, a tu elección:
-[LICENSE-MIT](LICENSE-MIT) y [LICENSE-APACHE](LICENSE-APACHE). Las
-dependencias y recursos de terceros, con sus licencias, están en
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) y
-[assets/licenses](assets/licenses).
+Rustcord's code is under **MIT or Apache-2.0**, at your option:
+[LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE). Third-party
+dependencies and assets, with their licenses, are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[assets/licenses](assets/licenses). Among them is the interface font,
+**Mada** (SIL Open Font License 1.1), the free face nearest Discord's gg sans,
+which Rustcord ships cut down to Latin
+([assets/licenses/FONT-NOTICES.md](assets/licenses/FONT-NOTICES.md),
+[docs/discord-reference.md](docs/discord-reference.md#typography)).
 
-**Recursos de Discord.** Por decisión del dueño de Rustcord, el proyecto
-incluye recursos de Discord: sus efectos de sonido públicos
-([assets/sounds/discord](assets/sounds/discord), con su origen), el icono de
-la aplicación ([assets/icons/rustcord-discord.png](assets/icons/rustcord-discord.png)),
-el logo de Discord como marca de la interfaz
-([assets/rustcord-mark.svg](assets/rustcord-mark.svg)) y los iconos de su
-interfaz ([assets/glyphs](assets/glyphs)), y reproduce su paleta y las medidas
-de su interfaz ([docs/discord-reference.md](docs/discord-reference.md)). Esa
-decisión no es una autorización ni un respaldo de Discord: esos recursos y el
-nombre y el logo de Discord siguen siendo de Discord y marcas suyas, **no**
-están bajo la licencia de Rustcord y no se pueden reutilizar bajo MIT ni
-Apache-2.0. Los logos de los servicios de las conexiones
-([assets/connections](assets/connections)), tal como el cliente web de Discord
-los sirve, son marcas de sus dueños, están sólo para nombrar cada conexión y
-tampoco están bajo la licencia de Rustcord.
+**Discord's assets.** By decision of Rustcord's owner, the project includes
+Discord assets: its public sound effects
+([assets/sounds/discord](assets/sounds/discord), with their origin), the
+application icon ([assets/icons/rustcord-discord.png](assets/icons/rustcord-discord.png)),
+Discord's logo as the interface's mark
+([assets/rustcord-mark.svg](assets/rustcord-mark.svg)) and its interface's
+icons ([assets/glyphs](assets/glyphs)), and it reproduces its palette and its
+interface's measurements ([docs/discord-reference.md](docs/discord-reference.md)).
+That decision is not an authorization or an endorsement by Discord: those
+assets and Discord's name and logo remain Discord's and its trademarks, are
+**not** under Rustcord's license and cannot be reused under MIT or
+Apache-2.0. The logos of the connections' services
+([assets/connections](assets/connections)), as Discord's web client serves
+them, are trademarks of their owners, are there only to name each connection,
+and are not under Rustcord's license either.
 
-## Apoyar el proyecto
+## Support the project
 
-Si Rustcord te sirve, puedes apoyarlo con
-[GitHub Sponsors](https://github.com/sponsors/Niiihuel) 💜. También ayuda
-abrir un issue con lo que falle o lo que falte.
-
-## English
-
-**Rustcord** is a native desktop chat client written in Rust, with its whole
-interface drawn by [limn](https://github.com/Niiihuel/limn) on the GPU — no
-Electron. It looks like today's Discord and supports servers, channels,
-threads, DMs, voice and video calls (with DAVE end-to-end encryption on the
-unofficial provider), screen sharing, profiles, themes, and an encrypted
-per-account local cache. Releases ship for Linux (`rustcord-x86_64-linux.gz`;
-run it with `--install` for a per-user install) and Windows
-(`rustcord-x86_64-windows-setup.exe`) on
-[GitHub Releases](https://github.com/Niiihuel/rustcord/releases/latest).
-
-> [!WARNING]
-> Rustcord is an independent, personal project, **not affiliated with,
-> endorsed or approved by Discord**. Its unofficial provider talks to Discord
-> as the web client in a browser would, which may break Discord's Terms of
-> Service and put your account at risk. Use it at your own risk. It never
-> automates CAPTCHA or MFA, keeps credentials only in the OS keyring, and
-> encrypts its local cache per account.
-
-Measured on 2026-11-04 on one machine (AMD Ryzen 9 270, CachyOS): Discord
-1.0.168 used 576.6 MiB PSS, 10 processes and 31.9 % of one thread with the
-owner's real account in use; Rustcord 0.2.0 used 121.9 MiB PSS, 1 process and
-1.0 % with **simulated** data — not the same workload, see
-[docs/benchmarks.md](docs/benchmarks.md). Build with `nix-shell` and
-`cargo run -p rustcord-desktop` (Rust 1.99.1). Code under MIT or Apache-2.0;
-Discord's assets remain Discord's. Support the project through
-[GitHub Sponsors](https://github.com/sponsors/Niiihuel).
+If Rustcord is useful to you, you can support it through
+[GitHub Sponsors](https://github.com/sponsors/Niiihuel) 💜. Opening an issue
+with what fails or what's missing helps too.
