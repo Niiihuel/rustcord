@@ -289,6 +289,8 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
             if event == webkit6::LoadEvent::Started {
                 state.generation.set(state.generation.get().wrapping_add(1));
                 state.pending.set(false);
+                // Each document gets its own retries: a long login moves often.
+                state.retries.set(0);
             }
         });
     }
@@ -360,7 +362,8 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
                 // it, or its next document tells again. Failing every
                 // retry, the take is broken: the window ends with its error.
                 let Ok(value) = result else {
-                    if !state.retry() {
+                    // Out of its lifetime, the timeout says why it ends.
+                    if !state.retry() && state.active() {
                         state.finish(&main, 6);
                     }
                     return;

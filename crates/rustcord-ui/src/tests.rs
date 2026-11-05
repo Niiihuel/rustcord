@@ -41,6 +41,9 @@ struct Host {
     /// The servers the provider was told the column shows, apart from
     /// `sent`: every server switch tells one.
     servers_shown: Vec<Option<rustcord_model::ServerId>>,
+    /// Channels whose history the provider fails to give, and each page asked.
+    failing_history: std::collections::HashSet<ChannelId>,
+    pages: Vec<ChannelId>,
 }
 
 impl Host {
@@ -76,6 +79,8 @@ impl Host {
             active: true,
             confirm_reads: true,
             servers_shown: Vec::new(),
+            failing_history: Default::default(),
+            pages: Vec::new(),
         };
         let snapshot = host.provider.snapshot();
         set_upload_limits(&mut host.ui, host.provider.upload_limits());
@@ -360,6 +365,18 @@ impl Host {
     }
 
     fn page(&mut self, channel: ChannelId, before: Option<MessageId>) {
+        self.pages.push(channel);
+        if self.failing_history.contains(&channel) {
+            self.event(Event::Failed {
+                failure: rustcord_provider::Failure::History {
+                    request: 0,
+                    channel,
+                },
+                reason: "No se pudo cargar el historial.".into(),
+                ambiguous: false,
+            });
+            return;
+        }
         let (messages, reached_start) = self.provider.history(channel, before, 50);
         self.event(Event::HistoryLoaded {
             request: 0,

@@ -808,7 +808,11 @@ fn main() -> eframe::Result {
     match result {
         // The chosen GPU's driver was not there after all: start again with
         // every GPU, as if Rustcord had not chosen, and the settings say so.
-        Err(error) if limited.loader || limited.backend => {
+        // The API limit only matters to an error of the GPU's own: no display
+        // or a broken window would fail again.
+        Err(error)
+            if limited.loader || (limited.backend && matches!(error, eframe::Error::Wgpu(_))) =>
+        {
             eprintln!(
                 "rustcord: could not open the window on the chosen GPU ({error}); trying every GPU"
             );

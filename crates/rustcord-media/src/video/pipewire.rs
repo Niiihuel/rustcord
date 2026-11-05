@@ -536,7 +536,8 @@ fn frame(format: Format, datas: &mut [spa::buffer::Data], max: (u32, u32)) -> Op
             let len = stride
                 .checked_mul(format.height as usize)?
                 .checked_add(offset)?;
-            let mapped = Mapped::new(data.fd(), len)?;
+            // shortcut: mapped again each frame, cheap next to the copy; cache by fd if it shows.
+            let mapped = Mapped::new(data.fd(), data.as_raw().mapoffset as usize, len)?;
             let plane = Plane {
                 bytes: mapped.bytes().get(offset..)?,
                 stride,
@@ -596,6 +597,8 @@ fn packed_chroma(
 struct Mapped {
     address: *mut libc::c_void,
     len: usize,
+    /// From the page-aligned start of the mapping to the buffer's `mapoffset`.
+    skip: usize,
     fd: std::os::fd::RawFd,
 }
 
@@ -605,10 +608,17 @@ const DMA_BUF_SYNC_READ: u64 = 1;
 const DMA_BUF_SYNC_END: u64 = 1 << 2;
 
 impl Mapped {
-    fn new(fd: std::os::fd::RawFd, len: usize) -> Option<Self> {
+    /// `len` bytes of `fd` from `at`, its buffer's `mapoffset`.
+    fn new(fd: std::os::fd::RawFd, at: usize, len: usize) -> Option<Self> {
         if fd < 0 || len == 0 {
             return None;
         }
+        // SAFETY: sysconf reads a constant of the system.
+        let page = usize::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).ok()?;
+        let start = at - at % page.max(1);
+        let skip = at - start;
+        let len = len.checked_add(skip)?;
+        let offset = libc::off_t::try_from(start).ok()?;
         // SAFETY: a read-only shared mapping of `len` bytes of the buffer's
         // file, which PipeWire keeps open while the buffer is dequeued; it
         // is only read through `bytes` and unmapped on drop.
@@ -619,13 +629,18 @@ impl Mapped {
                 libc::PROT_READ,
                 libc::MAP_SHARED,
                 fd,
-                0,
+                offset,
             )
         };
         if address == libc::MAP_FAILED {
             return None;
         }
-        let mapped = Self { address, len, fd };
+        let mapped = Self {
+            address,
+            len,
+            skip,
+            fd,
+        };
         mapped.sync(DMA_BUF_SYNC_READ);
         Some(mapped)
     }
@@ -639,8 +654,10 @@ impl Mapped {
     }
 
     fn bytes(&self) -> &[u8] {
-        // SAFETY: `len` readable bytes mapped at `address` until drop.
-        unsafe { std::slice::from_raw_parts(self.address.cast::<u8>(), self.len) }
+        // SAFETY: `len` readable bytes mapped at `address` until drop; `skip`
+        // is within them.
+        let all = unsafe { std::slice::from_raw_parts(self.address.cast::<u8>(), self.len) };
+        &all[self.skip..]
     }
 }
 
@@ -787,9 +804,12 @@ mod tests {
         // SAFETY: `fd` is a valid descriptor this test owns.
         let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
         file.write_all(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
-        let mapped = Mapped::new(file.as_raw_fd(), 8).expect("mapped");
+        let mapped = Mapped::new(file.as_raw_fd(), 0, 8).expect("mapped");
         assert_eq!(mapped.bytes(), &[1, 2, 3, 4, 5, 6, 7, 8]);
-        assert!(Mapped::new(-1, 8).is_none());
+        // From a buffer's `mapoffset`, aligned down to its page.
+        let mapped = Mapped::new(file.as_raw_fd(), 3, 5).expect("mapped");
+        assert_eq!(mapped.bytes(), &[4, 5, 6, 7, 8]);
+        assert!(Mapped::new(-1, 0, 8).is_none());
     }
 
     #[test]

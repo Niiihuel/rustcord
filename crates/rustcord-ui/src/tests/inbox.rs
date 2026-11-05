@@ -593,6 +593,41 @@ fn the_unread_tab_orders_its_cards_as_discords_and_loads_those_in_view_a_few_at_
     assert_eq!(host.ui.channel(), Some(charla));
 }
 
+/// Cards whose pages do not come free their slots for the next, and are
+/// not asked again while the inbox stays open.
+#[test]
+fn cards_that_fail_to_load_free_their_slots_and_are_not_asked_again() {
+    let mut host = Host::new();
+    host.open_channel("general");
+    host.click("inbox:open");
+    let cards = unread_cards(&host);
+    let loaded = |host: &Host, channel: ChannelId| {
+        host.store
+            .timeline(channel)
+            .is_some_and(|timeline| timeline.latest)
+    };
+    // Every card not loaded yet but the last fails: three of them would
+    // hold every slot.
+    let last = *cards.last().unwrap();
+    let failing: Vec<ChannelId> = cards
+        .iter()
+        .copied()
+        .filter(|card| *card != last && !loaded(&host, *card))
+        .collect();
+    assert!(failing.len() >= 3, "{cards:?}");
+    host.failing_history.extend(failing.iter().copied());
+    for card in &cards {
+        show_card(&mut host, *card);
+        host.frame();
+        host.frame();
+    }
+    assert!(loaded(&host, last), "the last loads past the failed ones");
+    for card in &failing {
+        let asked = host.pages.iter().filter(|page| *page == card).count();
+        assert_eq!(asked, 1, "{card:?} asked once: {:?}", host.pages);
+    }
+}
+
 #[test]
 fn a_cards_check_marks_its_channel_read_and_it_leaves() {
     let mut host = Host::new();

@@ -51,6 +51,9 @@ pub(crate) struct Inbox {
     folded: HashSet<ChannelId>,
     /// Channels whose newest page was asked for since it opened.
     requested: HashSet<ChannelId>,
+    /// Of those, the ones whose page did not come: not asked again while
+    /// open, and no longer holding one of the `LOADING` slots.
+    failed: HashSet<ChannelId>,
     /// The card whose bell's menu is open.
     bell: Option<ChannelId>,
     /// «¿Marcar todo como leído?» waits for an answer.
@@ -75,6 +78,7 @@ impl Inbox {
             limited: false,
             folded: HashSet::new(),
             requested: HashSet::new(),
+            failed: HashSet::new(),
             bell: None,
             confirm: false,
         }
@@ -93,6 +97,7 @@ pub(crate) fn on_ready(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
         let focus = inbox.tab.id();
         // What was asked of the old session is asked again of the new.
         inbox.requested.clear();
+        inbox.failed.clear();
         inbox.revision = u64::MAX;
         ui.inbox = Some(inbox);
         refresh(ui, store);
@@ -463,10 +468,14 @@ pub(crate) fn after_layout(ui: &mut Ui, store: &Store, tree: &UiTree) -> Vec<Int
     let waiting = inbox
         .requested
         .iter()
-        .filter(|channel| !loaded(store, **channel))
+        .filter(|channel| !loaded(store, **channel) && !inbox.failed.contains(*channel))
         .count();
     let mut intents = Vec::new();
-    for entry in inbox.entries.iter().take(rows.end + 1).skip(rows.start) {
+    let visible: Vec<Entry> = shown(store, inbox)
+        .skip(rows.start)
+        .take(rows.len())
+        .collect();
+    for entry in visible {
         if waiting + intents.len() >= LOADING {
             break;
         }
@@ -474,6 +483,7 @@ pub(crate) fn after_layout(ui: &mut Ui, store: &Store, tree: &UiTree) -> Vec<Int
         if loaded(store, channel)
             || inbox.folded.contains(&channel)
             || inbox.requested.contains(&channel)
+            || inbox.failed.contains(&channel)
             || !allowed(store, channel)
         {
             continue;
@@ -482,6 +492,30 @@ pub(crate) fn after_layout(ui: &mut Ui, store: &Store, tree: &UiTree) -> Vec<Int
         intents.push(Intent::LoadLatest(channel));
     }
     intents
+}
+
+/// A card's newest page did not come: its slot is free, and it is not
+/// asked again while the inbox stays open.
+pub(crate) fn history_failed(ui: &mut Ui, channel: ChannelId) {
+    if let Some(inbox) = &mut ui.inbox {
+        if inbox.requested.contains(&channel) {
+            inbox.failed.insert(channel);
+        }
+    }
+}
+
+/// The entries the list draws, one row each, in its order: what
+/// `surface` lays out, so a row's index is its entry's here.
+fn shown<'a>(store: &'a Store, inbox: &'a Inbox) -> impl Iterator<Item = Entry> + 'a {
+    inbox.entries.iter().copied().filter(move |entry| {
+        allowed(store, entry.channel)
+            && store.channel(entry.channel).is_some()
+            // A mention whose message is gone, or folded, draws no card.
+            && !(inbox.tab == Tab::Mentions
+                && entry.message.is_some()
+                && (inbox.folded.contains(&entry.channel)
+                    || card_messages(store, entry).0.is_empty()))
+    })
 }
 
 /// The newest messages of `channel` are here.
@@ -502,7 +536,7 @@ pub(crate) fn wanted(
     let Some(rows) = tree.visible_rows(ids::LIST) else {
         return;
     };
-    for entry in inbox.entries.iter().take(rows.end + 1).skip(rows.start) {
+    for entry in shown(store, inbox).skip(rows.start).take(rows.len()) {
         let Some(channel) = store.channel(entry.channel) else {
             continue;
         };
@@ -512,7 +546,7 @@ pub(crate) fn wanted(
                 add(store.avatar_in(None, *user));
             }
         }
-        for message in card_messages(store, entry).0 {
+        for message in card_messages(store, &entry).0 {
             add(store.avatar_in(channel.server, message.author));
             for emoji in crate::images::emoji_pictures(&message) {
                 add(Some(emoji));

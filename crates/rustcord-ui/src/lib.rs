@@ -1204,6 +1204,13 @@ pub fn on_applied(ui: &mut Ui, store: &mut Store, applied: &Applied, now: Instan
         intents.extend(store.read_follow_up(*channel).map(Intent::Command));
     }
     intents.extend(commands::on_applied(ui, store, applied));
+    if let rustcord_state::Applied::Failed {
+        failure: rustcord_provider::Failure::History { channel, .. },
+        ..
+    } = applied
+    {
+        inbox::history_failed(ui, *channel);
+    }
     inbox::refresh(ui, store);
     // A modal that closed lets go of its files.
     intents.extend(interactions::on_applied(ui, store));

@@ -220,11 +220,15 @@ impl Matcher {
             .filter(|hotkey| covered(hotkey))
             .map(|hotkey| hotkey.modifiers.count_ones())
             .max();
+        // The input repeating while one of its shortcuts holds starts no other.
+        let held = (0..self.hotkeys.len())
+            .any(|place| self.active[place] && self.hotkeys[place].main == main);
         for (place, hotkey) in self.hotkeys.iter().enumerate() {
             if hotkey.main != main {
                 continue;
             }
             if down
+                && !held
                 && !self.active[place]
                 && covered(hotkey)
                 && Some(hotkey.modifiers.count_ones()) == most
@@ -580,6 +584,10 @@ mod tests {
             [Edge::Pressed(0)],
             "Shift is extra"
         );
+        // V held, then Ctrl: V repeating does not also start Ctrl+V.
+        matcher.step(key(SHIFT_KEY, false));
+        matcher.step(key(CTRL, true));
+        assert!(matcher.step(key(v, true)).is_empty(), "a repeat");
     }
 
     #[test]

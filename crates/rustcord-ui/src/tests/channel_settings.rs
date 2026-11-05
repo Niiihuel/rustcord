@@ -139,6 +139,17 @@ impl Host {
     }
 }
 
+/// Turned into an announcement channel, it still opens its settings.
+#[test]
+fn an_announcement_channel_opens_its_settings() {
+    let mut host = Host::new();
+    let channel = host.channel_named("limn-core");
+    let mut changed = host.store.channel(channel).unwrap().clone();
+    changed.kind = ChannelKind::Announcement;
+    host.event(Event::ChannelChanged(changed));
+    host.cs_open(channel);
+}
+
 #[test]
 fn the_overview_of_a_text_channel_saves_in_one_edit_once_the_provider_answers() {
     let mut host = Host::new();

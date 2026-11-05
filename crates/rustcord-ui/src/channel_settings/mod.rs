@@ -419,7 +419,12 @@ fn open(ui: &mut Ui, store: &Store, channel: ChannelId) -> Vec<Intent> {
         found.server.is_some()
             && matches!(
                 found.kind,
-                ChannelKind::Text | ChannelKind::Voice | ChannelKind::Category | ChannelKind::Forum
+                ChannelKind::Text
+                    | ChannelKind::Announcement
+                    | ChannelKind::Voice
+                    | ChannelKind::Stage
+                    | ChannelKind::Category
+                    | ChannelKind::Forum
             )
     }) else {
         return Vec::new();
