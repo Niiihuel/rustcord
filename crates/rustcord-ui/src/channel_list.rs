@@ -1718,11 +1718,7 @@ pub(crate) fn header_tools(
     // The inbox is at the header's end, after the search (`HeaderNav::inbox`).
     let mut tools = Vec::new();
     if conversation.server.is_some() {
-        let (_, muted) = effective(ui, store, conversation, now);
-        let mut silence: Vec<Entry> = vec![mute_item(ui, store, conversation, now).into()];
-        // The bell shows a silenced thread's silence: it ends it too.
-        silence.extend(crate::threads::bell_entry(store, conversation, now));
-        let entries = grouped(vec![silence, notify_entries(ui, store, conversation)]);
+        let (muted, entries) = bell_entries(ui, store, conversation, now);
         tools.push(parts::bell(
             ui.channel_list.bell == Some(channel),
             muted,
@@ -1754,6 +1750,24 @@ pub(crate) fn header_tools(
         .is_some_and(|abilities| abilities.pin.allowed());
     tools.push(parts::pins(open, content, can_unpin, denied, look));
     tools
+}
+
+/// The bell's menu of a server's `channel`: its silence and its levels;
+/// and whether it is silenced now, for its glyph.
+pub(crate) fn bell_entries(
+    ui: &Ui,
+    store: &Store,
+    channel: &Channel,
+    now: Timestamp,
+) -> (bool, Vec<Entry>) {
+    let (_, muted) = effective(ui, store, channel, now);
+    let mut silence: Vec<Entry> = vec![mute_item(ui, store, channel, now).into()];
+    // The bell shows a silenced thread's silence: it ends it too.
+    silence.extend(crate::threads::bell_entry(store, channel, now));
+    (
+        muted,
+        grouped(vec![silence, notify_entries(ui, store, channel)]),
+    )
 }
 
 /// The «más» of a narrow header: the inbox, the list of threads and an

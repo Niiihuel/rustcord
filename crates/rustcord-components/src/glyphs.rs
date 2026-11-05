@@ -33,6 +33,12 @@ pub const MORE_VERTICAL: &str = glyph!("more-vertical");
 pub const USER_PROFILE: &str = glyph!("user-profile");
 /// The inbox: a tray, at the header's end.
 pub const INBOX: &str = glyph!("inbox");
+/// Two checks: the inbox's «Marcar todo como leído».
+pub const CHECK_DOUBLE: &str = glyph!("check-double");
+/// A bubble with an arrow leaving it: «Ir al mensaje».
+pub const JUMP: &str = glyph!("jump");
+/// A ribbon: the inbox's «Marcadores».
+pub const BOOKMARK: &str = glyph!("bookmark");
 /// An open eye: who watches a stream, beside their count.
 pub const EYE: &str = glyph!("eye");
 /// An arrow down onto a line: the header's button of an update offered.

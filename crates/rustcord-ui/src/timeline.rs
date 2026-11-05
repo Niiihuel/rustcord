@@ -546,7 +546,7 @@ fn names(
 
 /// `names` with how each conversation a link of `messages` names reads on
 /// its pill, and `now` for the moments relative to it.
-fn places(
+pub(crate) fn places(
     mut names: Names,
     store: &Store,
     here: Option<ServerId>,

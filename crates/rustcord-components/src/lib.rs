@@ -22,6 +22,7 @@ pub mod desktop;
 pub mod glyphs;
 pub mod group;
 pub mod identity;
+pub mod inbox;
 pub mod interactions;
 pub mod look;
 pub mod members;

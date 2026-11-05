@@ -415,6 +415,76 @@ Read from the web bundle the desktop client cached (2026-11-04).
 - Nothing: «No hay hilos.», «Mantén el foco en una conversación con un
   hilo, un canal de texto temporal.», «Crear hilo».
 
+## Inbox
+
+Measured on 2026-11-05 in the web client (1440 × 813, «Midnight»): computed
+styles of the popout, its CSS rules and the behaviour of its chunk.
+
+- Popout under the title bar's tray, its end on the tray's, 8 below it.
+  Width 35vw from 480 to 600 (504 at 1440); height at most 70vh (80vh at
+  800 high or less, 85vh at 700 or less). `--background-surface-high`
+  `#0a0a0c`, radius 8, ring `#ffffff` at 8 % and a shadow 0 12 24 black
+  24 %.
+- Header: 20 of padding at the top and sides. Inbox glyph 20 (`#dcdcdf`),
+  8, «Bandeja de entrada» 20/24 semibold. At the end, 8 apart: «Marcar
+  todo como leído» (only on «No leídos»; double check) or «Filtrar» (only
+  on «Menciones»: include @everyone, @roles, all servers), then «Ver
+  solicitudes de amistad» (person waving, the incoming count in a 16
+  circle of `#97979f` at 24 %; it opens Friends → Pending and closes the
+  popout). Buttons 32 square (the friends one 34 high, padding 0 8),
+  radius 8, `#97979f` at 12 % with a 1 px `#9595a2` at 16 %, glyph 16.
+- Tabs 16 under the title row, spanning the popout less 4 at each side:
+  «No leídos», «Menciones», «Marcadores», «Recordatorios», as wide each,
+  10 apart, 14/19.6 semibold, padding 0 8 16 (35.6 high); the chosen one
+  in `--text-brand` `#6374f4` with a 2 px line of it at its foot, the
+  others `#96979e`. A 1 px `--border-subtle` under them. «Recordatorios»
+  shows «Recordatorios ({count})» with reminders due.
+- List: padding 16 16 0, cards 16 apart (`box`: `--background-surface-higher`
+  `#121214`, 1 px `--border-subtle`, radius 12, clipped). Card header
+  (sticky at the list's top): padding 12, gap 8, a 1 px line under it
+  unless folded; server icon 32 radius 8 (a person's round avatar in a
+  DM), a 12 chevron, the channel's glyph 12 + 4 + name 16/20 semibold
+  `#d4d5d8` + 8 + the red mention count (16 high), under it «Servidor ›
+  Categoría» 12/16 (a group: its members). At its end the bell
+  («Ajustes de notificaciones», the channel's notification menu), the
+  check («Marcar como leído») and a 24 chevron («Minimizar»/«Ampliar»,
+  turned −90° when folded).
+- Its messages are the conversation's (avatar 40 at 20, text at 80, 446
+  wide): the first 25 unread, a day pill unless the first is today's, and
+  «Ver todos los mensajes sin leer ›» when there are more. Each has «Ir»
+  at its top end (12 medium, radius 4, 8 in). A click on the mark or the
+  name opens the channel at its first unread.
+- Which channels: unsilenced (server, category, channel), readable, with
+  something after the read mark; a DM only with mentions. Order:
+  favourites, DMs, mentions, then by notification level, with dividers
+  «Mensajes de hace más de 10 días» and «Notificaciones desactivadas».
+  Cards load as the list nears its end (2000 px). «Marcar todo como leído»
+  asks «¿Marcar todo como leído?» («Esto marcará todos tus canales no
+  silenciados como leídos. ¿Realmente quieres continuar?», brand «Marcar
+  como leído», «Cancelar»); Shift skips the question.
+- «Menciones»: one card per message (same header with «Ir al mensaje» and
+  «Marcar como leído», which deletes it from the history), the message
+  12 below its header. From `/users/@me/mentions`, which Rustcord may not
+  use.
+- Empty: «¡Ya estás al día!» (the inbox glyph 36 in an 80 circle of
+  `--background-base-low`, heading 24/32 semibold, a protip about
+  Ctrl+I); «¡Lo lograste, llegaste al final!»; «Guarda tus recuerdos
+  favoritos» and «Organízate y no te olvides de hacer un seguimiento»
+  (140 wide art, «Haz clic derecho en cualquier mensaje y elige Marcar
+  mensaje / Crear recordatorio…», a demo message).
+- Rustcord: the popout under the header's tray (in a narrow window, at
+  the header's end). «No leídos» from its own read state, ordered DMs,
+  mentions, the rest in the rail's and the list's order, at most 100;
+  each card's newest page is asked for as it comes into view, 3 at a
+  time; folding lasts the session. «Menciones» lists the loaded messages
+  that mention the account (a note says it is not a complete history),
+  with «Ir al mensaje» only. «Recordatorios» lists the messages marked
+  «Marcar como no leído». «Marcadores» has its empty state only. Every
+  empty state is the unread one's (glyph in a circle, no art or demo), its
+  action in «» rather than bold. The friend requests show once the list of
+  friends is known. No filter, favourites, age dividers, sticky headers,
+  undo, Ctrl+I or interactive messages (they are drawn as samples).
+
 ## Private call (DM and group)
 
 - Above the conversation, on black, under the DM's header. Voice only:

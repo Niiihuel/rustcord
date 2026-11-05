@@ -81,6 +81,8 @@ pub fn channel_header(
     // The conversation's own face, in place of its glyph: a group's picture.
     face: Option<Element>,
     nav: &HeaderNav,
+    // The inbox's popout, while open, under its tray.
+    inbox: Option<Element>,
     look: &Look,
 ) -> Element {
     let arrow = |id: &str, glyph: Icon, hint: &str, keys: &Option<String>, enabled: bool| {
@@ -225,21 +227,7 @@ pub fn channel_header(
         parts.push(gap(12.0, 0.0));
     }
     if nav.inbox {
-        parts.push(
-            IconButton::new(
-                "inbox:open",
-                Icon::Custom(crate::glyphs::INBOX),
-                look.palette(),
-            )
-            .variant(ButtonVariant::Ghost)
-            .sizing(crate::look::HEADER_TOOL)
-            .tooltip(t("Bandeja de entrada"))
-            .tooltip_placement(TooltipPlacement::Below)
-            .ink(look.dim)
-            .hover_ink(look.text)
-            .render()
-            .centered_y(),
-        );
+        parts.push(crate::inbox::button(inbox, look).centered_y());
         parts.push(gap(8.0, 0.0));
     }
     // Last, as the update ends Discord's title bar.

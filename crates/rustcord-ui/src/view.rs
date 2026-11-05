@@ -732,6 +732,7 @@ fn conversation(
         parent,
         face,
         &crate::navigation::header(ui, store, narrow),
+        inbox::popout(ui, store, look, context),
         look,
     );
     if conversation.kind == ChannelKind::Forum {

@@ -1388,6 +1388,7 @@ pub fn after_layout(ui: &mut Ui, store: &mut Store, tree: &UiTree, active: bool)
     intents.extend(reads::reveal(ui, store));
     intents.extend(context::after_layout(ui, store, tree));
     intents.extend(navigation::after_layout(ui, store, tree));
+    intents.extend(inbox::after_layout(ui, store, tree));
     voice_messages::after_layout(ui, store, tree);
     video::hold(ui, tree);
     pip::hold(ui, tree);
@@ -1493,6 +1494,11 @@ pub fn update(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant) -
         color_picker::note(ui, id, value);
     }
     let intents = answer_action(ui, store, action, now);
+    // A channel's notifications or silence, chosen in a menu, kept here
+    // without the store knowing: the inbox counts them again.
+    if matches!(action, UiAction::Clicked { id } if id.starts_with("cl:")) {
+        inbox::rewrite(ui, store);
+    }
     for intent in &intents {
         if let Intent::SetInput { id, value } = intent {
             color_picker::note(ui, id, value);
@@ -1512,6 +1518,10 @@ fn answer_action(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant
         if id != rustcord_components::channel_menu::ids::MORE)
     {
         ui.channel_list.more = None;
+    }
+    // And a card's bell menu in the inbox, but its own items.
+    if let UiAction::Clicked { id } = action {
+        inbox::clicked_elsewhere(ui, id);
     }
     if let Some(intents) = providers::update(ui, action) {
         return intents;
