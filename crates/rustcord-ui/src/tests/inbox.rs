@@ -47,6 +47,64 @@ fn an_inactive_window_never_marks_visible_messages_read() {
     assert!(!host.store.read(channel).unread());
 }
 
+/// Discord's line: what came while the window was away is marked «NUEVO»,
+/// and stays marked once read; read as it comes, nothing is.
+#[test]
+fn messages_that_come_while_the_window_is_away_get_the_new_line() {
+    let mut host = Host::new();
+    let channel = host.open_channel("general");
+    host.tree.scroll_to_end(&timeline_id(channel));
+    host.frame();
+    // Read, and opened again: nothing left to mark.
+    host.open_channel("ayuda");
+    host.open_channel("general");
+    host.tree.scroll_to_end(&timeline_id(channel));
+    host.frame();
+    assert!(!host.store.read(channel).unread());
+    assert!(!host.ui.new_marker.contains_key(&channel));
+    let mut incoming = host.store.timeline(channel).unwrap().messages()[0]
+        .as_ref()
+        .clone();
+    incoming.author = host
+        .store
+        .users()
+        .find(|user| Some(user.id) != host.store.me())
+        .unwrap()
+        .id;
+    // Looked at, at its end: read as it comes, no line.
+    incoming.id = MessageId(u64::MAX / 4);
+    host.event(Event::MessageCreated {
+        message: incoming.clone(),
+        nonce: None,
+    });
+    host.frame();
+    host.frame();
+    assert!(!host.ui.new_marker.contains_key(&channel));
+    // The window away: the line at the first that came meanwhile.
+    host.active = false;
+    let away = MessageId(u64::MAX / 4 + 1);
+    incoming.id = away;
+    host.event(Event::MessageCreated {
+        message: incoming.clone(),
+        nonce: None,
+    });
+    incoming.id = MessageId(u64::MAX / 4 + 2);
+    host.event(Event::MessageCreated {
+        message: incoming,
+        nonce: None,
+    });
+    host.frame();
+    assert_eq!(host.ui.new_marker.get(&channel), Some(&away));
+    assert!(host.painted().iter().any(|text| text == "NUEVO"));
+    // Back, it is read, and the line stays while it is open.
+    host.active = true;
+    host.tree.scroll_to_end(&timeline_id(channel));
+    host.frame();
+    host.frame();
+    assert!(!host.store.read(channel).unread());
+    assert!(host.painted().iter().any(|text| text == "NUEVO"));
+}
+
 #[test]
 fn a_manual_unread_bar_survives_leaving_and_reopening_without_a_remote_rewind() {
     let mut host = Host::new();

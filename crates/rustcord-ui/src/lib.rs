@@ -1391,6 +1391,7 @@ pub fn after_layout(ui: &mut Ui, store: &mut Store, tree: &UiTree, active: bool)
     voice_messages::after_layout(ui, store, tree);
     video::hold(ui, tree);
     pip::hold(ui, tree);
+    mark_new_while_away(ui, store, tree, active);
     if active && !blocked_before && !reads::obscured(ui) {
         intents.extend(read_and_load(ui, store, tree));
     }
@@ -1427,6 +1428,22 @@ fn watch_members(ui: &mut Ui, tree: &UiTree) -> Vec<Intent> {
 /// event. The latter keeps multiple events in one host frame in order.
 pub fn capture_composer_selection(ui: &mut Ui, tree: &UiTree) {
     composer_selection::capture(ui, tree);
+}
+
+/// Discord's «NUEVO» line over what reached the open conversation while it
+/// was not being read (the window without the focus, the view scrolled up):
+/// at the first unread message, once, kept until the conversation changes.
+fn mark_new_while_away(ui: &mut Ui, store: &Store, tree: &UiTree, active: bool) {
+    let Some(channel) = ui.channel() else {
+        return;
+    };
+    let reading = active && tree.is_scroll_at_end(&timeline_id(channel), 24.0);
+    if reading || ui.new_marker.contains_key(&channel) || !store.read(channel).unread() {
+        return;
+    }
+    if let Some(anchor) = reads::anchor(store, channel) {
+        ui.new_marker.insert(channel, anchor);
+    }
 }
 
 fn read_and_load(ui: &mut Ui, store: &mut Store, tree: &UiTree) -> Vec<Intent> {
