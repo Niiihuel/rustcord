@@ -147,13 +147,19 @@ fn the_overview_of_a_text_channel_saves_in_one_edit_once_the_provider_answers() 
     assert_eq!(host.cs_settings().page, Page::Overview);
     for text in [
         "Vista general",
-        "LIMN-CORE",
-        "DESARROLLO",
+        "limn-core",
+        "Desarrollo",
         "Tema del canal",
         "Modo lento",
+        "Visibilidad del contenido",
+        "Invitaciones",
+        "Integraciones",
     ] {
         assert!(host.cs_painted(text), "{text}");
     }
+    host.cs_reveal("cs:hide");
+    assert!(host.cs_painted("Ocultar después de inactividad"));
+    host.cs_reveal(NAME);
     assert!(
         host.cs_painted("sin conexión real"),
         "the simulation is still labelled as such"
@@ -170,8 +176,9 @@ fn the_overview_of_a_text_channel_saves_in_one_edit_once_the_provider_answers() 
     host.click("cs:slowmode");
     host.click("cs:slowmode:30");
     assert!(host.cs_painted("30 segundos"));
-    host.click("cs:nsfw");
-    assert!(host.cs_painted("¡Cuidado! Tienes cambios sin guardar"));
+    host.cs_reveal("cs:visibility:nsfw");
+    host.click("cs:visibility:nsfw");
+    assert!(host.cs_painted("¡Cuidado! ¡Tienes cambios sin guardar!"));
     host.click("cs:save");
     let edits: Vec<&Command> = host
         .sent
@@ -189,8 +196,7 @@ fn the_overview_of_a_text_channel_saves_in_one_edit_once_the_provider_answers() 
                 position: None,
                 slowmode_secs: Some(30),
                 nsfw: Some(true),
-                tags: None,
-                forum: None,
+                ..ChannelEdit::default()
             },
         }],
         "one edit with every field changed"
@@ -209,7 +215,7 @@ fn the_overview_of_a_text_channel_saves_in_one_edit_once_the_provider_answers() 
     assert!(!host.cs_dirty() && !host.cs_settings().saving());
     assert!(!host.cs_painted("Tienes cambios sin guardar"));
     assert!(
-        host.cs_painted("NÚCLEO-DE-LIMN"),
+        host.cs_painted("núcleo-de-limn"),
         "the sidebar's heading follows"
     );
     assert_eq!(host.tree.input_value(NAME), Some("núcleo-de-limn"));
@@ -485,7 +491,7 @@ fn a_category_change_reaches_the_channels_in_sync_with_it() {
     host.click(&attach);
     host.cs_reveal(&format!(
         "cs:perm:{}:deny",
-        Permissions::MOVE_MEMBERS.0.trailing_zeros()
+        Permissions::CONNECT.0.trailing_zeros()
     ));
     assert!(host.cs_painted("Permisos de los canales de voz"));
     host.click("cs:save");
@@ -526,7 +532,7 @@ fn deleting_the_open_channel_asks_and_enter_does_not_delete() {
     host.cs_open(channel);
     host.click("cs:delete");
     assert!(host.cs_settings().delete);
-    assert!(host.cs_painted("¿Seguro que quieres eliminar #componentes?"));
+    assert!(host.cs_painted("¿Realmente quieres eliminar ") && host.cs_painted("#componentes"));
     host.frame();
     assert_eq!(
         host.tree.focused_id(),
@@ -565,8 +571,15 @@ fn a_channel_of_a_server_not_owned_is_read_only_and_says_why() {
     host.cs_open(channel);
     assert!(host.cs_painted("No tienes permiso para gestionar el canal en #general"));
     assert!(!host.cs_shows("cs:delete"), "nor can it be deleted");
-    assert!(!host.cs_shows("cs:slowmode") && !host.cs_shows("cs:nsfw"));
-    for id in ["cs:nsfw", "cs:slowmode", "cs:slowmode:30", "cs:delete"] {
+    assert!(!host.cs_shows("cs:slowmode") && !host.cs_shows("cs:visibility:nsfw"));
+    for id in [
+        "cs:visibility:nsfw",
+        "cs:slowmode",
+        "cs:slowmode:30",
+        "cs:delete",
+        "cs:video:full",
+        "cs:hide:60",
+    ] {
         host.cs_press(id);
     }
     assert!(!host.cs_dirty() && !host.cs_settings().delete);
@@ -644,8 +657,9 @@ fn a_voice_channel_has_its_name_and_its_own_permissions() {
     let channel = host.channel_named("Reunión semanal");
     host.cs_open(channel);
     assert!(host.cs_painted("Nombre del canal"));
-    assert!(host.cs_painted("REUNIÓN SEMANAL") && host.cs_painted("VOZ"));
-    assert!(!host.cs_painted("Tema del canal") && !host.cs_painted("Modo lento"));
+    assert!(host.cs_painted("Reunión semanal") && host.cs_painted("Voz"));
+    // Discord's voice channel: no topic, but its chat's slow mode.
+    assert!(!host.cs_painted("Tema del canal") && host.cs_painted("Modo lento"));
     assert!(host.cs_painted("Eliminar canal"));
     assert_eq!(
         host.tree.focused_id(),
@@ -667,7 +681,7 @@ fn a_voice_channel_has_its_name_and_its_own_permissions() {
     host.click("cs:advanced");
     host.cs_reveal(&format!(
         "cs:perm:{}:deny",
-        Permissions::MOVE_MEMBERS.0.trailing_zeros()
+        Permissions::CONNECT.0.trailing_zeros()
     ));
     assert!(host.cs_painted("Permisos de los canales de voz"));
     assert!(host.cs_painted("Conectar"));
@@ -878,4 +892,286 @@ fn the_people_to_add_are_looked_up_at_the_provider_beyond_those_it_sent() {
             query: "ad".into(),
         }]
     );
+}
+
+impl Host {
+    /// Move the slider `id` to `fraction`, as a release there would.
+    fn cs_slide(&mut self, id: &str, fraction: f32) {
+        self.cs_act(UiAction::SliderChanged {
+            id: id.into(),
+            fraction,
+            committed: true,
+        });
+    }
+
+    /// The provider answers the first command `found` picks out of those
+    /// sent, as a session would; it leaves the list.
+    fn cs_answer_one(&mut self, found: impl Fn(&Command) -> bool) -> Command {
+        let index = self
+            .sent
+            .iter()
+            .position(found)
+            .unwrap_or_else(|| panic!("not sent: {:?}", self.sent));
+        let command = self.sent.remove(index);
+        self.cs_elsewhere(command.clone());
+        command
+    }
+}
+
+#[test]
+fn a_voice_channel_s_sound_cameras_size_region_and_spoilers_save_in_one_edit() {
+    let mut host = Host::new();
+    let channel = host.channel_named("Reunión semanal");
+    host.cs_open(channel);
+    for text in [
+        "Visibilidad del contenido",
+        "Velocidad de transferencia",
+        "8kbps",
+        "64kbps",
+        "96kbps",
+    ] {
+        assert!(host.cs_painted(text), "{text}");
+    }
+    host.cs_reveal("cs:region");
+    for text in [
+        "Calidad del video",
+        "720p",
+        "Límite de usuarios",
+        "∞",
+        "99",
+        "Excepción de región",
+    ] {
+        assert!(host.cs_painted(text), "{text}");
+    }
+    assert!(!host.cs_dirty());
+    host.cs_slide("cs:bitrate", 1.0);
+    host.cs_slide("cs:user-limit", 10.0 / 99.0);
+    host.cs_reveal("cs:video:full");
+    host.click("cs:video:full");
+    host.cs_reveal("cs:region");
+    host.click("cs:region");
+    assert!(host.cs_settings().region_open);
+    host.cs_press("cs:region:simulada-sur");
+    assert!(!host.cs_settings().region_open);
+    host.cs_press("cs:region:nowhere");
+    host.cs_reveal("cs:visibility:spoiler");
+    host.click("cs:visibility:spoiler");
+    assert!(host.cs_painted("¡Cuidado! ¡Tienes cambios sin guardar!"));
+    host.sent.clear();
+    host.click("cs:save");
+    assert_eq!(
+        host.sent,
+        vec![Command::EditChannel {
+            channel,
+            edit: ChannelEdit {
+                bitrate: Some(96_000),
+                user_limit: Some(10),
+                region: Some(Some("simulada-sur".into())),
+                full_video: Some(true),
+                spoiler: Some(true),
+                ..ChannelEdit::default()
+            },
+        }],
+        "one edit with every option changed, and no region the provider lacks"
+    );
+    host.cs_answer();
+    let saved = &host.store.channel(channel).unwrap().options;
+    assert_eq!((saved.bitrate, saved.user_limit), (96_000, 10));
+    assert_eq!(saved.region.as_deref(), Some("simulada-sur"));
+    assert!(saved.full_video && saved.spoiler);
+    assert!(!host.cs_dirty() && !host.cs_painted("Tienes cambios sin guardar"));
+    // Back to automatic, and the age restriction takes the spoilers' place.
+    host.cs_press("cs:region:auto");
+    host.cs_press("cs:visibility:nsfw");
+    host.sent.clear();
+    host.cs_press("cs:save");
+    let Some(Command::EditChannel { edit, .. }) = host.sent.last().cloned() else {
+        panic!("{:?}", host.sent);
+    };
+    assert_eq!(
+        (edit.region, edit.spoiler, edit.nsfw),
+        (Some(None), Some(false), Some(true))
+    );
+}
+
+#[test]
+fn a_text_channel_hides_its_threads_and_becomes_an_announcement_channel() {
+    let mut host = Host::new();
+    let channel = host.channel_named("limn-core");
+    host.cs_open(channel);
+    host.cs_reveal("cs:hide");
+    host.click("cs:hide");
+    assert!(host.cs_settings().hide_open);
+    host.cs_press("cs:hide:10080");
+    host.cs_press("cs:hide:7");
+    host.cs_reveal("cs:announcement");
+    host.click("cs:announcement");
+    host.sent.clear();
+    host.click("cs:save");
+    assert_eq!(
+        host.sent,
+        vec![Command::EditChannel {
+            channel,
+            edit: ChannelEdit {
+                archive_after: Some(10080),
+                kind: Some(rustcord_model::ChannelKind::Announcement),
+                ..ChannelEdit::default()
+            },
+        }],
+        "an hiding time the provider does not offer is not taken"
+    );
+    host.cs_answer();
+    let saved = host.store.channel(channel).unwrap();
+    assert_eq!(saved.kind, rustcord_model::ChannelKind::Announcement);
+    assert_eq!(saved.options.archive_after, Some(10080));
+    assert!(!host.cs_dirty());
+    assert!(
+        !host.cs_shows("cs:slowmode"),
+        "an announcement channel has no slow mode"
+    );
+    assert!(host.cs_painted("1 semana"));
+}
+
+#[test]
+fn a_provider_without_channel_options_shows_them_locked_and_says_why() {
+    let mut host = Host::new();
+    if let Some(info) = host.store.provider.as_mut() {
+        info.capabilities.channel_options = false;
+    }
+    let channel = host.channel_named("Reunión semanal");
+    host.cs_open(channel);
+    assert!(host.cs_painted("cambiar las opciones del canal"));
+    host.cs_slide("cs:bitrate", 1.0);
+    for id in [
+        "cs:video:full",
+        "cs:region",
+        "cs:region:simulada-sur",
+        "cs:visibility:spoiler",
+    ] {
+        host.cs_press(id);
+    }
+    assert!(!host.cs_dirty() && !host.cs_settings().region_open);
+    // What the provider still changes, it changes.
+    host.cs_press("cs:visibility:nsfw");
+    assert!(host.cs_dirty());
+}
+
+#[test]
+fn the_invitations_of_the_channel_list_and_revoke() {
+    let mut host = Host::new();
+    let lab = host.cs_server("Laboratorio limn");
+    let channel = host.channel_named("limn-core");
+    host.cs_open(channel);
+    host.sent.clear();
+    host.click("cs:page:invites");
+    assert_eq!(host.cs_settings().page, Page::Invites);
+    host.cs_answer_one(
+        |command| matches!(command, Command::LoadInvites { server, .. } if *server == lab),
+    );
+    let invites: Vec<String> = host
+        .store
+        .invites(lab)
+        .unwrap()
+        .iter()
+        .filter(|invite| invite.channel == Some(channel))
+        .map(|invite| invite.code.clone())
+        .collect();
+    assert!(
+        !invites.is_empty(),
+        "the simulation has some to this channel"
+    );
+    for text in [
+        "Persona que invita",
+        "Código de invitación",
+        "Usos",
+        "Caduca",
+    ] {
+        assert!(host.cs_painted(text), "{text}");
+    }
+    assert!(host.cs_painted(&invites[0]));
+    let others: Vec<String> = host
+        .store
+        .invites(lab)
+        .unwrap()
+        .iter()
+        .filter(|invite| invite.channel != Some(channel))
+        .map(|invite| invite.code.clone())
+        .collect();
+    if let Some(other) = others.first() {
+        assert!(!host.cs_painted(other), "another channel's are left out");
+        host.cs_press(&format!("cs:invite:{other}:revoke"));
+    }
+    host.click(&format!("cs:invite:{}:revoke", invites[0]));
+    assert_eq!(
+        host.sent,
+        vec![Command::RevokeInvite {
+            server: lab,
+            code: invites[0].clone(),
+        }],
+        "only the channel's own is revoked from here"
+    );
+    // «crear uno» makes one to this channel.
+    host.sent.clear();
+    host.click("cs:invite:create");
+    assert!(host.sent.iter().any(
+        |command| matches!(command, Command::CreateInvite { channel: to, .. } if *to == channel)
+    ));
+}
+
+#[test]
+fn the_webhooks_of_the_channel_are_counted_made_and_deleted() {
+    let mut host = Host::new();
+    let lab = host.cs_server("Laboratorio limn");
+    let channel = host.channel_named("limn-core");
+    host.cs_open(channel);
+    host.sent.clear();
+    host.click("cs:page:integrations");
+    host.cs_answer_one(
+        |command| matches!(command, Command::LoadWebhooks { server, .. } if *server == lab),
+    );
+    let own: Vec<_> = host
+        .store
+        .webhooks(lab)
+        .unwrap()
+        .iter()
+        .filter(|webhook| webhook.channel == channel)
+        .cloned()
+        .collect();
+    for text in ["Webhooks", "Canales que sigues", "Crear Webhook"] {
+        assert!(host.cs_painted(text), "{text}");
+    }
+    if let Some(first) = own.first() {
+        assert!(host.cs_painted(&first.name));
+        host.click(&format!("cs:webhook:{}:delete", first.id));
+        assert_eq!(
+            host.sent.last(),
+            Some(&Command::DeleteWebhook {
+                server: lab,
+                webhook: first.id,
+            })
+        );
+    }
+    host.click("cs:webhook:new");
+    assert_eq!(
+        host.sent.last(),
+        Some(&Command::CreateWebhook {
+            server: lab,
+            channel,
+            name: "Webhook nuevo".into(),
+        })
+    );
+}
+
+#[test]
+fn a_category_has_neither_invitations_nor_integrations() {
+    let mut host = Host::new();
+    let lab = host.cs_server("Laboratorio limn");
+    let category = host.cs_category(lab, "Desarrollo");
+    host.cs_open(category);
+    assert!(host.cs_painted("Nombre de la categoría"));
+    assert!(!host.cs_shows("cs:page:invites") && !host.cs_shows("cs:page:integrations"));
+    assert!(!host.cs_painted("Visibilidad del contenido"));
+    host.cs_press("cs:page:invites");
+    assert_eq!(host.cs_settings().page, Page::Overview);
+    assert!(host.cs_shows("cs:delete") && host.cs_painted("Eliminar categoría"));
 }

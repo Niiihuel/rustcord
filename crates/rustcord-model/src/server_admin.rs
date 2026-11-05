@@ -77,6 +77,10 @@ pub struct ServerOptions {
     pub rules_channel: Option<ChannelId>,
     #[serde(default)]
     pub updates_channel: Option<ChannelId>,
+    /// The most a voice channel's sound goes to at its plan, in bits per
+    /// second; 0 when the provider does not say.
+    #[serde(default)]
+    pub max_bitrate: u32,
 }
 
 fn default_afk() -> u32 {
@@ -106,6 +110,7 @@ impl Default for ServerOptions {
             banner: None,
             rules_channel: None,
             updates_channel: None,
+            max_bitrate: 0,
         }
     }
 }

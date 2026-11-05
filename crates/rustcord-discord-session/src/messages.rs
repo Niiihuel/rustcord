@@ -688,6 +688,7 @@ mod tests {
                 kind: ChannelKind::Direct,
                 name: "Peer".into(),
                 topic: None,
+                options: Default::default(),
                 topic_pictures: Vec::new(),
                 parent: None,
                 position: 0,

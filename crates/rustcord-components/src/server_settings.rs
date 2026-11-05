@@ -6,7 +6,10 @@
 //!
 //! Measures follow Discord's captures at 1361×797 logical pixels: a
 //! 254 px sidebar of 38.5 px items, a 705 px page column 58 px to its right,
-//! the close button 42 px past the column, all centered as one block.
+//! the close button 42 px past the column, all centered as one block. They
+//! are Discord's CSS pixels about 7 % larger (238, 36, 660, 54 and 40: see
+//! `docs/discord-reference.md`, «Channel settings»); the server's pages
+//! were laid out at this size, so both settings keep it.
 
 use limn::{
     Button, ButtonSize, ButtonVariant, Checkbox, Color, ColorPicker, Component, ContextMenu,
@@ -117,8 +120,8 @@ impl Metrics {
 pub enum SidebarEntry {
     /// A group's title, in capitals.
     Heading(String),
-    /// What the settings are of, in capitals: a mark such as a channel's
-    /// `#`, a name, and a brighter detail after it, such as its category.
+    /// What the settings are of: a mark such as a channel's `#` and its
+    /// name, quiet, and a brighter detail after them, such as its category.
     Title {
         icon: Option<Icon>,
         name: String,
@@ -149,6 +152,9 @@ pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element
                     .centered_y(),
             ])
             .size(None, Some(26.0)),
+            // Discord's: the glyph 12 px and the name 14 medium, quiet, then
+            // the detail 12 semibold in the text's ink; 22 px with the room
+            // under it, so the first item starts 24 under the top.
             SidebarEntry::Title { icon, name, detail } => {
                 let mut parts = vec![gap(ITEM_INSET, 0.0)];
                 if let Some(glyph) = icon {
@@ -158,24 +164,30 @@ pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element
                             .size(Some(12.0), Some(12.0))
                             .centered_y(),
                     );
+                    parts.push(gap(2.0, 0.0));
                 }
                 parts.push(
-                    line(name.to_uppercase(), 12.0, look.faint)
-                        .font_family(FontFamily::SansBold)
+                    line(name, 14.0, look.faint)
+                        .font_family(FontFamily::SansMedium)
+                        .shrink_to_fit()
                         .centered_y(),
                 );
                 if let Some(detail) = detail {
+                    parts.push(gap(4.0, 0.0));
                     parts.push(
-                        line(detail.to_uppercase(), 12.0, look.muted)
-                            .font_family(FontFamily::SansBold)
+                        line(detail, 12.0, look.text)
+                            .font_family(FontFamily::SansSemibold)
                             .flex(1.0)
                             .centered_y(),
                     );
                 }
-                Element::row(parts).gap(5.0).size(None, Some(26.0))
+                Element::column(vec![
+                    Element::row(parts).size(None, Some(18.0)),
+                    gap(0.0, 4.0),
+                ])
             }
             SidebarEntry::Separator => Element::column(vec![
-                gap(0.0, 9.0),
+                gap(0.0, 8.0),
                 Element::row(vec![
                     gap(ITEM_INSET, 0.0),
                     Element::panel(Element::spacer())
@@ -184,7 +196,7 @@ pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element
                         .flex(1.0),
                     gap(ITEM_INSET, 0.0),
                 ]),
-                gap(0.0, 9.0),
+                gap(0.0, 6.0),
             ]),
             SidebarEntry::Item {
                 id,
@@ -221,9 +233,16 @@ fn sidebar_item(id: &str, label: &str, selected: bool, danger: bool, look: &Look
     } else {
         look.muted
     };
-    let mut parts = vec![line(label, 16.0, ink).flex(1.0).centered_y()];
+    let mut parts = vec![line(label, 16.0, ink)
+        .font_family(FontFamily::SansMedium)
+        .flex(1.0)
+        .centered_y()];
     if danger {
-        parts.push(icon(Icon::Trash, look.danger).centered_y());
+        parts.push(
+            icon(Icon::Trash, look.danger)
+                .size(Some(16.0), Some(16.0))
+                .centered_y(),
+        );
     }
     let item = Element::clickable(
         id,
@@ -234,7 +253,7 @@ fn sidebar_item(id: &str, label: &str, selected: bool, danger: bool, look: &Look
         ]),
     )
     .size(Some(SIDEBAR_WIDTH), Some(ITEM_HEIGHT))
-    .radius(6.0)
+    .radius(4.0)
     .hover_background(look.hover)
     .hover_foreground(if danger { look.danger } else { look.text })
     .accessible(
@@ -254,11 +273,11 @@ pub fn close_button(id: &str, look: &Look) -> Element {
     Element::column(vec![
         Element::clickable(
             id,
-            crate::centered(icon(Icon::Close, look.muted).size(Some(16.0), Some(16.0))),
+            crate::centered(icon(Icon::Close, look.muted).size(Some(18.0), Some(18.0))),
         )
         .size(Some(CLOSE_SIZE), Some(CLOSE_SIZE))
         .radius(CLOSE_SIZE / 2.0)
-        .border(look.faint, 2.0)
+        .border(look.muted, 2.0)
         .hover_background(look.hover)
         .hover_foreground(look.text)
         .accessible(limn::Access::new(limn::Role::Button).name(t("Cerrar (Esc)"))),
@@ -299,7 +318,7 @@ pub fn unsaved_bar_for(prefix: &str, bar: UnsavedBar, look: &Look) -> Element {
     let message = if bar.nudged {
         t("Guarda o restablece los cambios antes de salir")
     } else {
-        t("¡Cuidado! Tienes cambios sin guardar")
+        t("¡Cuidado! ¡Tienes cambios sin guardar!")
     };
     let (reset, save) = (format!("{prefix}:reset"), format!("{prefix}:save"));
     let reset = Button::new(reset, t("Restablecer"), look.menu_palette())
@@ -1792,6 +1811,11 @@ pub struct ItemLine {
 /// A row of the integrations page: its mark, its name and notes, and icon
 /// buttons named `ss:{key}:{action}`.
 pub fn item_row(row: &ItemLine, look: &Look) -> Element {
+    item_row_for("ss", row, look)
+}
+
+/// [`item_row`] for other settings: its buttons are `{prefix}:{key}:{action}`.
+pub fn item_row_for(prefix: &str, row: &ItemLine, look: &Look) -> Element {
     let lead = Element::panel(crate::centered(icon(row.glyph, look.muted)))
         .size(Some(32.0), Some(32.0))
         .radius(16.0)
@@ -1804,7 +1828,7 @@ pub fn item_row(row: &ItemLine, look: &Look) -> Element {
         .actions
         .iter()
         .map(|(action, glyph, label)| {
-            Button::new(format!("ss:{}:{action}", row.key), "", look.palette())
+            Button::new(format!("{prefix}:{}:{action}", row.key), "", look.palette())
                 .icon(*glyph)
                 .variant(ButtonVariant::Outline)
                 .button_size(ButtonSize::Small)
@@ -2459,7 +2483,7 @@ mod tests {
             .iter()
             .find(|region| region.id == "ss:page:profile")
             .unwrap();
-        assert!((item.rect.x - 132.5).abs() < 1.0 && item.rect.width == SIDEBAR_WIDTH);
+        assert!((item.rect.x - wide.margin).abs() < 1.0 && item.rect.width == SIDEBAR_WIDTH);
         assert_eq!(item.rect.height, ITEM_HEIGHT);
         let save = frame
             .regions

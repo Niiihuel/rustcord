@@ -4702,7 +4702,7 @@ mod tests {
             assert!(ids.contains(&ids::SAVE.to_owned()) && ids.contains(&ids::RESET.to_owned()));
             let painted = texts(&laid);
             // Narrow, the bar's message is cut to the room the buttons leave.
-            let message = "¡Cuidado! Tienes cambios sin guardar";
+            let message = "¡Cuidado! ¡Tienes cambios sin guardar!";
             assert!(
                 !wide || painted.iter().any(|t| t == message),
                 "{message}: {painted:?}"

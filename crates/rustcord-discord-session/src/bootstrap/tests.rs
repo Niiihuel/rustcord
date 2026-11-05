@@ -199,6 +199,43 @@ fn partial_channel_update_keeps_denies_and_clears_nullable_topic() {
 }
 
 #[test]
+fn a_channel_s_voice_spoiler_and_thread_options_are_read_and_follow_its_updates() {
+    let mut snapshot = ready(&account(), &me()).unwrap();
+    let options = |snapshot: &Snapshot| {
+        snapshot
+            .channels
+            .iter()
+            .find(|c| c.id == ChannelId(20))
+            .unwrap()
+            .options
+            .clone()
+    };
+    assert_eq!(options(&snapshot), ChannelOptions::default());
+    update(
+        &mut snapshot,
+        "CHANNEL_UPDATE",
+        &json!({"id":"20","flags":SPOILER_CHANNEL,"default_auto_archive_duration":10080,
+            "bitrate":64000,"user_limit":5,"rtc_region":"rotterdam","video_quality_mode":2}),
+    )
+    .unwrap();
+    let read = options(&snapshot);
+    assert!(read.spoiler && read.full_video);
+    assert_eq!((read.bitrate, read.user_limit), (64_000, 5));
+    assert_eq!(read.region.as_deref(), Some("rotterdam"));
+    assert_eq!(read.archive_after, Some(10080));
+    // Automatic again, and a time Discord does not offer is not kept.
+    update(
+        &mut snapshot,
+        "CHANNEL_UPDATE",
+        &json!({"id":"20","rtc_region":null,"default_auto_archive_duration":7,"flags":0}),
+    )
+    .unwrap();
+    let read = options(&snapshot);
+    assert!(read.region.is_none() && read.archive_after.is_none() && !read.spoiler);
+    assert_eq!(read.bitrate, 64_000, "what the update leaves out stays");
+}
+
+#[test]
 fn supplemental_own_membership_unlocks_only_verified_channels() {
     let mut value = account();
     value["merged_members"] = Value::Null;

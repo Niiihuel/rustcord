@@ -24,6 +24,23 @@ pub(super) const ENTRIES: super::Entries = &[
     ("El cursor de la página no es válido.", "The page cursor isn't valid."),
     ("El modo lento llega hasta 6 horas.", "Slowmode goes up to 6 hours."),
     (
+        "Solo un canal de voz tiene esas opciones.",
+        "Only a voice channel has those options.",
+    ),
+    (
+        "Esa velocidad de transferencia no está disponible en este servidor.",
+        "That bitrate isn't available in this server.",
+    ),
+    ("Ese límite de usuarios es demasiado alto.", "That user limit is too high."),
+    (
+        "Solo un canal de texto pasa a ser de anuncios, y al revés.",
+        "Only a text channel becomes an announcement channel, and back.",
+    ),
+    (
+        "Solo una comunidad tiene canales de anuncios.",
+        "Only a community has announcement channels.",
+    ),
+    (
         "El motivo puede tener hasta 512 caracteres, sin saltos de línea.",
         "A reason can have up to 512 characters, without line breaks.",
     ),

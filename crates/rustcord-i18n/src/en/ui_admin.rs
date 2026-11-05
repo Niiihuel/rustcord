@@ -15,30 +15,103 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Foro", "Forum"),
     ("El nombre no puede quedar vacío.", "The name can't be empty."),
     ("Se va a llamar #{saved_as}", "It will be called #{saved_as}"),
-    (
-        "Cuéntale a todos para qué es este canal.",
-        "Let everyone know what this channel is for.",
-    ),
     ("Modo lento", "Slowmode"),
     (
-        "Cuánto tiene que esperar cada miembro entre un mensaje y el siguiente en este canal.",
-        "How long each member has to wait between one message and the next in this channel.",
+        "Los miembros solo podrán enviar un mensaje y crear un hilo durante este intervalo, a menos que tengan el permiso de Omitir el modo lento.",
+        "Members will be restricted to sending one message and creating one thread per this interval, unless they have the Bypass Slowmode permission.",
     ),
-    ("Canal con restricción de edad", "Age-restricted channel"),
     (
-        "Marca el contenido de este canal como solo para personas mayores de edad.",
-        "Marks this channel's content as for adults only.",
+        "Los miembros solo podrán crear una publicación por intervalo, a menos que tengan el permiso de Omitir el modo lento.",
+        "Members will be restricted to creating one post per this interval, unless they have the Bypass Slowmode permission.",
     ),
+    ("Directivas de publicación", "Post Guidelines"),
+    ("¡Crea directivas de publicación!", "Create post guidelines!"),
+    (
+        "¡Hazle saber a todos cómo usar este canal!",
+        "Let everyone know how to use this channel!",
+    ),
+    ("Canal de anuncios", "Announcement Channel"),
+    (
+        "Publica mensajes que llegan a servidores fuera del tuyo: quien sigue este canal recibe en su servidor las publicaciones que elijas.",
+        "Post messages that reach servers outside your own: whoever follows this channel gets the posts you pick in their server.",
+    ),
+    ("Ocultar después de inactividad", "Hide After Inactivity"),
+    (
+        "Los hilos nuevos no aparecerán en la lista de canales tras estar inactivos durante el tiempo especificado.",
+        "New threads will not show in the channel list after being inactive for the specified duration.",
+    ),
+    ("Velocidad de transferencia", "Bitrate"),
+    ("{kbps}kbps", "{kbps}kbps"),
+    (
+        "¡TODAS LAS VELOCIDADES! Exceder una velocidad de {kbps} kbps puede afectar negativamente a personas con una mala conexión.",
+        "ALL THE BITS! Going above {kbps} kbps may adversely affect people on poor connections.",
+    ),
+    ("Calidad del video", "Video Quality"),
+    // «Establece … Selecciona Automática para …», in spans.
+    (
+        "Establece la calidad de video de la cámara para todos los participantes del canal. Selecciona ",
+        "Sets camera video quality for all channel participants. Choose ",
+    ),
+    (" para un rendimiento óptimo.", " for optimal performance."),
+    ("Límite de usuarios", "User Limit"),
+    // «Limita … con el permiso Mover miembros pueden ignorar …», in spans.
+    (
+        "Limita el número de usuarios que pueden conectarse a este canal de voz. Los usuarios con el permiso ",
+        "Limits the number of users that can connect to this voice channel. Users with the ",
+    ),
+    (
+        "Limita el número de usuarios que pueden conectarse a este canal de escenario. Los usuarios con el permiso ",
+        "Limits the number of users that can connect to this Stage channel. Users with the ",
+    ),
+    (
+        " pueden ignorar este límite e incluir a otros usuarios en el canal.",
+        " permission ignore this limit and can move other users into the channel.",
+    ),
+    ("Excepción de región", "Region Override"),
+    (
+        "Cualquier persona de este canal intentará conectarse a la región que establezcas, sin importar dónde viva. Las regiones influyen en la calidad de voz y video. Si lo dejas en automático, el servicio decidirá qué funciona mejor.",
+        "Anyone in this channel will attempt to connect to the region you set, regardless of where they live. Regions affect voice and video quality. Leave it on Automatic and the service will figure out what works best.",
+    ),
+    (
+        "Aquí tienes una lista de todos los enlaces de invitación activos. Puedes revocar cualquiera o",
+        "Here is a list of all active invite links. You can revoke any one or",
+    ),
+    ("crear uno.", "create one."),
+    (
+        "Nadie creó un enlace a este canal todavía.",
+        "Nobody has made a link to this channel yet.",
+    ),
+    (
+        "Personaliza tu servidor con integraciones. Administra los webhooks y canales que sigues que hacen publicaciones en este canal.",
+        "Customize your server with integrations. Manage webhooks and followed channels posting into this channel.",
+    ),
+    ("1 webhook", "1 webhook"),
+    ("{n} webhooks", "{n} webhooks"),
+    ("Crear Webhook", "Create Webhook"),
+    ("Canales que sigues", "Followed Channels"),
+    ("1 canal", "1 channel"),
+    ("{n} canales", "{n} channels"),
+    // «¿Realmente quieres eliminar #canal? …», in spans.
+    ("¿Realmente quieres eliminar ", "Are you sure you want to delete "),
+    ("? Esta acción no se puede deshacer.", "? This cannot be undone."),
+    ("¿Realmente quieres eliminar la categoría ", "Are you sure you want to delete the category "),
+    (
+        "? Sus canales quedan sin categoría. Esta acción no se puede deshacer.",
+        "? Its channels are left without a category. This cannot be undone.",
+    ),
+    // channel_settings/mod.rs
+    ("Webhook nuevo", "New webhook"),
+    ("Canal con restricción de edad", "Age-restricted channel"),
     ("Rol eliminado", "Deleted role"),
     ("Ajustes de la categoría", "Category settings"),
     (
-        "Usa los permisos para elegir quién puede hacer qué en esta categoría.",
-        "Use permissions to choose who can do what in this category.",
+        "Usa los permisos para personalizar quién puede hacer qué en esta categoría.",
+        "Use permissions to customize who can do what in this category.",
     ),
     ("Permisos del canal", "Channel permissions"),
     (
-        "Usa los permisos para elegir quién puede hacer qué en este canal.",
-        "Use permissions to choose who can do what in this channel.",
+        "Usa los permisos para personalizar quién puede hacer qué en este canal.",
+        "Use permissions to customize who can do what in this channel.",
     ),
     ("Propietario del servidor", "Server owner"),
     // «¿Querés que #canal tenga los permisos de CATEGORÍA? …», in spans.

@@ -56,6 +56,12 @@ use crate::{
     ProviderInfo, ProviderKind, RequestId, Snapshot, StorageIdentity, VoiceSupport,
 };
 
+/// The simulation's voice regions, to override a voice room's.
+const VOICE_REGIONS: &[(&str, &str)] = &[
+    ("simulada-norte", es("Norte (simulada)")),
+    ("simulada-sur", es("Sur (simulada)")),
+];
+
 /// How the simulation behaves.
 #[derive(Clone)]
 pub struct MockConfig {
@@ -383,6 +389,11 @@ impl Provider for MockProvider {
                 pause_invites: true,
                 reorder_channels: true,
                 forum_settings: true,
+                // A voice room's sound, size, region and cameras, spoilers,
+                // thread hiding and announcements; see `mock::manage`.
+                channel_options: true,
+                voice_regions: VOICE_REGIONS,
+                voice_bitrates: (8_000, 64_000),
                 role_styles: true,
                 role_counts: true,
                 member_queries: true,
@@ -1783,7 +1794,11 @@ impl World {
                 roles,
                 owner: Some(owner),
                 description: Some(tr!("Servidor simulado: {name}.", name)),
-                options: Default::default(),
+                // A voice room goes up to 96 kbps, as on a server without boosts.
+                options: rustcord_model::ServerOptions {
+                    max_bitrate: 96_000,
+                    ..Default::default()
+                },
             });
             for (category_index, (category_name, channels)) in categories.iter().enumerate() {
                 let category = ChannelId(next_channel);
@@ -1794,6 +1809,7 @@ impl World {
                     kind: ChannelKind::Category,
                     name: (*category_name).into(),
                     topic: None,
+                    options: Default::default(),
                     topic_pictures: Vec::new(),
                     parent: None,
                     position: category_index as i32,
@@ -1818,6 +1834,11 @@ impl World {
                         kind: *kind,
                         name: (*channel_name).into(),
                         topic: topic(channel_name),
+                        // A voice room sounds as a new one does.
+                        options: rustcord_model::ChannelOptions {
+                            bitrate: if kind.is_voice() { 64_000 } else { 0 },
+                            ..Default::default()
+                        },
                         topic_pictures: topic(channel_name)
                             .map(|topic| identity::pictures_in(&topic))
                             .unwrap_or_default(),
@@ -1966,6 +1987,7 @@ impl World {
                 },
                 name: (*name).into(),
                 topic: None,
+                options: Default::default(),
                 topic_pictures: Vec::new(),
                 parent: None,
                 position: position as i32,
@@ -2035,6 +2057,7 @@ impl World {
                 kind: ChannelKind::Text,
                 name: "moderación".into(),
                 topic: Some("Solo para la moderación.".into()),
+                options: Default::default(),
                 topic_pictures: Vec::new(),
                 parent: category,
                 position: 9,

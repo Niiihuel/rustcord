@@ -121,6 +121,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("ver quién reaccionó", "see who reacted"),
     ("ver quién votó", "see who voted"),
     ("cambiar los ajustes del foro", "change the forum's settings"),
+    ("cambiar las opciones del canal", "change the channel's options"),
     ("Este proveedor no admite canales de escenario", "This provider doesn't support stage channels"),
     ("La transmisión llega con las llamadas", "Streaming comes with calls"),
     (

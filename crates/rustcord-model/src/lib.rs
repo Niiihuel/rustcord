@@ -623,6 +623,39 @@ pub struct Channel {
     /// A group conversation's own picture, when it has one.
     #[serde(default)]
     pub icon: Option<RemoteImage>,
+    /// A server channel's voice, spoiler and thread options.
+    #[serde(default)]
+    pub options: ChannelOptions,
+}
+
+/// What a server's channel keeps beside its name and topic: how its voice
+/// sounds, how many fit in it and where its calls run, its cameras'
+/// quality, whether its messages are spoilers, and after how long a text
+/// channel's new threads hide. Every field defaults so a channel kept
+/// before it reads; zero and `None` leave it to the provider.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ChannelOptions {
+    /// A voice channel's sound, in bits per second; 0 when unknown.
+    #[serde(default)]
+    pub bitrate: u32,
+    /// How many may be in a voice channel at once; 0 for no limit.
+    #[serde(default)]
+    pub user_limit: u32,
+    /// The region a voice channel's calls run in, by the provider's id;
+    /// `None` lets the provider choose for each call.
+    #[serde(default)]
+    pub region: Option<String>,
+    /// Cameras go at 720p for everyone, instead of automatic.
+    #[serde(default)]
+    pub full_video: bool,
+    /// Its messages stay hidden as spoilers until each person shows them.
+    #[serde(default)]
+    pub spoiler: bool,
+    /// Minutes without activity after which a text channel's new threads
+    /// hide: one of [`ARCHIVE_AFTER`]; `None` as the service decides. A
+    /// forum keeps its own in [`ForumDefaults::archive_after`].
+    #[serde(default)]
+    pub archive_after: Option<u32>,
 }
 
 impl Channel {

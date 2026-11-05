@@ -1135,6 +1135,24 @@ pub struct ChannelEdit {
     pub tags: Option<Vec<rustcord_model::ForumTag>>,
     /// A forum's layout, order, required tag and default reaction.
     pub forum: Option<rustcord_model::ForumDefaults>,
+    /// A voice channel's sound, in bits per second. Needs
+    /// [`Capabilities::channel_options`], as the fields after it.
+    pub bitrate: Option<u32>,
+    /// How many may be in a voice channel at once; 0 for no limit.
+    pub user_limit: Option<u32>,
+    /// A voice channel's region, one of [`Capabilities::voice_regions`];
+    /// `Some(None)` lets the provider choose.
+    pub region: Option<Option<String>>,
+    /// Cameras at 720p for everyone, or automatic.
+    pub full_video: Option<bool>,
+    /// Its messages hidden as spoilers, or not.
+    pub spoiler: Option<bool>,
+    /// A text channel's new threads hide after these minutes without
+    /// activity: one of [`rustcord_model::ARCHIVE_AFTER`].
+    pub archive_after: Option<u32>,
+    /// A text channel made an announcement channel, or back: only between
+    /// those two kinds.
+    pub kind: Option<ChannelKind>,
 }
 
 /// Changes to a role; `None` leaves a field as it is.
@@ -2894,6 +2912,17 @@ pub struct Capabilities {
     /// A forum's tags, default reaction, layout and order can be changed
     /// ([`ChannelEdit::tags`], [`ChannelEdit::forum`]).
     pub forum_settings: bool,
+    /// A channel's voice options, spoilers, thread hiding and announcement
+    /// kind can be changed ([`ChannelEdit::bitrate`] and the fields after it).
+    pub channel_options: bool,
+    /// The regions a voice channel can keep: each one's id and its name,
+    /// shown through `t` (a service's own names pass unchanged), in the
+    /// order offered.
+    pub voice_regions: &'static [(&'static str, &'static str)],
+    /// The least and the usual sound of a voice channel, in bits per
+    /// second: a stage goes no higher than the usual, a voice channel up
+    /// to its server's [`rustcord_model::ServerOptions::max_bitrate`].
+    pub voice_bitrates: (u32, u32),
     /// Roles can be given a picture or an emoji and a gradient, as each
     /// server allows ([`RoleEdit::icon`], [`RoleEdit::gradient`]).
     pub role_styles: bool,

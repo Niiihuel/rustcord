@@ -183,6 +183,9 @@ pub struct Abilities {
     pub poll_voters: Permit,
     /// Change a forum's tags, default reaction, layout and order.
     pub forum_settings: Permit,
+    /// Change a channel's voice options, spoilers, thread hiding and
+    /// whether it is an announcement channel.
+    pub channel_options: Permit,
     /// Ring the people of a direct or group conversation to its call, or
     /// stop ringing them; joining it is `join_voice`.
     pub ring: Permit,
@@ -784,6 +787,11 @@ pub fn abilities(channel: &Channel, capabilities: Capabilities) -> Abilities {
             t("cambiar los ajustes del foro"),
             Permissions::MANAGE_CHANNELS,
         ),
+        channel_options: both(
+            capabilities.channel_options && channel.server.is_some(),
+            t("cambiar las opciones del canal"),
+            Permissions::MANAGE_CHANNELS,
+        ),
         ring: both(
             private && capabilities.voice != VoiceSupport::None,
             t("hacer llamadas"),
@@ -820,6 +828,7 @@ mod tests {
             kind,
             name: "anuncios".into(),
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: None,
             position: 0,

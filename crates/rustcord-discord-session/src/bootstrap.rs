@@ -6,8 +6,9 @@ use rustcord_i18n::{es, t};
 use std::collections::{HashMap, HashSet};
 
 use rustcord_model::{
-    permissions, Channel, ChannelId, ChannelKind, Member, MemberRestrictions, MessageId, Overwrite,
-    OverwriteTarget, Permissions, Rgb, Role, RoleId, Server, ServerId, User, UserId,
+    permissions, Channel, ChannelId, ChannelKind, ChannelOptions, Member, MemberRestrictions,
+    MessageId, Overwrite, OverwriteTarget, Permissions, Rgb, Role, RoleId, Server, ServerId, User,
+    UserId,
 };
 
 mod threads;
@@ -485,7 +486,48 @@ fn decode_channel(
         } else {
             Default::default()
         },
+        options: channel_options(data, kind, &Default::default()),
     }))
+}
+
+/// Discord's flag of a channel whose messages are spoilers.
+pub(crate) const SPOILER_CHANNEL: u64 = 1 << 21;
+
+/// A channel's options from a channel object; a key left out, or not as
+/// documented, keeps what `known` says.
+fn channel_options(data: &Value, kind: ChannelKind, known: &ChannelOptions) -> ChannelOptions {
+    let mut options = known.clone();
+    let number = |key: &str| {
+        data.get(key)
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok())
+    };
+    if let Some(bitrate) = number("bitrate") {
+        options.bitrate = bitrate;
+    }
+    if let Some(limit) = number("user_limit") {
+        options.user_limit = limit;
+    }
+    if let Some(region) = data.get("rtc_region") {
+        options.region = region
+            .as_str()
+            .filter(|region| (1..=32).contains(&region.len()))
+            .map(str::to_owned);
+    }
+    if let Some(mode) = number("video_quality_mode") {
+        options.full_video = mode == 2;
+    }
+    if let Some(flags) = data.get("flags").and_then(Value::as_u64) {
+        options.spoiler = flags & SPOILER_CHANNEL != 0;
+    }
+    // A forum keeps its own in its defaults.
+    if kind != ChannelKind::Forum {
+        if let Some(minutes) = number("default_auto_archive_duration") {
+            options.archive_after =
+                Some(minutes).filter(|minutes| rustcord_model::ARCHIVE_AFTER.contains(minutes));
+        }
+    }
+    options
 }
 
 /// A conversation outside servers as a REST answer names it, with the
@@ -800,6 +842,7 @@ fn patch_channel(previous: &Channel, data: &Value) -> Result<Option<Channel>, Lo
     if channel.kind == ChannelKind::Forum {
         channel.forum = threads::forum_defaults(data, &channel.forum);
     }
+    channel.options = channel_options(data, channel.kind, &channel.options);
     Ok(Some(channel))
 }
 

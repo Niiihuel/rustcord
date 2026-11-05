@@ -189,6 +189,7 @@ impl World {
             kind: ChannelKind::Forum,
             name: "consultas".into(),
             topic: Some("Una publicación por pregunta. Usa etiquetas.".into()),
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: Some(category),
             // After the category's two text channels.
@@ -248,6 +249,7 @@ impl World {
                 kind: ChannelKind::Thread,
                 name: plan.title.into(),
                 topic: None,
+                options: Default::default(),
                 topic_pictures: Vec::new(),
                 parent: Some(parent),
                 position: 0,
@@ -473,6 +475,7 @@ impl World {
             kind: ChannelKind::Thread,
             name,
             topic: None,
+            options: Default::default(),
             topic_pictures: Vec::new(),
             parent: Some(parent.id),
             position: 0,

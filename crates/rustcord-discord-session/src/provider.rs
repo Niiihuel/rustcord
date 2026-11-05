@@ -2818,6 +2818,10 @@ impl Provider for DiscordSessionProvider {
                 pause_invites: true,
                 reorder_channels: true,
                 forum_settings: true,
+                // By PATCH /channels/{id}, as the official client does.
+                channel_options: true,
+                voice_regions: crate::admin::rest::VOICE_REGIONS,
+                voice_bitrates: (8_000, 64_000),
                 role_styles: true,
                 role_counts: true,
                 member_queries: true,
