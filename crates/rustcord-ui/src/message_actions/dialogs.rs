@@ -782,20 +782,21 @@ pub(crate) fn overlays(
         );
     }
     if actions.ending.is_some() {
-        root = AlertDialog::new(
-            root,
-            true,
-            t("Terminar encuesta"),
-            t("¿La terminas ahora para todos? Nadie más va a poder votar."),
-            END_CONFIRM,
-            END_CANCEL,
-            look.menu_palette(),
-        )
-        .confirm_label(t("Terminar ahora"))
-        .cancel_label(t("Cancelar"))
-        .destructive(look.danger)
-        .width(Modal::fit_width(context.window.width, 440.0))
-        .render();
+        root = look
+            .confirm(AlertDialog::new(
+                root,
+                true,
+                t("Terminar encuesta"),
+                t("¿La terminas ahora para todos? Nadie más va a poder votar."),
+                END_CONFIRM,
+                END_CANCEL,
+                look.menu_palette(),
+            ))
+            .confirm_label(t("Terminar ahora"))
+            .cancel_label(t("Cancelar"))
+            .destructive(look.danger)
+            .width(Modal::fit_width(context.window.width, 440.0))
+            .render();
     }
     root
 }

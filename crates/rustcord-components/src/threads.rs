@@ -655,7 +655,7 @@ pub fn edit_dialog(root: Element, form: &EditThreadForm, look: &Look) -> Element
 
 /// The question before deleting a thread, over `root`.
 pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         title.to_owned(),
@@ -663,7 +663,7 @@ pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Loo
         ids::CONFIRM,
         ids::CONFIRM_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(crate::friends::CONFIRM_WIDTH)
     .confirm_label(confirm.to_owned())
     .destructive(look.danger)

@@ -1478,7 +1478,7 @@ pub(crate) fn overlays(
             .size(Some(inner), None),
         );
     }
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         t("Eliminar mensaje"),
@@ -1486,7 +1486,7 @@ pub(crate) fn overlays(
         "delete:confirm",
         "delete:cancel",
         look.menu_palette(),
-    )
+    ))
     .confirm_label(t("Eliminar"))
     .cancel_label(t("Cancelar"))
     .destructive(look.danger)

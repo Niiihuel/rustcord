@@ -360,7 +360,7 @@ pub fn create_dialog(root: Element, form: &NewGroupForm, look: &Look) -> Element
 
 /// The question before removing someone or leaving, over `root`.
 pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         title.to_owned(),
@@ -368,7 +368,7 @@ pub fn confirm(root: Element, title: &str, body: &str, confirm: &str, look: &Loo
         ids::CONFIRM,
         ids::CONFIRM_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(crate::friends::CONFIRM_WIDTH)
     .confirm_label(confirm.to_owned())
     .destructive(look.danger)

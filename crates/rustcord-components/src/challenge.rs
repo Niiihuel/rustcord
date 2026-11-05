@@ -46,7 +46,7 @@ pub fn dialog(root: Element, props: &ChallengeProps, look: &Look) -> Element {
             action = props.action
         )
     };
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         if props.simulated {
@@ -58,7 +58,7 @@ pub fn dialog(root: Element, props: &ChallengeProps, look: &Look) -> Element {
         ids::solve(props.challenge),
         ids::cancel(props.challenge),
         look.menu_palette(),
-    )
+    ))
     .width(WIDTH)
     .confirm_label(t("Verificar"))
     .cancel_label(t("Cancelar"))

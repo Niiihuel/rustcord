@@ -548,14 +548,14 @@ pub fn link_dialog(root: Element, view: LinkView<'_>, width: f32, look: &Look) -
         .render(),
     ])
     .gap(9.0);
-    Modal::new(
+    look.confirm_modal(Modal::new(
         root,
         true,
         t("¿Abrir este enlace?"),
         t("Se abre fuera de Rustcord, en tu navegador."),
         ids::LINK_CLOSE,
         palette,
-    )
+    ))
     .width(width)
     .body(Element::column(body).gap(12.0))
     .footer(footer)

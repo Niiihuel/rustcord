@@ -43,11 +43,14 @@ publish = false
 # px clear of their menu, the media viewer's lightbox layout, icons that move
 # under the pointer and fills that grow into place (Discord's animated icons and
 # rail pill), floating surfaces to the host's measures (hints, menus and select
-# lists as Discord's) and buttons that draw their icon at their sizing's size.
+# lists as Discord's) and buttons that draw their icon at their sizing's size,
+# Markdown's body leading set by the host (messages 16 on 22), a modal's title
+# at the host's size and face over its scrim (Discord's questions) and icons
+# that loop on their own (the update's arrow bobbing while it downloads).
 # The exact revision stays in Cargo.lock; a git dependency keeps workspace fmt
 # from rewriting third-party sources.
-limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-04", default-features = false }
-limn-egui = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-04", default-features = false }
+limn = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-05", default-features = false }
+limn-egui = { git = "https://github.com/Niiihuel/limn", branch = "rune/integration-2026-11-05", default-features = false }
 # `clipboard`: egui reads the system clipboard on Ctrl+V (text, and a copied
 # picture as a pasted image); without it a paste only saw Rustcord's own copies.
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland", "accesskit", "clipboard"] }

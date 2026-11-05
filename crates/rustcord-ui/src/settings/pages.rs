@@ -856,7 +856,7 @@ pub fn modal(ui: &Ui, store: &Store, root: Element, look: &Look, context: &ViewC
         .popover_open_scale(0.9);
     // Clearing what this device keeps asks first; the settings themselves stay.
     if ui.settings_state.forget_asked {
-        return AlertDialog::new(
+        return look.confirm(AlertDialog::new(
             settings,
             true,
             t("Borrar datos locales"),
@@ -864,7 +864,7 @@ pub fn modal(ui: &Ui, store: &Store, root: Element, look: &Look, context: &ViewC
             "us:forget-yes",
             "us:forget-cancel",
             look.menu_palette(),
-        )
+        ))
         .confirm_label(t("Borrar"))
         .cancel_label(t("Cancelar"))
         .destructive(look.danger)
@@ -875,7 +875,7 @@ pub fn modal(ui: &Ui, store: &Store, root: Element, look: &Look, context: &ViewC
     }
     // Signing out asks first, as Discord's question does: what it does, and
     // the way back.
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         settings,
         true,
         t("Cerrar sesión"),
@@ -883,7 +883,7 @@ pub fn modal(ui: &Ui, store: &Store, root: Element, look: &Look, context: &ViewC
         "us:sign-out",
         "us:log-out:cancel",
         look.menu_palette(),
-    )
+    ))
     .confirm_label(t("Cerrar sesión"))
     .cancel_label(t("Cancelar"))
     .destructive(look.danger)

@@ -861,36 +861,37 @@ impl View<'_> {
                 selected: look.danger,
                 ..palette
             };
-            root = Modal::new(
-                root,
-                true,
-                t("¿Sincronizar permisos?"),
-                "",
-                "cs:sync:cancel",
-                palette,
-            )
-            .width(Modal::fit_width(window_width, 425.0))
-            .body(question)
-            .footer(
-                Element::column(vec![
-                    Button::new(
-                        "cs:sync:cancel",
-                        t("Mantener los permisos actuales"),
-                        palette,
-                    )
-                    .variant(ButtonVariant::Secondary)
-                    .size(ControlSize::Spacious)
-                    .render(),
-                    Button::new("cs:sync:confirm", t("Sincronizar permisos"), danger)
-                        .variant(ButtonVariant::Solid)
+            root = look
+                .confirm_modal(Modal::new(
+                    root,
+                    true,
+                    t("¿Sincronizar permisos?"),
+                    "",
+                    "cs:sync:cancel",
+                    palette,
+                ))
+                .width(Modal::fit_width(window_width, 425.0))
+                .body(question)
+                .footer(
+                    Element::column(vec![
+                        Button::new(
+                            "cs:sync:cancel",
+                            t("Mantener los permisos actuales"),
+                            palette,
+                        )
+                        .variant(ButtonVariant::Secondary)
                         .size(ControlSize::Spacious)
-                        .render()
-                        .center_content(),
-                ])
-                .gap(9.0),
-            )
-            .initial_focus("cs:sync:cancel")
-            .render();
+                        .render(),
+                        Button::new("cs:sync:confirm", t("Sincronizar permisos"), danger)
+                            .variant(ButtonVariant::Solid)
+                            .size(ControlSize::Spacious)
+                            .render()
+                            .center_content(),
+                    ])
+                    .gap(9.0),
+                )
+                .initial_focus("cs:sync:cancel")
+                .render();
         }
         let (title, confirm, description) = if self.category() {
             (
@@ -912,7 +913,7 @@ impl View<'_> {
             )
         };
         // Cancelar takes the focus: Enter does not delete.
-        AlertDialog::new(
+        look.confirm(AlertDialog::new(
             root,
             settings.delete,
             title,
@@ -920,7 +921,7 @@ impl View<'_> {
             "cs:delete:confirm",
             "cs:delete:cancel",
             palette,
-        )
+        ))
         .confirm_label(confirm)
         .cancel_label(t("Cancelar"))
         .destructive(look.danger)

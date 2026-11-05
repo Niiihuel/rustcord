@@ -674,7 +674,7 @@ pub fn nick_dialog(root: Element, form: &NickForm, width: f32, look: &Look) -> E
 
 /// The question before leaving `server`, over `root`.
 pub fn leave_dialog(root: Element, server: &str, look: &Look) -> Element {
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         tr!("Abandonar «{server}»", server),
@@ -685,7 +685,7 @@ pub fn leave_dialog(root: Element, server: &str, look: &Look) -> Element {
         ids::LEAVE_CONFIRM,
         ids::LEAVE_CANCEL,
         look.menu_palette(),
-    )
+    ))
     .width(CONFIRM_WIDTH)
     .confirm_label(t("Abandonar servidor"))
     .destructive(look.danger)

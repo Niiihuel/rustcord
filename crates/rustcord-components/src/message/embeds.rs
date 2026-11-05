@@ -1225,9 +1225,11 @@ pub(super) fn markdown(
     spoilers: &Cell<usize>,
     draw: &Draw<'_>,
 ) -> Element {
+    // Discord's `text-sm/normal`: 14 px on 18 px lines.
     let mut element = Markdown::new(source, draw.look.palette())
         .width(width)
         .font_size(super::MARKDOWN_BODY * scale)
+        .line_height(18.0 * scale)
         .render()
         .element;
     if let Some(names) = draw.names {

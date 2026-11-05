@@ -565,7 +565,7 @@ impl View<'_> {
             .automod_rules(self.server.id)
             .and_then(|rules| rules.iter().find(|rule| rule.id == Some(id)))
             .map_or_else(String::new, |rule| rule.name.clone());
-        AlertDialog::new(
+        look.confirm(AlertDialog::new(
             root,
             true,
             t("Eliminar la regla"),
@@ -576,7 +576,7 @@ impl View<'_> {
             "ss:am:delete:confirm",
             "ss:am:delete:cancel",
             look.menu_palette(),
-        )
+        ))
         .confirm_label(t("Eliminar"))
         .destructive(look.danger)
         .width(425.0)

@@ -4756,7 +4756,7 @@ pub fn call_question(root: Element, dont_ask_again: bool, look: &Look) -> Elemen
         .accessibility_label(t("No volver a preguntar"))
         .render()
         .centered_y();
-    AlertDialog::new(
+    look.confirm(AlertDialog::new(
         root,
         true,
         t("¿Quieres empezar una llamada?"),
@@ -4764,7 +4764,7 @@ pub fn call_question(root: Element, dont_ask_again: bool, look: &Look) -> Elemen
         ids::PERSON_CALL,
         ids::PERSON_CALL_CANCEL,
         palette,
-    )
+    ))
     .confirm_label(t("Iniciar llamada"))
     .body(
         Element::row(vec![
@@ -4803,14 +4803,14 @@ pub fn switch_question(root: Element, channel: &str, dont_ask_again: bool, look:
             .render(),
     ])
     .gap(9.0);
-    Modal::new(
+    look.confirm_modal(Modal::new(
         root,
         true,
         t("¿Confirmas?"),
         "",
         ids::SWITCH_CANCEL,
         palette,
-    )
+    ))
     .width(crate::friends::CONFIRM_WIDTH)
     .body(body)
     .footer(footer)
@@ -6945,6 +6945,16 @@ mod tests {
                 if text.contains("Pair") && *font_family == FontFamily::SansBold)
         });
         assert!(bold, "the channel's name is in bold");
+        // Discord's question: a 20 px semibold title over a 72 % scrim.
+        let title = laid.commands.iter().any(|command| {
+            matches!(command, limn::DrawCommand::Text { text, font_size, font_family, .. }
+                if text == "¿Confirmas?" && *font_size == 20.0 && *font_family == FontFamily::SansSemibold)
+        });
+        assert!(title, "the title as Discord's heading-lg/semibold");
+        let scrim = laid.commands.iter().any(|command| {
+            matches!(command, limn::DrawCommand::FillRect { color, .. } if *color == look.scrim())
+        });
+        assert!(scrim && look.scrim() == Color::rgba(0, 0, 0, 184));
         let rect = |id: &str| {
             laid.regions
                 .iter()

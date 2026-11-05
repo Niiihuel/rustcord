@@ -852,7 +852,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
                 .size(None, Some(22.0 * scale.max(1.0))),
         );
     }
-    let body_scale = style.text_size / MARKDOWN_BODY;
+    let body_line = style.text_size * LEADING;
     let text_width = if style.compact {
         (width - compact_name_width(view, scale)).max(80.0)
     } else {
@@ -886,9 +886,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
         if view.author.bot {
             head.push(tag("BOT", look));
         }
-        let mut line_parts = vec![Element::row(head)
-            .gap(6.0)
-            .size(None, Some(BODY_LINE * body_scale))];
+        let mut line_parts = vec![Element::row(head).gap(6.0).size(None, Some(body_line))];
         line_parts.push(written.unwrap_or_else(Element::spacer).flex(1.0));
         column.push(Element::row(line_parts).gap(6.0));
     } else if let Some(written) = written {
@@ -1030,7 +1028,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
             11.0 * scale,
             look.faint,
         )])
-        .size(Some(gutter(&style) - 16.0), Some(BODY_LINE * body_scale))
+        .size(Some(gutter(&style) - 16.0), Some(body_line))
         .padding(2.0)
     } else if view.continued {
         // The time of a continued message shows while the pointer is over it.
@@ -1044,7 +1042,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
             .reveal_on_hover(action(message, "time")),
             Element::spacer().flex(1.0),
         ])
-        .size(Some(AVATAR + 8.0), Some(BODY_LINE * body_scale))
+        .size(Some(AVATAR + 8.0), Some(body_line))
     } else {
         let face = crate::identity::decorated(
             |side| {
@@ -1119,8 +1117,12 @@ fn only_media_links(message: &Message) -> bool {
             .all(|word| media.contains(&word))
 }
 
-/// The line height of limn's Markdown body at its own size.
-const BODY_LINE: f32 = 22.0;
+/// A message's lines, as Discord's (`--chat-markup-line-height`, 1.375rem
+/// at 1rem): 22 px at 16, in proportion at other sizes.
+const LEADING: f32 = 1.375;
+
+/// The height of a line of a message at its usual size.
+const BODY_LINE: f32 = TEXT_SIZE * LEADING;
 
 fn invitation_card(
     message: &Message,
@@ -1415,6 +1417,7 @@ fn said(view: &MessageView<'_>, live: &Live<'_>, width: f32, size: f32, look: &L
     let mut element = Markdown::new(&message.content, palette)
         .width(width)
         .font_size(size)
+        .line_height(size * LEADING)
         .colors(colors)
         .render()
         .element;
@@ -3936,6 +3939,42 @@ mod tests {
             .map(Vec::len)
             .sum();
         assert_eq!(plain, 2, "copy text and mark unread");
+    }
+
+    #[test]
+    fn a_message_sets_its_lines_as_discord_does_one_and_three_eighths_its_size() {
+        // The top of each line of a two-line message, and the compact row's
+        // height, at `text_size`.
+        let lines = |text_size: f32, compact: bool| {
+            let mut said = (*message(1, 1, 0)).clone();
+            said.content = "uno  \ndos".into();
+            let mut shown = view(&said, ALL);
+            shown.style.text_size = text_size;
+            shown.style.compact = compact;
+            let laid = laid(message_row(shown, &Look::DARK));
+            let top = |wanted: &str| {
+                laid.commands
+                    .iter()
+                    .find_map(|command| match command {
+                        limn::DrawCommand::Text { text, position, .. } if text == wanted => {
+                            Some(position.y)
+                        }
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| panic!("{wanted} is drawn"))
+            };
+            top("dos") - top("uno")
+        };
+        assert_eq!(lines(TEXT_SIZE, false), 22.0, "16 on 22");
+        assert!(
+            (lines(TEXT_SIZE, true) - 22.0).abs() < 1e-3,
+            "in a compact row too"
+        );
+        assert!(
+            (lines(20.0, false) - 27.5).abs() < 1e-3,
+            "and in proportion"
+        );
+        assert_eq!(BODY_LINE, 22.0, "the skeleton's lines");
     }
 
     #[test]
