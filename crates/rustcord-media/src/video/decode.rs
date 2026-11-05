@@ -410,7 +410,7 @@ mod tests {
         let [r, g, b, a] = frame.rgba[..4] else {
             unreachable!()
         };
-        assert!(r > 170 && g < 70 && b < 70 && a == 255, "{r} {g} {b}");
+        assert!(r > 170 && g < 70 && b < 70 && a == 255, "{r} {g} {b} {a}");
         assert_eq!(decoding.state(), VideoState::Running);
         // A delta that waited too long is dropped, and a key frame asked for
         // once the gap allows it.

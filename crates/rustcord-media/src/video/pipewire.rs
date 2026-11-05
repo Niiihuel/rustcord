@@ -68,7 +68,13 @@ struct Format {
     height: u32,
     /// Each buffer is one JPEG picture: a camera that only gives MJPEG.
     jpeg: bool,
+    /// A screen's GPU buffers in the linear layout (`LINEAR`): DMA-BUF the
+    /// source may leave unmapped, read here once mapped.
+    linear: bool,
 }
+
+/// DRM's linear layout: rows one after another, readable as they are.
+const LINEAR: i64 = 0;
 
 #[derive(Default)]
 struct Reader {
@@ -202,7 +208,7 @@ pub(super) fn read(
         })
         .param_changed({
             let shared = shared.clone();
-            move |_, reader, id, param| {
+            move |stream, reader, id, param| {
                 if id != spa::param::ParamType::Format.as_raw() {
                     return;
                 }
@@ -217,6 +223,9 @@ pub(super) fn read(
                         false => pixels(info.format())?,
                     };
                     let size = info.size();
+                    // The flag's constant needs a newer libspa feature: its bit.
+                    let linear = info.flags().bits() & spa::sys::SPA_VIDEO_FLAG_MODIFIER != 0
+                        && info.modifier() == LINEAR as u64;
                     let fraction = |rate: spa::utils::Fraction| (rate.num, rate.denom);
                     let mut stats = lock(&shared.stats);
                     stats.size = (size.width, size.height);
@@ -228,8 +237,19 @@ pub(super) fn read(
                         width: size.width,
                         height: size.height,
                         jpeg,
+                        linear,
                     })
                 });
+                // A screen's GPU buffers, once their linear layout is agreed:
+                // the buffers then take DMA-BUF too.
+                if kind == VideoKind::Screen {
+                    let dmabuf = reader.format.is_some_and(|format| format.linear);
+                    if let Ok(buffers) = buffers_pod(dmabuf) {
+                        if let Some(pod) = spa::pod::Pod::from_bytes(&buffers) {
+                            let _ = stream.update_params(&mut [pod]);
+                        }
+                    }
+                }
             }
         })
         .process({
@@ -266,14 +286,24 @@ pub(super) fn read(
     let fps = (1.0 / shared.capture().1.as_secs_f64())
         .round()
         .clamp(30.0, 60.0) as u32;
-    let raw = format_pod(MediaSubtype::Raw, formats, fps)
+    let raw = format_pod(MediaSubtype::Raw, formats, fps, None)
         .map_err(|_| unavailable(pw::Error::CreationFailed))?;
     // A camera that gives only MJPEG is read too, after what it gives raw.
-    let mjpg = format_pod(MediaSubtype::Mjpg, Vec::new(), fps)
+    let mjpg = format_pod(MediaSubtype::Mjpg, Vec::new(), fps, None)
         .map_err(|_| unavailable(pw::Error::CreationFailed))?;
-    let buffers = buffers_pod(kind).map_err(|_| unavailable(pw::Error::CreationFailed))?;
+    // A screen whose compositor shares only GPU buffers (niri 26.04): its
+    // linear ones, after shared memory, so a source with both keeps that.
+    let gpu = format_pod(
+        MediaSubtype::Raw,
+        SCREEN_FORMATS.to_vec(),
+        fps,
+        Some(LINEAR),
+    )
+    .map_err(|_| unavailable(pw::Error::CreationFailed))?;
+    let buffers = buffers_pod(kind == VideoKind::Camera)
+        .map_err(|_| unavailable(pw::Error::CreationFailed))?;
     let pods = match kind {
-        VideoKind::Screen => vec![raw, buffers],
+        VideoKind::Screen => vec![raw, gpu, buffers],
         VideoKind::Camera => vec![raw, mjpg, buffers],
     };
     let mut params = pods
@@ -320,11 +350,13 @@ pub(super) fn read(
 
 /// What the stream accepts: `subtype` pictures (raw ones in `formats`, the
 /// first preferred, as SPA choices repeat their default), any size and rate
-/// the source has, `fps` preferred.
+/// the source has, `fps` preferred; with a `modifier`, only GPU buffers in
+/// that layout.
 fn format_pod(
     subtype: MediaSubtype,
     formats: Vec<VideoFormat>,
     fps: u32,
+    modifier: Option<i64>,
 ) -> Result<Vec<u8>, spa::pod::serialize::GenError> {
     use spa::param::format::{FormatProperties, MediaType};
     use spa::pod::{ChoiceValue, Property, PropertyFlags, Value};
@@ -348,6 +380,19 @@ fn format_pod(
                 ChoiceEnum::Enum {
                     default,
                     alternatives: formats.collect(),
+                },
+            ))),
+        });
+    }
+    if let Some(modifier) = modifier {
+        properties.push(Property {
+            key: FormatProperties::VideoModifier.as_raw(),
+            flags: PropertyFlags::MANDATORY,
+            value: Value::Choice(ChoiceValue::Long(Choice(
+                ChoiceFlags::empty(),
+                ChoiceEnum::Enum {
+                    default: modifier,
+                    alternatives: vec![modifier],
                 },
             ))),
         });
@@ -397,18 +442,19 @@ fn format_pod(
     )
 }
 
-/// Where the stream takes its buffers: shared memory, or for a camera also
-/// an exported DMA-BUF, both mapped by `MAP_BUFFERS`. Count and size stay
-/// the source's. Unsaid, a V4L2 camera keeps them in its own mapping, which
-/// a client in another process cannot reach: PipeWire then fails the link
-/// with "use input buffers: -22". A screen gets no DMA-BUF: without
-/// modifiers it could be tiled, unreadable as rows.
-fn buffers_pod(kind: VideoKind) -> Result<Vec<u8>, spa::pod::serialize::GenError> {
+/// Where the stream takes its buffers: shared memory, and with `dmabuf`
+/// also DMA-BUF. Count and size stay the source's. A camera's (`dmabuf`):
+/// unsaid, a V4L2 camera keeps them in its own mapping, which a client in
+/// another process cannot reach, and PipeWire fails the link with "use
+/// input buffers: -22". A screen takes DMA-BUF only once the linear layout
+/// is agreed (`Format::linear`): without a modifier it could be tiled,
+/// unreadable as rows.
+fn buffers_pod(dmabuf: bool) -> Result<Vec<u8>, spa::pod::serialize::GenError> {
     use spa::buffer::DataType;
     use spa::pod::{ChoiceValue, Property, PropertyFlags, Value};
     use spa::utils::{Choice, ChoiceEnum, ChoiceFlags, SpaTypes};
     let mut types = [DataType::MemPtr, DataType::MemFd].to_vec();
-    if kind == VideoKind::Camera {
+    if dmabuf {
         types.push(DataType::DmaBuf);
     }
     let mask = types.iter().fold(0, |mask, kind| mask | 1 << kind.as_raw());
@@ -474,6 +520,30 @@ fn frame(format: Format, datas: &mut [spa::buffer::Data], max: (u32, u32)) -> Op
         Pixels::Yuy2 => (format.width as usize).div_ceil(2) * 4,
         Pixels::Nv12 | Pixels::I420 => format.width as usize,
     };
+    if format.linear {
+        let data = datas.first_mut()?;
+        // A source's GPU buffer is not mapped by PipeWire (niri marks none
+        // mappable, and says its size is 1): map it here for this frame.
+        if data.type_() == spa::buffer::DataType::DmaBuf
+            && data.data().is_none_or(|bytes| bytes.len() <= 1)
+        {
+            let chunk = data.chunk();
+            let offset = chunk.offset() as usize;
+            let stride = usize::try_from(chunk.stride())
+                .ok()
+                .filter(|stride| *stride >= bytes_per_row)
+                .unwrap_or(bytes_per_row);
+            let len = stride
+                .checked_mul(format.height as usize)?
+                .checked_add(offset)?;
+            let mapped = Mapped::new(data.fd(), len)?;
+            let plane = Plane {
+                bytes: mapped.bytes().get(offset..)?,
+                stride,
+            };
+            return convert_within(format.pixels, format.width, format.height, &[plane], max);
+        }
+    }
     let (first, rest) = datas.split_first_mut()?;
     let (main, after) = plane(first, bytes_per_row)?;
     let mut planes = vec![main];
@@ -521,6 +591,67 @@ fn packed_chroma(
         .collect()
 }
 
+/// A buffer's file mapped for reading, between DMA-BUF's sync calls so the
+/// GPU's writes are seen; unmapped when dropped.
+struct Mapped {
+    address: *mut libc::c_void,
+    len: usize,
+    fd: std::os::fd::RawFd,
+}
+
+/// `DMA_BUF_IOCTL_SYNC` (`_IOW('b', 0, struct dma_buf_sync)`) and its flags.
+const DMA_BUF_IOCTL_SYNC: libc::c_ulong = 0x4008_6200;
+const DMA_BUF_SYNC_READ: u64 = 1;
+const DMA_BUF_SYNC_END: u64 = 1 << 2;
+
+impl Mapped {
+    fn new(fd: std::os::fd::RawFd, len: usize) -> Option<Self> {
+        if fd < 0 || len == 0 {
+            return None;
+        }
+        // SAFETY: a read-only shared mapping of `len` bytes of the buffer's
+        // file, which PipeWire keeps open while the buffer is dequeued; it
+        // is only read through `bytes` and unmapped on drop.
+        let address = unsafe {
+            libc::mmap(
+                std::ptr::null_mut(),
+                len,
+                libc::PROT_READ,
+                libc::MAP_SHARED,
+                fd,
+                0,
+            )
+        };
+        if address == libc::MAP_FAILED {
+            return None;
+        }
+        let mapped = Self { address, len, fd };
+        mapped.sync(DMA_BUF_SYNC_READ);
+        Some(mapped)
+    }
+
+    /// Tell the kernel a CPU read starts or ends; a file that is not a
+    /// DMA-BUF refuses it, harmlessly.
+    fn sync(&self, flags: u64) {
+        let sync = flags;
+        // SAFETY: the ioctl reads one u64 (`struct dma_buf_sync`) from it.
+        let _ = unsafe { libc::ioctl(self.fd, DMA_BUF_IOCTL_SYNC, &sync) };
+    }
+
+    fn bytes(&self) -> &[u8] {
+        // SAFETY: `len` readable bytes mapped at `address` until drop.
+        unsafe { std::slice::from_raw_parts(self.address.cast::<u8>(), self.len) }
+    }
+}
+
+impl Drop for Mapped {
+    fn drop(&mut self) {
+        self.sync(DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END);
+        // SAFETY: the mapping `new` made, unmapped once.
+        unsafe { libc::munmap(self.address, self.len) };
+    }
+}
+
 /// The bytes of a data plane from its chunk's offset, and its stride.
 fn plane(data: &mut spa::buffer::Data, row: usize) -> Option<(Plane<'_>, &[u8])> {
     let chunk = data.chunk();
@@ -542,7 +673,7 @@ mod tests {
     fn cameras_are_offered_mjpeg_besides_raw_pictures() {
         use spa::param::format::FormatProperties as Key;
         use spa::pod::{deserialize::PodDeserializer, Value};
-        let pod = format_pod(MediaSubtype::Mjpg, Vec::new(), 30).unwrap();
+        let pod = format_pod(MediaSubtype::Mjpg, Vec::new(), 30, None).unwrap();
         let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(&pod) else {
             panic!("not an object");
         };
@@ -559,7 +690,7 @@ mod tests {
         );
         assert_eq!(value(Key::VideoFormat), None, "MJPEG names no pixel layout");
         assert!(value(Key::VideoSize).is_some() && value(Key::VideoFramerate).is_some());
-        let raw = format_pod(MediaSubtype::Raw, vec![VideoFormat::YUY2], 30).unwrap();
+        let raw = format_pod(MediaSubtype::Raw, vec![VideoFormat::YUY2], 30, None).unwrap();
         let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(&raw) else {
             panic!("not an object");
         };
@@ -604,11 +735,61 @@ mod tests {
             }
         };
         let has = |mask: i32, kind: DataType| mask & 1 << kind.as_raw() != 0;
-        let camera = mask(VideoKind::Camera);
+        let camera = mask(true);
         assert!(has(camera, DataType::MemFd) && has(camera, DataType::MemPtr));
         assert!(has(camera, DataType::DmaBuf));
-        let screen = mask(VideoKind::Screen);
+        // A screen's, until the linear layout is agreed.
+        let screen = mask(false);
         assert!(has(screen, DataType::MemFd) && !has(screen, DataType::DmaBuf));
+    }
+
+    /// niri 26.04 shares a screen only as GPU buffers with a mandatory
+    /// modifier: the linear one is offered, after shared memory.
+    #[test]
+    fn a_screen_also_takes_linear_gpu_buffers() {
+        use spa::param::format::FormatProperties as Key;
+        use spa::pod::{deserialize::PodDeserializer, ChoiceValue, PropertyFlags, Value};
+        use spa::utils::{Choice, ChoiceEnum};
+        let pod = format_pod(MediaSubtype::Raw, SCREEN_FORMATS.to_vec(), 60, Some(LINEAR)).unwrap();
+        let Ok((_, Value::Object(object))) = PodDeserializer::deserialize_any_from(&pod) else {
+            panic!("not an object");
+        };
+        let modifier = object
+            .properties
+            .iter()
+            .find(|property| property.key == Key::VideoModifier.as_raw())
+            .expect("a modifier");
+        assert!(modifier.flags.contains(PropertyFlags::MANDATORY));
+        assert!(matches!(
+            &modifier.value,
+            Value::Choice(ChoiceValue::Long(Choice(_, ChoiceEnum::Enum { default: 0, alternatives })))
+                if alternatives == &vec![0]
+        ));
+        let plain = format_pod(MediaSubtype::Raw, SCREEN_FORMATS.to_vec(), 60, None).unwrap();
+        let Ok((_, Value::Object(plain))) = PodDeserializer::deserialize_any_from(&plain) else {
+            panic!("not an object");
+        };
+        assert!(plain
+            .properties
+            .iter()
+            .all(|property| property.key != Key::VideoModifier.as_raw()));
+    }
+
+    /// A buffer's file maps for reading; a memfd stands in for a DMA-BUF,
+    /// whose sync calls it refuses harmlessly.
+    #[test]
+    fn a_buffer_file_maps_for_reading() {
+        use std::io::Write;
+        use std::os::fd::{AsRawFd, FromRawFd};
+        // SAFETY: a new anonymous file, owned below.
+        let fd = unsafe { libc::memfd_create(c"frame".as_ptr(), 0) };
+        assert!(fd >= 0);
+        // SAFETY: `fd` is a valid descriptor this test owns.
+        let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+        file.write_all(&[1, 2, 3, 4, 5, 6, 7, 8]).unwrap();
+        let mapped = Mapped::new(file.as_raw_fd(), 8).expect("mapped");
+        assert_eq!(mapped.bytes(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert!(Mapped::new(-1, 8).is_none());
     }
 
     #[test]

@@ -852,6 +852,17 @@ mod tests {
         assert_eq!(openh264::formats::YUVSource::dimensions(&picture), size);
     }
 
+    /// The colour in the middle of `unit`'s picture, as OpenH264 reads it.
+    fn middle_color(unit: &Unit) -> [u8; 3] {
+        let mut decoder = Decoder::new().unwrap();
+        let picture = decoder.decode(&unit.data).unwrap().unwrap();
+        let (width, height) = openh264::formats::YUVSource::dimensions(&picture);
+        let mut rgba = vec![0; width * height * 4];
+        picture.write_rgba8(&mut rgba);
+        let at = ((height / 2) * width + width / 2) * 4;
+        [rgba[at], rgba[at + 1], rgba[at + 2]]
+    }
+
     #[test]
     fn with_the_gpu_allowed_whatever_encodes_makes_a_stream_openh264_reads() {
         // A GPU when this machine has one, OpenH264 when not (as in CI).
@@ -929,6 +940,11 @@ mod tests {
             .expect("parameter sets before the key frame");
         assert_eq!((sps[4], sps[5] & 0x40), (66, 0x40));
         decodes_to(&first, (640, 360));
+        // The colours it was given: Mesa's postproc read RGBA as ABGR on AMD,
+        // and this blue went out yellow.
+        let [r, g, b] = middle_color(&first);
+        let near = |got: u8, want: u8| got.abs_diff(want) <= 12;
+        assert!(near(r, 10) && near(g, 40) && near(b, 90), "{r} {g} {b}");
         asks.lock().unwrap().push_back(Ask::Bitrate(1_000_000));
         wait(|| (encoding.sent().bitrate == 1_000_000).then_some(()));
         for shade in 3..6 {

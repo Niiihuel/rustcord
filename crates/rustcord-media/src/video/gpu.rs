@@ -261,12 +261,14 @@ impl Encoder {
                 // Variable rate at the target as the most: VA-API's constant rate
                 // pads a still screen to the full rate. No B-frames; a key frame
                 // on its own at most every 1024 pictures (VA-API's longest GOP).
+                // NV12 from the CPU's videoconvert: Mesa's postproc reads RGBA
+                // as ABGR on AMD (blue went out yellow), and BGRA off-range.
                 Engine::VaApi => va_elements(&["h264enc", "h264lpenc"]).into_iter().find_map(
                     |(device, element)| {
                         Pipe::start(
                             &format!(
-                                "appsrc name=src ! {device}postproc ! \
-                             video/x-raw(memory:VAMemory),format=NV12 ! \
+                                "appsrc name=src ! videoconvert ! video/x-raw,format=NV12 ! \
+                             {device}postproc ! video/x-raw(memory:VAMemory),format=NV12 ! \
                              {element} name=encoder rate-control=vbr target-percentage=100 \
                              bitrate={kbps} key-int-max=1024 b-frames=0 ! {H264_OUT}"
                             ),
@@ -402,13 +404,15 @@ impl Decoder {
             .field("alignment", "au")
             .build();
         let pipe = match engine {
+            // NV12 out, turned into RGBA on the CPU: Mesa's postproc gives
+            // RGBA as ABGR on AMD, a red picture with the red as its alpha.
             Engine::VaApi => va_elements(&["h264dec"])
                 .into_iter()
-                .find_map(|(device, element)| {
+                .find_map(|(_, element)| {
                     Pipe::start(
                         &format!(
                             "appsrc name=src ! h264parse ! {element} {LIVE} ! \
-                             {device}postproc ! video/x-raw,format=RGBA ! \
+                             video/x-raw,format=NV12 ! videoconvert ! video/x-raw,format=RGBA ! \
                              appsink name=sink sync=false enable-last-sample=false"
                         ),
                         &caps,

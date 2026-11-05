@@ -56,6 +56,10 @@ cpal = { version = "0.19.0", features = ["pipewire"] }
 pipewire = "0.10.1"
 # Drives the portal's async requests on each video source's own thread.
 tokio = { workspace = true }
+# Maps the screen's GPU buffers (DMA-BUF) for reading, with the kernel's sync
+# calls, when a compositor shares no other memory (niri 26.04). Already in
+# the tree; nothing new is compiled.
+libc = "0.2"
 # The GPU's H264 encoder and decoder, OpenH264 staying as the fallback:
 # GStreamer's VA-API (Mesa, the integrated GPU) and NVENC/NVDEC (nvcodec)
 # elements. Bindings MIT/Apache-2.0; GStreamer is
