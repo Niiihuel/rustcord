@@ -5912,6 +5912,7 @@ version = "0.2.2"
 dependencies = [
  "getrandom 0.3.4",
  "gtk4",
+ "libc",
  "rustcord-discord-session",
  "rustcord-i18n",
  "rustcord-provider",

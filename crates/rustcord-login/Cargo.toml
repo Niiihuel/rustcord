@@ -31,6 +31,10 @@ url = "2"
 serde_json = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# The login and verification windows leave with _exit once their answer is
+# written: WebKitGTK's teardown at exit can abort and turn a finished login
+# into a failed one. Already built for other crates; nothing new is compiled.
+libc = "0.2"
 # A separate temporary authentication window, enabled only by the webview feature.
 gtk4 = { version = "0.11", features = ["v4_10"], optional = true }
 # Ephemeral WebKit network session with native cancellation and origin policies.

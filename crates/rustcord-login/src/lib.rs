@@ -271,7 +271,11 @@ async fn acquire_from(
             Talk::TooLarge => LoginError::new(es(
                 "La respuesta de inicio de sesión superó el límite permitido.",
             )),
-            Talk::Exit(code) => protocol::helper_error(code),
+            Talk::Exit(code) => {
+                // Only the window's exit code: never a page, a script or the engine's output.
+                eprintln!("rustcord: the login window ended with code {code:?}");
+                protocol::helper_error(code)
+            }
             Talk::Timeout => LoginError::new(es("Se agotó el tiempo de inicio de sesión.")),
         })?;
     protocol::decode_reply(&capability, &bytes)
@@ -331,7 +335,7 @@ pub fn run_helper() -> i32 {
     follow_parent_language();
     #[cfg(all(feature = "webview", target_os = "linux"))]
     {
-        webview::run()
+        leave(webview::run())
     }
     #[cfg(all(feature = "webview", windows))]
     {
@@ -348,7 +352,7 @@ pub fn run_captcha_helper() -> i32 {
     follow_parent_language();
     #[cfg(all(feature = "webview", target_os = "linux"))]
     {
-        webview::run_captcha()
+        leave(webview::run_captcha())
     }
     #[cfg(all(feature = "webview", windows))]
     {
@@ -358,6 +362,19 @@ pub fn run_captcha_helper() -> i32 {
     {
         5
     }
+}
+
+/// End a Linux helper with `code` now, its answer already written and
+/// flushed: without the process's teardown, where WebKitGTK's objects can
+/// abort (a timer of its run loop) and make a finished login look failed.
+#[cfg(all(feature = "webview", target_os = "linux"))]
+fn leave(code: i32) -> ! {
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    // SAFETY: nothing is left to do in this process: its answer is out and
+    // the parent reads only that and the exit code.
+    unsafe { libc::_exit(code) }
 }
 
 /// Run the hidden helper that reads WebView2's browser, as [`run_helper`].

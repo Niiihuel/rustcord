@@ -27,7 +27,13 @@ struct State {
     result: RefCell<Option<Zeroizing<String>>>,
     /// Times the page's crashed process was restarted.
     recoveries: Cell<u8>,
+    /// Times taking the result failed and was tried again.
+    retries: Cell<u8>,
 }
+
+/// Taking the result is tried again this many times, once a tick, when its
+/// evaluation fails: it does while the page is moving to another document.
+const RETRIES: u8 = 50;
 
 /// A crashed page process is restarted this many times before the window
 /// gives up: WebKit starts a new one when the page loads again.
@@ -53,6 +59,17 @@ impl State {
             && self.recoveries.get() < RECOVERIES;
         if again {
             self.recoveries.set(self.recoveries.get() + 1);
+        }
+        again
+    }
+
+    /// Whether taking the result is to be tried again after its evaluation
+    /// failed: while the window is open, a few times; it asks the next tick.
+    fn retry(&self) -> bool {
+        let again = self.active() && self.retries.get() < RETRIES;
+        if again {
+            self.retries.set(self.retries.get() + 1);
+            self.pending.set(true);
         }
         again
     }
@@ -129,6 +146,9 @@ fn hardened_settings() -> webkit6::Settings {
         // Nothing of the page leaves through the inspector or stdout.
         .enable_developer_extras(false)
         .enable_write_console_messages_to_stdout(false)
+        // Drawn by the processor: the GPU's DMA-BUF and EGL paths crash the
+        // page's process on some Wayland desktops and hybrid graphics.
+        .hardware_acceleration_policy(webkit6::HardwareAccelerationPolicy::Never)
         .build()
 }
 
@@ -153,6 +173,7 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
         code: Cell::new(6),
         result: RefCell::new(None),
         recoveries: Cell::new(0),
+        retries: Cell::new(0),
     });
     let session = webkit6::NetworkSession::new_ephemeral();
     session.set_persistent_credential_storage_enabled(false);
@@ -335,8 +356,10 @@ fn open(surface: Surface, lifetime: Duration) -> Outcome {
                 {
                     return;
                 }
+                // A page moving on fails the evaluation: the result stays in
+                // it, or its next document tells again; never the end.
                 let Ok(value) = result else {
-                    state.finish(&main, 6);
+                    state.retry();
                     return;
                 };
                 if !value.is_string() {
@@ -398,6 +421,7 @@ mod tests {
             code: Cell::new(6),
             result: RefCell::new(None),
             recoveries: Cell::new(0),
+            retries: Cell::new(0),
         };
         let main = glib::MainLoop::new(None, false);
         state.finish(&main, 0);
@@ -423,6 +447,7 @@ mod tests {
             code: Cell::new(6),
             result: RefCell::new(None),
             recoveries: Cell::new(0),
+            retries: Cell::new(0),
         };
         assert!(!state.recover(Reason::ExceededMemoryLimit));
         assert!(state.recover(Reason::Crashed));
@@ -434,6 +459,29 @@ mod tests {
             ..state
         };
         assert!(!closed.recover(Reason::Crashed), "nothing after it closed");
+    }
+
+    #[test]
+    fn a_failed_take_is_tried_again_a_few_times_while_open() {
+        let state = State {
+            opened: Instant::now(),
+            lifetime: Duration::from_secs(10),
+            page: protocol::discord_origin,
+            closed: Cell::new(false),
+            pending: Cell::new(false),
+            evaluating: Cell::new(false),
+            generation: Cell::new(1),
+            code: Cell::new(6),
+            result: RefCell::new(None),
+            recoveries: Cell::new(0),
+            retries: Cell::new(0),
+        };
+        for _ in 0..RETRIES {
+            assert!(state.retry());
+            assert!(state.pending.replace(false), "the next tick asks again");
+        }
+        assert!(!state.retry(), "not for ever");
+        assert!(!state.closed.get(), "a failed take never ends the window");
     }
 
     #[test]
@@ -449,6 +497,7 @@ mod tests {
             code: Cell::new(6),
             result: RefCell::new(None),
             recoveries: Cell::new(0),
+            retries: Cell::new(0),
         };
         assert!(state.can_accept(1, "https://discord.com/login"));
         state.generation.set(2);
