@@ -4,12 +4,11 @@
 //! log entries). Pure functions of props like the rest of the crate; `rustcord-ui`
 //! keeps the drafts and turns the actions into commands.
 //!
-//! Measures follow Discord's captures at 1361×797 logical pixels: a
-//! 254 px sidebar of 38.5 px items, a 705 px page column 58 px to its right,
-//! the close button 42 px past the column, all centered as one block. They
-//! are Discord's CSS pixels about 7 % larger (238, 36, 660, 54 and 40: see
-//! `docs/discord-reference.md`, «Channel settings»); the server's pages
-//! were laid out at this size, so both settings keep it.
+//! Measures follow Discord's web client at 1440 × 813 (2026-11-05): the
+//! sidebar's 264 px (its items 238 wide, 20 in) and the page split the
+//! window's room past 1080 between them; the page's column, 660 wide (835
+//! for the profile and the members) 40 right of the sidebar, and the round
+//! close button 40 past the column.
 
 use limn::{
     Button, ButtonSize, ButtonVariant, Checkbox, Color, ColorPicker, Component, ContextMenu,
@@ -22,20 +21,29 @@ use rustcord_model::{AuditAction, AuditActionKind, Permissions, Rgb, RoleId, Use
 
 use crate::{avatar, gap, icon, line, strong_line, text, Look};
 
-/// The sidebar's width, and the height and pitch of its items.
-pub const SIDEBAR_WIDTH: f32 = 254.0;
-pub const ITEM_HEIGHT: f32 = 38.5;
+/// The sidebar: 264 px, its items 20 in from its start and 6 from its end.
+pub const SIDEBAR_WIDTH: f32 = 264.0;
+pub const ITEM_HEIGHT: f32 = 36.0;
 const ITEM_GAP: f32 = 2.0;
+const SIDEBAR_START: f32 = 20.0;
+const SIDEBAR_END: f32 = 6.0;
+/// An item's width: what the sidebar leaves between its start and its end.
+const ITEM_WIDTH: f32 = SIDEBAR_WIDTH - SIDEBAR_START - SIDEBAR_END;
 /// Text inside a sidebar item, and of its headings, starts this far in.
-const ITEM_INSET: f32 = 10.5;
-/// A page's column, and the wider one of the member table.
-pub const CONTENT_WIDTH: f32 = 705.0;
-pub const WIDE_CONTENT_WIDTH: f32 = 847.0;
-/// Between the sidebar and a page's column.
-pub const PAGE_INSET: f32 = 58.0;
+const ITEM_INSET: f32 = 10.0;
+/// The scrollbar's room at the end of the sidebar's region.
+const SIDEBAR_GUTTER: f32 = 8.0;
+/// A page's column, and the wider one of the profile and the member table.
+pub const CONTENT_WIDTH: f32 = 660.0;
+pub const WIDE_CONTENT_WIDTH: f32 = 835.0;
+/// The column of the settings that still keep an earlier measure (a
+/// channel's), wider than Discord's server settings'.
+pub const OTHER_CONTENT_WIDTH: f32 = 705.0;
+/// Between the sidebar's region and a page's column.
+pub const PAGE_INSET: f32 = 40.0;
 /// The close button, and the space between the page and it.
-pub const CLOSE_SIZE: f32 = 38.0;
-const CLOSE_GAP: f32 = 42.0;
+pub const CLOSE_SIZE: f32 = 36.0;
+const CLOSE_GAP: f32 = 40.0;
 /// Space over a page's title, and under its end for the bar to float in.
 const PAGE_TOP: f32 = 60.0;
 const PAGE_BOTTOM: f32 = 96.0;
@@ -52,8 +60,11 @@ const BAR_BOTTOM: f32 = 22.5;
 /// The role editor: the list of roles beside it, and its own column.
 pub const ROLE_LIST_WIDTH: f32 = 262.0;
 pub const EDITOR_WIDTH: f32 = 472.0;
-/// Least room kept at each side of the window.
+/// Least room kept at the window's end.
 const EDGE: f32 = 16.0;
+/// Past this width the window's room is shared between the sidebar's
+/// region and the page's, as Discord's flex boxes share it.
+const SHARED_FROM: f32 = 1080.0;
 
 /// The swatches of the color pickers, in two rows of ten.
 pub const COLORS: [Rgb; 20] = [
@@ -91,18 +102,38 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    /// The sidebar, the page and the close button are centered as a block;
-    /// a `wide` page grows to the right of where a usual one ends. In a
-    /// narrow window the column gives up room first.
+    /// The server's settings, as Discord's: the sidebar's region and the
+    /// page's grow alike past [`SHARED_FROM`], the sidebar at the end of
+    /// its own; a `wide` page's column is wider. In a narrow window the
+    /// column gives up room first.
+    pub fn server(window_width: f32, wide: bool) -> Self {
+        Self::with_column(
+            window_width,
+            if wide {
+                WIDE_CONTENT_WIDTH
+            } else {
+                CONTENT_WIDTH
+            },
+        )
+    }
+
+    /// Other settings in the same frame, whose column is
+    /// [`OTHER_CONTENT_WIDTH`] (a `wide` page's as the server's).
     pub fn new(window_width: f32, wide: bool) -> Self {
-        let fixed = SIDEBAR_WIDTH + PAGE_INSET + CLOSE_GAP + CLOSE_SIZE;
-        let margin = ((window_width - fixed - CONTENT_WIDTH) / 2.0).max(EDGE);
-        let room = (window_width - margin - fixed - EDGE).max(240.0);
-        let widest = if wide {
-            WIDE_CONTENT_WIDTH
-        } else {
-            CONTENT_WIDTH
-        };
+        Self::with_column(
+            window_width,
+            if wide {
+                WIDE_CONTENT_WIDTH
+            } else {
+                OTHER_CONTENT_WIDTH
+            },
+        )
+    }
+
+    fn with_column(window_width: f32, widest: f32) -> Self {
+        let margin = ((window_width - SHARED_FROM) / 2.0).max(0.0);
+        let fixed = SIDEBAR_WIDTH + SIDEBAR_GUTTER + PAGE_INSET + CLOSE_GAP + CLOSE_SIZE + EDGE;
+        let room = (window_width - margin - fixed).max(240.0);
         Self {
             margin,
             content: room.min(widest),
@@ -113,12 +144,17 @@ impl Metrics {
     pub fn region(&self) -> f32 {
         PAGE_INSET + self.content
     }
+
+    /// Where the page's region starts: past the sidebar and its gutter.
+    pub fn sidebar_region(&self) -> f32 {
+        self.margin + SIDEBAR_WIDTH + SIDEBAR_GUTTER
+    }
 }
 
 /// One line of the sidebar.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SidebarEntry {
-    /// A group's title, in capitals.
+    /// A group's title, as written: the server's name over the first one.
     Heading(String),
     /// What the settings are of: a mark such as a channel's `#` and its
     /// name, quiet, and a brighter detail after them, such as its category.
@@ -138,23 +174,27 @@ pub enum SidebarEntry {
     Separator,
 }
 
-/// The sidebar of pages, with a quiet line at its end saying what the
-/// provider is.
+/// The sidebar of pages, as Discord's: group titles 14 px medium in the
+/// faint ink, items 238 × 36 of 16 px text 2 apart, a line 8 from each
+/// group; with a quiet line at its end saying what the provider is.
 pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element {
     let mut rows = vec![gap(0.0, PAGE_TOP)];
-    for entry in entries {
+    for (index, entry) in entries.iter().enumerate() {
         rows.push(match entry {
-            SidebarEntry::Heading(title) => Element::row(vec![
-                gap(ITEM_INSET, 0.0),
-                line(title.to_uppercase(), 12.0, look.faint)
-                    .font_family(FontFamily::SansBold)
-                    .flex(1.0)
-                    .centered_y(),
-            ])
-            .size(None, Some(26.0)),
-            // Discord's: the glyph 12 px and the name 14 medium, quiet, then
-            // the detail 12 semibold in the text's ink; 22 px with the room
-            // under it, so the first item starts 24 under the top.
+            SidebarEntry::Heading(title) => Element::column(vec![
+                // The first title, the server's name, starts at the top.
+                gap(0.0, if index == 0 { 0.0 } else { 6.0 }),
+                Element::row(vec![
+                    gap(ITEM_INSET, 0.0),
+                    line(title.clone(), 14.0, look.faint)
+                        .font_family(FontFamily::SansMedium)
+                        .flex(1.0)
+                        .centered_y(),
+                    gap(ITEM_INSET, 0.0),
+                ])
+                .size(None, Some(18.0)),
+                gap(0.0, 6.0),
+            ]),
             SidebarEntry::Title { icon, name, detail } => {
                 let mut parts = vec![gap(ITEM_INSET, 0.0)];
                 if let Some(glyph) = icon {
@@ -196,7 +236,7 @@ pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element
                         .flex(1.0),
                     gap(ITEM_INSET, 0.0),
                 ]),
-                gap(0.0, 6.0),
+                gap(0.0, 8.0),
             ]),
             SidebarEntry::Item {
                 id,
@@ -207,16 +247,24 @@ pub fn sidebar(entries: &[SidebarEntry], footnote: &str, look: &Look) -> Element
         });
     }
     rows.push(gap(0.0, 16.0));
+    let list = Element::row(vec![
+        gap(SIDEBAR_START, 0.0),
+        Element::column(rows)
+            .gap(ITEM_GAP)
+            .size(Some(ITEM_WIDTH), None),
+        gap(SIDEBAR_END, 0.0),
+    ]);
     // Under the list, out of its scroll: what the connection is (a
     // simulation says so) stays in sight however many pages there are.
     Element::column(vec![
-        ScrollArea::new("ss:sidebar", Element::column(rows).gap(ITEM_GAP))
+        ScrollArea::new("ss:sidebar", list)
             .appearance(ScrollbarAppearance::overlay().buttons(false))
             .render()
             .flex(1.0),
         Element::row(vec![
-            gap(ITEM_INSET, 0.0),
+            gap(SIDEBAR_START + ITEM_INSET, 0.0),
             text(footnote, 12.0, look.faint).flex(1.0),
+            gap(SIDEBAR_END, 0.0),
         ])
         .size(Some(SIDEBAR_WIDTH), None),
         gap(0.0, 12.0),
@@ -252,7 +300,7 @@ fn sidebar_item(id: &str, label: &str, selected: bool, danger: bool, look: &Look
             gap(ITEM_INSET, 0.0),
         ]),
     )
-    .size(Some(SIDEBAR_WIDTH), Some(ITEM_HEIGHT))
+    .size(Some(ITEM_WIDTH), Some(ITEM_HEIGHT))
     .radius(4.0)
     .hover_background(look.hover)
     .hover_foreground(if danger { look.danger } else { look.text })
@@ -268,7 +316,8 @@ fn sidebar_item(id: &str, label: &str, selected: bool, danger: bool, look: &Look
     }
 }
 
-/// The round button that closes the settings, with «ESC» under it.
+/// The round button that closes the settings, 36 px with a 2 px ring, and
+/// «ESC» 6 under it.
 pub fn close_button(id: &str, look: &Look) -> Element {
     Element::column(vec![
         Element::clickable(
@@ -283,7 +332,7 @@ pub fn close_button(id: &str, look: &Look) -> Element {
         .accessible(limn::Access::new(limn::Role::Button).name(t("Cerrar (Esc)"))),
         Element::row(vec![
             Element::spacer().flex(1.0),
-            line("ESC", 12.0, look.faint).font_family(FontFamily::SansBold),
+            line("ESC", 12.0, look.muted).font_family(FontFamily::SansSemibold),
             Element::spacer().flex(1.0),
         ])
         .size(Some(CLOSE_SIZE), Some(16.0)),
@@ -382,7 +431,7 @@ pub fn shell_for(
 ) -> Element {
     let base = Element::row(vec![
         Element::panel(Element::row(vec![gap(metrics.margin, 0.0), sidebar]))
-            .size(Some(metrics.margin + SIDEBAR_WIDTH), None)
+            .size(Some(metrics.sidebar_region()), None)
             .background(look.sidebar),
         Element::column(vec![gap(0.0, TOP_STRIP), region.flex(1.0)]).flex(1.0),
     ])
@@ -391,18 +440,15 @@ pub fn shell_for(
     // Where it stood when the region ended at the page's column: it stays
     // put while the page scrolls under it.
     let close = Element::column(vec![
-        gap(0.0, 64.0),
+        gap(0.0, PAGE_TOP),
         Element::row(vec![
-            gap(
-                metrics.margin + SIDEBAR_WIDTH + metrics.region() + CLOSE_GAP,
-                0.0,
-            ),
+            gap(metrics.sidebar_region() + metrics.region() + CLOSE_GAP, 0.0),
             close_button(&format!("{prefix}:close"), look),
         ]),
     ]);
     let mut layers = vec![base, close];
     if let Some(bar) = bar {
-        let left = metrics.margin + SIDEBAR_WIDTH + PAGE_INSET - BAR_OVERHANG;
+        let left = metrics.sidebar_region() + PAGE_INSET - BAR_OVERHANG;
         layers.push(Element::column(vec![
             Element::spacer().flex(1.0),
             Element::row(vec![
@@ -435,13 +481,45 @@ pub fn page(scroll_id: &str, width: f32, children: Vec<Element>) -> Element {
     .render()
 }
 
-/// A page's title, 20 px, and what the page is for under it.
+/// A page's title, 20 px semibold, and what the page is for under it, 14
+/// px medium, 8 apart.
 pub fn page_title(title: &str, description: Option<&str>, look: &Look) -> Element {
-    let mut parts = vec![strong_line(title, 20.0, look.text)];
+    let mut parts = vec![line(title, 20.0, look.text).font_family(FontFamily::SansSemibold)];
     if let Some(description) = description {
-        parts.push(text(description, 14.0, look.muted));
+        parts.push(text(description, 14.0, look.text).font_family(FontFamily::SansMedium));
     }
-    Element::column(parts).gap(6.0)
+    Element::column(parts).gap(8.0)
+}
+
+/// A section's title inside a page, 20 px medium, and its note under it.
+pub fn legend(title: &str, note: Option<&str>, look: &Look) -> Element {
+    let mut parts = vec![line(title, 20.0, look.text).font_family(FontFamily::SansMedium)];
+    if let Some(note) = note {
+        parts.push(text(note, 14.0, look.text));
+    }
+    Element::column(parts).gap(4.0)
+}
+
+/// A field's name, 16 px medium, and its note under it in the muted ink, 4
+/// apart, as Discord's form titles.
+pub fn titled(label: &str, note: Option<&str>, look: &Look) -> Element {
+    let mut parts = vec![line(label, 16.0, look.text).font_family(FontFamily::SansMedium)];
+    if let Some(note) = note {
+        parts.push(text(note, 14.0, look.muted));
+    }
+    Element::column(parts).gap(4.0)
+}
+
+/// The line between two sections of a page: with the page's 16 between
+/// its parts, 40 px from each.
+pub fn rule(look: &Look) -> Element {
+    Element::column(vec![
+        gap(0.0, 24.0),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+        gap(0.0, 24.0),
+    ])
 }
 
 /// A field's name, 16 px, with a red mark when it cannot stay empty.
@@ -462,6 +540,84 @@ pub fn divider(look: &Look) -> Element {
             .background(look.border),
         gap(0.0, 12.0),
     ])
+}
+
+/// One choice of a level shown as a card: its name over what it asks.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChoiceCard {
+    /// Reported when it is chosen.
+    pub id: String,
+    pub name: String,
+    pub note: String,
+    pub chosen: bool,
+}
+
+/// A level chosen among cards, as Discord's verification level: closed,
+/// the chosen card with «Cambiar» at its end (`change`); open, every
+/// choice a card 8 apart, the chosen one marked by a bar of the accent at
+/// its start. Cards are rounded 8, 12 in, on the raised ground.
+pub fn choice_cards(
+    cards: &[ChoiceCard],
+    change: &str,
+    open: bool,
+    enabled: bool,
+    look: &Look,
+) -> Element {
+    let card = |found: &ChoiceCard, trailing: Option<Element>| {
+        let mut row = vec![Element::column(vec![
+            line(found.name.clone(), 14.0, look.text).font_family(FontFamily::SansMedium),
+            text(found.note.clone(), 14.0, look.muted),
+        ])
+        .flex(1.0)
+        .centered_y()];
+        row.extend(trailing.map(Element::centered_y));
+        let bar = if found.chosen && open {
+            look.accent
+        } else {
+            Color::rgba(0, 0, 0, 0)
+        };
+        Element::panel(Element::row(vec![
+            Element::panel(Element::spacer())
+                .size(Some(3.0), None)
+                .background(bar),
+            Element::row(row).gap(16.0).padding(12.0).flex(1.0),
+        ]))
+        .radius(8.0)
+        .background(look.raised)
+        .border(look.border, 1.0)
+        .clip_children()
+    };
+    if !open {
+        let Some(chosen) = cards.iter().find(|found| found.chosen) else {
+            return Element::spacer();
+        };
+        let change = Button::new(change, t("Cambiar"), look.palette())
+            .variant(ButtonVariant::Link)
+            .button_size(ButtonSize::Small)
+            .enabled(enabled)
+            .render();
+        return card(chosen, Some(change));
+    }
+    Element::column(
+        cards
+            .iter()
+            .map(|found| {
+                let access = limn::Access::new(limn::Role::RadioButton)
+                    .name(found.name.clone())
+                    .description(found.note.clone())
+                    .selected(found.chosen);
+                if enabled {
+                    Element::clickable(&found.id, card(found, None))
+                        .radius(8.0)
+                        .hover_background(look.hover)
+                        .accessible(access)
+                } else {
+                    card(found, None).accessible(access.disabled(true))
+                }
+            })
+            .collect(),
+    )
+    .gap(8.0)
 }
 
 /// Why a page, or part of it, cannot be changed.
@@ -1734,9 +1890,9 @@ pub struct InviteLine {
     pub inviter: Option<PersonLine>,
     /// Where it leads: "#general".
     pub channel: Option<String>,
-    /// "3 de 10 usos", or "Usos desconocidos".
+    /// "3", "3/10", or "?" when unknown.
     pub uses: String,
-    /// "Vence: Hoy a las 14:05", or "No vence".
+    /// When it stops working, or «Nunca».
     pub expires: String,
     /// Why it cannot be revoked, when it cannot.
     pub denied: Option<String>,
@@ -1744,53 +1900,90 @@ pub struct InviteLine {
     pub copy: bool,
 }
 
-/// A row of the invitations page, with the buttons that copy its link
-/// and revoke it.
+/// The columns of the invitations, as Discord's table at 660 wide: who
+/// made it, its code, its uses, when it ends, and its buttons.
+const INVITE_COLUMNS: [f32; 4] = [203.0, 163.0, 70.0, 140.0];
+
+/// The titles over the invitations' columns.
+pub fn invites_heading(look: &Look) -> Element {
+    let title = |label: &str, width: f32| {
+        line(label, 16.0, look.text)
+            .font_family(FontFamily::SansMedium)
+            .size(Some(width), None)
+    };
+    Element::row(vec![
+        title(t("Persona que invita"), INVITE_COLUMNS[0]),
+        title(t("Código de invitación"), INVITE_COLUMNS[1]),
+        title(t("Usos"), INVITE_COLUMNS[2]),
+        title(t("Caduca"), INVITE_COLUMNS[3]),
+    ])
+    .size(None, Some(32.0))
+}
+
+/// A row of the invitations' table, Discord's: who made it (24 px face,
+/// name over the channel), the code, the uses and the end in the
+/// monospaced face, and at the end the buttons that copy its link and
+/// revoke it.
 pub fn invite_row(row: &InviteLine, look: &Look) -> Element {
-    let mut title = vec![strong_line(&row.code, 15.0, look.text)];
-    if let Some(channel) = &row.channel {
-        title.push(line(channel, 13.0, look.muted).flex(1.0).centered_y());
-    }
     let who = row.inviter.as_ref().map_or_else(
-        || avatar("?", look.faint, 32.0),
-        |person| person.avatar(32.0),
+        || avatar("?", look.faint, 24.0),
+        |person| person.avatar(24.0),
     );
-    let by = row.inviter.as_ref().map_or_else(
-        || t("Creador desconocido").to_owned(),
-        |person| tr!("Creada por {name}", name = person.name),
-    );
-    list_row(
-        who,
-        vec![
-            Element::row(title).gap(8.0),
-            line(by, 13.0, look.muted),
-            line(format!("{} · {}", row.uses, row.expires), 13.0, look.muted),
-        ],
-        row.copy
-            .then(|| {
-                Button::new(format!("ss:invite:{}:copy", row.code), "", look.palette())
-                    .icon(Icon::Copy)
-                    .variant(ButtonVariant::Outline)
-                    .button_size(ButtonSize::Small)
-                    .accessibility_label(tr!("Copiar el enlace de {code}", code = row.code))
-                    .tooltip(t("Copiar enlace"))
-                    .render()
-            })
-            .into_iter()
-            .chain([Button::new(
-                format!("ss:invite:{}:revoke", row.code),
-                t("Revocar"),
-                look.palette(),
-            )
-            .variant(ButtonVariant::Outline)
+    let name = row
+        .inviter
+        .as_ref()
+        .map_or_else(|| t("Desconocido").to_owned(), |person| person.name.clone());
+    let mut copy = vec![line(name, 16.0, look.text).font_family(FontFamily::SansMedium)];
+    if let Some(channel) = &row.channel {
+        copy.push(line(channel, 12.0, look.muted));
+    }
+    let mono = |value: &str, width: f32| {
+        line(value, 14.0, look.muted)
+            .font_family(FontFamily::Monospace)
+            .size(Some(width), None)
+            .centered_y()
+    };
+    let mut buttons = Vec::new();
+    if row.copy {
+        buttons.push(
+            Button::new(format!("ss:invite:{}:copy", row.code), "", look.palette())
+                .icon(Icon::Copy)
+                .variant(ButtonVariant::Ghost)
+                .button_size(ButtonSize::Small)
+                .accessibility_label(tr!("Copiar el enlace de {code}", code = row.code))
+                .tooltip(t("Copiar enlace"))
+                .render(),
+        );
+    }
+    buttons.push(
+        Button::new(format!("ss:invite:{}:revoke", row.code), "", look.palette())
+            .icon(Icon::Close)
+            .variant(ButtonVariant::Ghost)
             .button_size(ButtonSize::Small)
             .enabled(row.denied.is_none())
             .accessibility_label(tr!("Revocar la invitación {code}", code = row.code))
-            .render()])
-            .collect(),
-        78.0,
-        look,
-    )
+            .tooltip(row.denied.as_deref().unwrap_or(t("Revocar")))
+            .render(),
+    );
+    Element::column(vec![
+        Element::row(vec![
+            Element::row(vec![
+                who.centered_y(),
+                Element::column(copy).gap(2.0).flex(1.0).centered_y(),
+            ])
+            .gap(12.0)
+            .size(Some(INVITE_COLUMNS[0]), None),
+            mono(&row.code, INVITE_COLUMNS[1]),
+            mono(&row.uses, INVITE_COLUMNS[2]),
+            mono(&row.expires, INVITE_COLUMNS[3]),
+            Element::spacer().flex(1.0),
+            Element::row(buttons).gap(4.0).centered_y(),
+        ])
+        .size(None, Some(60.0)),
+        Element::panel(Element::spacer())
+            .size(None, Some(1.0))
+            .background(look.border),
+    ])
 }
 
 /// A webhook or an integration of the server, as its page lists it.
@@ -2218,65 +2411,250 @@ pub fn audit_row(row: &AuditLine, look: &Look) -> Element {
         .border(look.border, 1.0)
 }
 
-/// How the server shows itself, beside its profile page: its mark, its name,
-/// its description and how many are in it.
+/// How the server shows itself, beside its profile page: its banner, its
+/// mark, its name, how many are in it and its traits.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ServerCard {
     pub name: String,
     pub initials: String,
     pub accent: Color,
-    pub description: Option<String>,
     pub online: usize,
     pub members: usize,
     /// A picture chosen and not saved yet, shown in place of the initials.
     pub picture: Option<limn::RasterImage>,
     /// What the profile says it is about: each trait's emoji and label.
     pub traits: Vec<String>,
-    /// Its banner, in place of the accent over the card.
+    /// Its banner, in place of the accent's gradient over the card.
     pub banner: Option<limn::RasterImage>,
 }
 
-/// The preview card of the profile page, 318.5 px wide.
+/// The preview card's width, its banner's height and its mark's side.
+pub const CARD_WIDTH: f32 = 300.0;
+const CARD_BANNER: f32 = 120.0;
+const CARD_MARK: f32 = 70.0;
+/// Where the mark starts, down from the card's top: over the banner's foot.
+const CARD_MARK_TOP: f32 = 86.0;
+
+/// The light each of Discord's banner colors rises to at the foot of its
+/// gradient, by the color; a color of the server's own rises to white.
+pub const BANNER_COLORS: [(&str, Rgb, Rgb); 9] = [
+    ("Soul", Rgb(0xFF_1C_90), Rgb(0xFF_8F_E6)),
+    ("Volcano", Rgb(0xE8_1D_1E), Rgb(0xFF_87_6A)),
+    ("Marsh", Rgb(0xE8_6E_1D), Rgb(0xFF_C4_71)),
+    ("Thunder", Rgb(0xE8_C0_2F), Rgb(0xFF_FF_8A)),
+    ("Rising", Rgb(0x71_36_8A), Rgb(0xC7_86_E0)),
+    ("Zephyr", Rgb(0x02_9F_FC), Rgb(0x97_F6_FF)),
+    ("Cascade", Rgb(0x4F_E2_CA), Rgb(0xB3_FF_FF)),
+    ("Earth", Rgb(0x40_66_01), Rgb(0x93_B8_58)),
+    ("Boulder", Rgb(0x27_27_27), Rgb(0x70_70_70)),
+];
+
+/// The light `color`'s banner rises to: Discord's for its own colors, else
+/// the color halfway to white.
+pub fn banner_glow(color: Rgb) -> Rgb {
+    BANNER_COLORS
+        .iter()
+        .find(|(_, found, _)| *found == color)
+        .map_or_else(
+            || {
+                let [r, g, b] = [color.0 >> 16, color.0 >> 8, color.0].map(|part| part & 0xFF);
+                let lift = |part: u32| (part + 255) / 2;
+                Rgb((lift(r) << 16) | (lift(g) << 8) | lift(b))
+            },
+            |(_, _, glow)| *glow,
+        )
+}
+
+/// A banner's ground: `color` above, rising to `glow` at its foot, as
+/// Discord's radial gradient looks down its middle (limn has no radial one).
+pub fn banner_fill(color: Color, glow: Color) -> Element {
+    let mid = Color::rgba(
+        ((u16::from(color.r) + u16::from(glow.r)) / 2) as u8,
+        ((u16::from(color.g) + u16::from(glow.g)) / 2) as u8,
+        ((u16::from(color.b) + u16::from(glow.b)) / 2) as u8,
+        255,
+    );
+    Element::panel(Element::spacer()).vertical_gradient(vec![color, color, mid, glow])
+}
+
+/// One color the banner can take, as the profile page offers it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BannerSwatch {
+    /// Reported when chosen.
+    pub id: String,
+    /// What a screen reader says of it.
+    pub name: String,
+    pub color: Color,
+    pub glow: Color,
+    pub chosen: bool,
+}
+
+/// The banner's colors in a grid, Discord's «Cartel»: four to a row 8
+/// apart (five in a narrow column), each 64 high at 117.75 wide, rounded
+/// 8 with a faint ring; the chosen one ringed in the accent.
+pub fn banner_swatches(
+    swatches: &[BannerSwatch],
+    width: f32,
+    enabled: bool,
+    look: &Look,
+) -> Element {
+    let columns = if width >= 460.0 { 4 } else { 5 };
+    let side = (width - 8.0 * (columns - 1) as f32) / columns as f32;
+    let height = (side * 64.0 / 117.75).round();
+    let rows = swatches
+        .chunks(columns)
+        .map(|row| {
+            Element::row(
+                row.iter()
+                    .map(|swatch| {
+                        // The gradient inside a rounded frame that clips it, its ring over it.
+                        let fill = Element::panel(
+                            banner_fill(swatch.color, swatch.glow).size(Some(side), Some(height)),
+                        )
+                        .size(Some(side), Some(height))
+                        .radius(8.0)
+                        .clip_children()
+                        .border(
+                            if swatch.chosen {
+                                look.accent
+                            } else {
+                                look.border
+                            },
+                            if swatch.chosen { 2.0 } else { 1.0 },
+                        );
+                        let access = limn::Access::new(limn::Role::RadioButton)
+                            .name(swatch.name.clone())
+                            .selected(swatch.chosen);
+                        if enabled {
+                            Element::clickable(&swatch.id, fill)
+                                .size(Some(side), Some(height))
+                                .radius(8.0)
+                                .accessible(access)
+                        } else {
+                            fill.accessible(access.disabled(true))
+                        }
+                    })
+                    .collect(),
+            )
+            .gap(8.0)
+        })
+        .collect();
+    Element::column(rows).gap(8.0)
+}
+
+/// A trait's emoji, at the start of its box: Discord's 39 for its button.
+const TRAIT_EMOJI: f32 = 44.0;
+
+/// The traits of the server's profile, Discord's five boxes three to a row:
+/// in each an emoji (`ss:trait:{index}:emoji`) before its label
+/// (`ss:trait:{index}:label`), in one field 40 high.
+pub fn trait_slots(slots: &[(String, String)], width: f32, enabled: bool, look: &Look) -> Element {
+    let side = (width - 16.0) / 3.0;
+    let (border, focus) = (look.border, look.accent);
+    let clear = Color::rgba(0, 0, 0, 0);
+    let slot = |index: usize, (emoji, label): &(String, String)| {
+        Element::panel(Element::row(vec![
+            limn::TextField::new(
+                format!("ss:trait:{index}:emoji"),
+                emoji.clone(),
+                "🙂",
+                look.palette(),
+            )
+            .accessibility_label(tr!("Emoji del rasgo {n}", n = index + 1))
+            .outline(clear, focus)
+            .height(38.0)
+            .enabled(enabled)
+            .render()
+            // Narrower than a field's least: it holds one emoji.
+            .min_size(TRAIT_EMOJI, 38.0)
+            .size(Some(TRAIT_EMOJI), Some(38.0)),
+            limn::TextField::new(
+                format!("ss:trait:{index}:label"),
+                label.clone(),
+                "",
+                look.palette(),
+            )
+            .accessibility_label(tr!("Rasgo {n}", n = index + 1))
+            .outline(clear, focus)
+            .height(38.0)
+            .enabled(enabled)
+            .render()
+            .flex(1.0),
+        ]))
+        .size(Some(side), Some(40.0))
+        .radius(8.0)
+        .background(look.palette().raised)
+        .border(border, 1.0)
+        .clip_children()
+    };
+    let slots: Vec<Element> = slots
+        .iter()
+        .enumerate()
+        .map(|(index, found)| slot(index, found))
+        .collect();
+    let mut rows = Vec::new();
+    let mut slots = slots.into_iter().peekable();
+    while slots.peek().is_some() {
+        rows.push(Element::row(slots.by_ref().take(3).collect()).gap(8.0));
+    }
+    Element::column(rows).gap(8.0)
+}
+
+/// The preview card of the profile page, Discord's: 300 wide, rounded 16,
+/// the banner 120 high, the mark 70 over its foot, the name 16 semibold and
+/// the counts 14 under it.
 pub fn server_card(card: &ServerCard, look: &Look) -> Element {
-    let initials = || crate::centered(strong_line(&card.initials, 18.0, Color::rgb(255, 255, 255)));
+    let initials = || crate::centered(strong_line(&card.initials, 20.0, Color::rgb(255, 255, 255)));
     let mark = Element::panel(
         card.picture
             .clone()
             .map_or_else(initials, Element::raster_image),
     )
     .clip_children()
-    .size(Some(64.0), Some(64.0))
-    .radius(18.0)
+    .size(Some(CARD_MARK), Some(CARD_MARK))
+    .radius(20.0)
     .background(card.accent)
     .border(look.raised, 4.0);
-    let mut copy = vec![
-        strong_line(&card.name, 18.0, look.text),
+    let glow = {
+        let rgb = Rgb((u32::from(card.accent.r) << 16)
+            | (u32::from(card.accent.g) << 8)
+            | u32::from(card.accent.b));
+        let glow = banner_glow(rgb).0;
+        Color::rgb((glow >> 16) as u8, (glow >> 8) as u8, glow as u8)
+    };
+    let banner = match card.banner.clone() {
+        // The whole width, cropped around the middle.
+        Some(banner) => Element::panel(
+            Element::raster_image(banner.cover()).size(Some(CARD_WIDTH), Some(CARD_BANNER)),
+        )
+        .clip_children(),
+        None => banner_fill(card.accent, glow),
+    }
+    .size(None, Some(CARD_BANNER));
+    let count = |dot: Color, label: String| {
         Element::row(vec![
-            color_dot(look.online, 8.0).centered_y(),
-            line(
-                tr!("{count} en línea", count = card.online),
-                13.0,
-                look.muted,
-            )
-            .centered_y(),
-            color_dot(look.offline, 8.0).centered_y(),
-            line(
+            color_dot(dot, 8.0).centered_y(),
+            line(label, 14.0, look.muted).centered_y(),
+        ])
+        .gap(4.0)
+    };
+    let mut copy = vec![
+        line(&card.name, 16.0, look.text).font_family(FontFamily::SansSemibold),
+        Element::row(vec![
+            count(look.online, tr!("{count} en línea", count = card.online)),
+            count(
+                look.offline,
                 if card.members == 1 {
                     t("1 miembro").to_owned()
                 } else {
                     tr!("{count} miembros", count = card.members)
                 },
-                13.0,
-                look.muted,
-            )
-            .centered_y(),
+            ),
         ])
-        .gap(6.0),
+        .gap(8.0),
     ];
-    if let Some(description) = &card.description {
-        copy.push(text(description.clone(), 13.0, look.muted));
-    }
     if !card.traits.is_empty() {
+        copy.push(gap(0.0, 6.0));
         copy.push(
             Element::row(
                 card.traits
@@ -2294,24 +2672,22 @@ pub fn server_card(card: &ServerCard, look: &Look) -> Element {
     Element::panel(Element::column(vec![
         Element::stack(vec![
             Element::column(vec![
-                Element::panel(card.banner.clone().map_or_else(Element::spacer, |banner| {
-                    // The whole width, cropped around the middle.
-                    Element::raster_image(banner.cover()).size(Some(318.5), Some(96.0))
-                }))
-                .clip_children()
-                .size(None, Some(96.0))
-                .background(Look::alpha(card.accent, 160)),
-                gap(0.0, 36.0),
+                banner,
+                gap(0.0, CARD_MARK_TOP + CARD_MARK - CARD_BANNER),
             ]),
             Element::column(vec![
-                gap(0.0, 60.0),
+                gap(0.0, CARD_MARK_TOP),
                 Element::row(vec![gap(16.0, 0.0), mark, Element::spacer().flex(1.0)]),
             ]),
         ]),
-        Element::column(copy).gap(6.0).padding(16.0),
+        Element::row(vec![
+            gap(16.0, 0.0),
+            Element::column([vec![gap(0.0, 8.0)], copy, vec![gap(0.0, 16.0)]].concat()).flex(1.0),
+            gap(16.0, 0.0),
+        ]),
     ]))
-    .size(Some(318.5), None)
-    .radius(12.0)
+    .size(Some(CARD_WIDTH), None)
+    .radius(16.0)
     .background(look.raised)
     .border(look.border, 1.0)
     .clip_children()
@@ -2425,14 +2801,21 @@ mod tests {
     }
 
     #[test]
-    fn the_shell_centers_the_block_and_narrows_the_page_first() {
-        let wide = Metrics::new(1361.0, false);
-        assert!((wide.margin - 132.5).abs() < 1.0, "{wide:?}");
-        assert_eq!(wide.content, CONTENT_WIDTH);
-        let members = Metrics::new(1361.0, true);
-        assert!(members.content > CONTENT_WIDTH && members.content <= WIDE_CONTENT_WIDTH);
-        let narrow = Metrics::new(900.0, false);
-        assert_eq!(narrow.margin, EDGE);
+    fn the_shell_lays_out_as_discords_and_narrows_the_page_first() {
+        // At 1440 × 813, as measured: the items at 200, 238 wide; the page's
+        // column at 492; the close button at 1192 (1367 for a wide page).
+        let wide = Metrics::server(1440.0, false);
+        assert_eq!((wide.margin, wide.content), (180.0, CONTENT_WIDTH));
+        assert_eq!(wide.sidebar_region() + PAGE_INSET, 492.0);
+        assert_eq!(wide.sidebar_region() + wide.region() + CLOSE_GAP, 1192.0);
+        let members = Metrics::server(1440.0, true);
+        assert_eq!(members.content, WIDE_CONTENT_WIDTH);
+        assert_eq!(
+            members.sidebar_region() + members.region() + CLOSE_GAP,
+            1367.0
+        );
+        let narrow = Metrics::server(900.0, false);
+        assert_eq!(narrow.margin, 0.0);
         assert!(narrow.content < CONTENT_WIDTH);
         let sidebar = sidebar(
             &[
@@ -2454,7 +2837,7 @@ mod tests {
             "Simulación local",
             &LOOK,
         );
-        let size = Size::new(1361.0, 797.0);
+        let size = Size::new(1440.0, 813.0);
         let shell = shell(
             size,
             wide,
@@ -2483,20 +2866,184 @@ mod tests {
             .iter()
             .find(|region| region.id == "ss:page:profile")
             .unwrap();
-        assert!((item.rect.x - wide.margin).abs() < 1.0 && item.rect.width == SIDEBAR_WIDTH);
+        assert_eq!((item.rect.x, item.rect.width), (200.0, 238.0));
         assert_eq!(item.rect.height, ITEM_HEIGHT);
+        let close = frame
+            .regions
+            .iter()
+            .find(|region| region.id == "ss:close")
+            .unwrap();
+        assert_eq!((close.rect.x, close.rect.y), (1192.0, 60.0));
+        assert_eq!(close.rect.width, CLOSE_SIZE);
         let save = frame
             .regions
             .iter()
             .find(|region| region.id == "ss:save")
             .unwrap();
         assert!(
-            save.rect.y > 797.0 - BAR_BOTTOM - BAR_HEIGHT,
+            save.rect.y > 813.0 - BAR_BOTTOM - BAR_HEIGHT,
             "the bar floats at the foot"
         );
         let painted = texts(&frame);
-        assert!(painted.contains(&"LABORATORIO".to_owned()));
+        // Group titles as written, not in capitals.
+        assert!(painted.contains(&"Laboratorio".to_owned()));
         assert!(painted.contains(&"ESC".to_owned()));
+    }
+
+    #[test]
+    fn the_banner_colors_are_discords_four_to_a_row_the_chosen_one_marked() {
+        let swatches: Vec<BannerSwatch> = BANNER_COLORS
+            .iter()
+            .map(|(name, rgb, glow)| BannerSwatch {
+                id: format!("ss:accent:{}", hex(*rgb)),
+                name: (*name).to_owned(),
+                color: Color::rgb((rgb.0 >> 16) as u8, (rgb.0 >> 8) as u8, rgb.0 as u8),
+                glow: Color::rgb((glow.0 >> 16) as u8, (glow.0 >> 8) as u8, glow.0 as u8),
+                chosen: *name == "Volcano",
+            })
+            .collect();
+        let (_, frame) = lay(
+            banner_swatches(&swatches, 495.0, true, &LOOK),
+            Size::new(495.0, 400.0),
+        );
+        let rect = |id: &str| {
+            frame
+                .regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap()
+                .rect
+        };
+        // Discord's 117.75 by 64 at 495 wide, 8 apart.
+        let soul = rect("ss:accent:ff1c90");
+        assert!((soul.width - 117.75).abs() < 0.01 && soul.height == 64.0);
+        assert_eq!(rect("ss:accent:e81d1e").x, soul.x + soul.width + 8.0);
+        assert_eq!(
+            rect("ss:accent:71368a").y,
+            soul.y + 72.0,
+            "the fifth starts a row"
+        );
+        let chosen = frame
+            .access
+            .iter()
+            .find(|node| node.id == "ss:accent:e81d1e")
+            .unwrap();
+        assert_eq!(chosen.selected, Some(true));
+        // A narrow column takes five to a row; a locked one offers none.
+        let (_, narrow) = lay(
+            banner_swatches(&swatches, 420.0, true, &LOOK),
+            Size::new(420.0, 400.0),
+        );
+        let row: Vec<f32> = narrow.regions.iter().map(|region| region.rect.y).collect();
+        assert_eq!(row.iter().filter(|y| **y == row[0]).count(), 5);
+        let (_, locked) = lay(
+            banner_swatches(&swatches, 495.0, false, &LOOK),
+            Size::new(495.0, 400.0),
+        );
+        assert!(controls(&locked).is_empty());
+        // Discord's light at the foot of each of its colors; another's rises
+        // halfway to white.
+        assert_eq!(banner_glow(Rgb(0xE8_1D_1E)), Rgb(0xFF_87_6A));
+        assert_eq!(banner_glow(Rgb(0x00_00_00)), Rgb(0x7F_7F_7F));
+    }
+
+    #[test]
+    fn the_traits_are_five_boxes_three_to_a_row() {
+        let slots: Vec<(String, String)> = (0..5)
+            .map(|index| match index {
+                0 => ("R".to_owned(), "Rust".to_owned()),
+                _ => Default::default(),
+            })
+            .collect();
+        let (_, frame) = lay(
+            trait_slots(&slots, 495.0, true, &LOOK),
+            Size::new(495.0, 200.0),
+        );
+        let rect = |id: &str| {
+            frame
+                .regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+                .rect
+        };
+        let first = rect("ss:trait:0:emoji");
+        assert_eq!(first.width, TRAIT_EMOJI);
+        assert!(rect("ss:trait:0:label").x >= first.x + TRAIT_EMOJI);
+        assert_eq!(rect("ss:trait:2:emoji").y, first.y);
+        assert!(rect("ss:trait:3:emoji").y >= first.y + 40.0 + 8.0);
+        assert_eq!(rect("ss:trait:3:emoji").x, first.x);
+        let last = rect("ss:trait:4:label");
+        assert!(last.x + last.width <= 495.0);
+    }
+
+    #[test]
+    fn a_level_shows_its_card_and_opens_to_every_choice() {
+        let cards: Vec<ChoiceCard> = ["Ninguno", "Bajo", "Medio"]
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ChoiceCard {
+                id: format!("ss:set:verification:{index}"),
+                name: (*name).to_owned(),
+                note: format!("Nota {index}"),
+                chosen: index == 1,
+            })
+            .collect();
+        let (_, closed) = lay(
+            choice_cards(&cards, "ss:pick:verification", false, true, &LOOK),
+            Size::new(660.0, 400.0),
+        );
+        assert_eq!(controls(&closed), vec!["ss:pick:verification".to_owned()]);
+        assert!(texts(&closed).contains(&"Bajo".to_owned()));
+        assert!(!texts(&closed).contains(&"Medio".to_owned()));
+        let (_, open) = lay(
+            choice_cards(&cards, "ss:pick:verification", true, true, &LOOK),
+            Size::new(660.0, 400.0),
+        );
+        let ids = controls(&open);
+        assert_eq!(ids.len(), 3, "{ids:?}");
+        let chosen = open
+            .access
+            .iter()
+            .find(|node| node.id == "ss:set:verification:1")
+            .unwrap();
+        assert_eq!(chosen.selected, Some(true));
+        let (_, locked) = lay(
+            choice_cards(&cards, "ss:pick:verification", true, false, &LOOK),
+            Size::new(660.0, 400.0),
+        );
+        assert!(controls(&locked).is_empty());
+    }
+
+    #[test]
+    fn the_card_is_discords_preview_300_wide_with_the_counts() {
+        let card = server_card(
+            &ServerCard {
+                name: "Laboratorio limn".into(),
+                initials: "LL".into(),
+                accent: Color::rgb(0xE8, 0x1D, 0x1E),
+                online: 14,
+                members: 20,
+                picture: None,
+                traits: vec!["Rust".into()],
+                banner: None,
+            },
+            &LOOK,
+        );
+        let (_, frame) = lay(
+            Element::row(vec![card, Element::spacer().flex(1.0)]),
+            Size::new(600.0, 400.0),
+        );
+        let painted = texts(&frame);
+        for text in [
+            "Laboratorio limn",
+            "LL",
+            "14 en línea",
+            "20 miembros",
+            "Rust",
+        ] {
+            assert!(painted.contains(&text.to_owned()), "{text} in {painted:?}");
+        }
     }
 
     #[test]
@@ -2685,13 +3232,13 @@ mod tests {
 
     #[test]
     fn invitation_and_expression_rows_name_their_controls_and_say_what_is_unknown() {
-        let size = Size::new(705.0, 120.0);
+        let size = Size::new(660.0, 120.0);
         let invite = InviteLine {
             code: "Ab3dEf7h".into(),
             inviter: None,
             channel: Some("#general".into()),
-            uses: "Usos desconocidos".into(),
-            expires: "No vence".into(),
+            uses: "?".into(),
+            expires: "Nunca".into(),
             denied: None,
             copy: true,
         };
@@ -2700,11 +3247,13 @@ mod tests {
             controls(&frame),
             ["ss:invite:Ab3dEf7h:copy", "ss:invite:Ab3dEf7h:revoke"]
         );
-        let painted = texts(&frame).join(" ");
-        assert!(
-            painted.contains("Creador desconocido") && painted.contains("Usos desconocidos"),
-            "{painted}"
-        );
+        let painted = texts(&frame);
+        for text in ["Desconocido", "#general", "Ab3dEf7h", "?", "Nunca"] {
+            assert!(painted.contains(&text.to_owned()), "{text} in {painted:?}");
+        }
+        // Discord's columns: the code where the table's title says.
+        let (_, heading) = lay(invites_heading(&LOOK), size);
+        assert!(texts(&heading).contains(&"Código de invitación".to_owned()));
         let mut emoji = ExpressionLine {
             key: "emoji:9000".into(),
             name: ":ferris:".into(),

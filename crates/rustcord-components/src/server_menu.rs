@@ -4,9 +4,9 @@
 //! the server, leaving it, and a new server from the rail's "+".
 
 use limn::{
-    ActionRow, AlertDialog, Button, ButtonVariant, Checkbox, Color, Component, ControlSize,
-    DropdownMenu, Element, Icon, ListRow, Modal, RadioGroup, RadioOption, SearchField,
-    SelectorSizing, Swatch, SwatchPicker, TextField,
+    ActionRow, AlertDialog, Button, ButtonVariant, Checkbox, Color, Component, ContextMenuMetrics,
+    ControlSize, DropdownMenu, DropdownMenuEntry, Element, Icon, ListRow, Modal, RadioGroup,
+    RadioOption, SearchField, Swatch, SwatchPicker, TextField,
 };
 use rustcord_i18n::{es, t, tr};
 use rustcord_model::Rgb;
@@ -68,8 +68,31 @@ pub mod ids {
     pub const SERVER_CLOSE: &str = "newsrv:close";
 }
 
-/// The menu's width, as measured under the server's name.
-pub const MENU_WIDTH: f32 = 232.5;
+/// The glyphs of the menu under the server's name, Discord's.
+pub mod glyphs {
+    use crate::glyphs::glyph;
+
+    pub const INVITE: &str = glyph!("invite");
+    pub const SETTINGS: &str = glyph!("settings");
+    pub const CIRCLE_PLUS: &str = glyph!("circle-plus");
+    pub const FOLDER_PLUS: &str = glyph!("folder-plus");
+    pub const CALENDAR_PLUS: &str = glyph!("calendar-plus");
+    pub const BELL: &str = glyph!("bell");
+    /// A shield with a smaller one in it: the server's privacy.
+    pub const SHIELD: &str = glyph!("shield-outline");
+    pub const EDIT: &str = glyph!("edit");
+    pub const EYE_OFF: &str = glyph!("eye-off");
+    pub const LEAVE: &str = glyph!("leave");
+    /// «ID» in a rounded square: copying the server's ID.
+    pub const ID: &str = glyph!("id");
+}
+
+/// The menu under the server's name, as Discord's: 220 wide, its rows 36
+/// high, 28 right of the name's left edge and 14 under it.
+pub const MENU_WIDTH: f32 = 220.0;
+const MENU_ROW: f32 = 36.0;
+const MENU_SHIFT: f32 = 28.0;
+const MENU_GAP: f32 = 14.0;
 /// A dialog's width when the window has room, and a confirmation's.
 pub const DIALOG_WIDTH: f32 = 510.0;
 pub const CONFIRM_WIDTH: f32 = 425.0;
@@ -106,33 +129,33 @@ pub fn channel_name(name: &str) -> String {
         .join("-")
 }
 
-/// The server's menu on `anchor`, its entries as the channel menus draw them
-/// (groups apart by a line, submenus, checks), while `open`.
+/// The server's menu under `anchor`, the server's name, while `open`: its
+/// entries as the context menus draw them (14 px medium labels, groups
+/// apart by a line, checks at the right end) but with their glyphs on the
+/// left and a label too long cut with an ellipsis, as Discord's.
 pub fn menu(anchor: Element, entries: Vec<Entry>, open: bool, look: &Look) -> Element {
-    // As wide as its longest label, so «Ajustes de notificaciones» is not
-    // cut, but within the channel column under the server's name.
-    let width =
-        crate::channel_menu::fit_width(&entries).clamp(MENU_WIDTH, crate::sidebar::WIDTH - 16.0);
-    let entries = dropdown_entries(entries, look);
-    let count = entries.len();
-    DropdownMenu::new(anchor, entries, open, ids::DISMISS, look.menu_palette())
-        .sizing(SelectorSizing {
-            preferred_width: width,
-            min_width: width,
-            row_height: 38.0,
-            // An item that cannot be used says why on a second line.
-            detail_row_height: 50.0,
-            icon_size: 20.0,
-            label_size: 13.0,
-            detail_size: 12.0,
-            padding: 8.0,
-            gap: 10.0,
-            // Every item in view: the menu never scrolls.
-            max_visible_items: count,
-            ..SelectorSizing::COMPACT
+    let entries = dropdown_entries(entries, look)
+        .into_iter()
+        .map(|entry| match entry {
+            DropdownMenuEntry::Item(item) => DropdownMenuEntry::Item(item.truncate()),
+            other => other,
         })
-        .width(width)
+        .collect();
+    // The menu hangs from a stand-in as tall as the name, further right:
+    // a click on the name while it is open still only closes it.
+    let stand_in = gap(1.0, crate::sidebar::NAME_HEIGHT);
+    let menu = DropdownMenu::new(stand_in, entries, open, ids::DISMISS, look.menu_palette())
+        .context_menu_style()
+        .context_metrics(ContextMenuMetrics {
+            row_height: MENU_ROW,
+            // Every item in view: the menu never scrolls.
+            max_height: f32::MAX,
+            ..crate::look::MENU_METRICS
+        })
+        .width(MENU_WIDTH)
         .render()
+        .popover_gap(MENU_GAP);
+    Element::stack(vec![anchor, Element::row(vec![gap(MENU_SHIFT, 0.0), menu])])
 }
 
 /// A new channel or category, as its dialog shows it.
@@ -947,6 +970,53 @@ mod tests {
         assert!(texts(&frame).contains(&"No tienes permiso".to_owned()));
         let denied = frame.access.iter().find(|node| node.id == "b").unwrap();
         assert!(denied.disabled && denied.description.as_deref() == Some("No tienes permiso"));
+    }
+
+    #[test]
+    fn the_menu_hangs_right_of_the_name_with_its_glyphs_first_as_discords() {
+        let anchor = crate::sidebar::server_name("Laboratorio limn", true, &Look::DARK);
+        let entries = vec![
+            Item {
+                icon: Some(Icon::Custom(glyphs::SETTINGS)),
+                ..Item::new("settings", "Ajustes del servidor")
+            }
+            .into(),
+            Item {
+                icon: Some(Icon::Custom(glyphs::EYE_OFF)),
+                ..Item::new("hide", "Ocultar los canales silenciados").checked(false)
+            }
+            .into(),
+        ];
+        let (_, frame) = frame(
+            Element::column(vec![
+                Element::row(vec![
+                    menu(anchor, entries, true, &Look::DARK),
+                    Element::spacer().flex(1.0),
+                ]),
+                Element::spacer().flex(1.0),
+            ]),
+            WINDOW,
+        );
+        let rect = |id: &str| {
+            frame
+                .regions
+                .iter()
+                .find(|region| region.id == id)
+                .map(|region| region.rect)
+                .unwrap()
+        };
+        let (name, settings, hide) = (rect(ids::TOGGLE), rect("settings"), rect("hide"));
+        assert_eq!(name.height, crate::sidebar::NAME_HEIGHT);
+        // 28 right of the name, 14 under it, inside the menu's 8.
+        assert!(
+            (settings.x - (name.x + 28.0 + 8.0)).abs() < 1.0
+                && (settings.y - (name.y + name.height + 14.0 + 8.0)).abs() < 1.0,
+            "{name:?} {settings:?}"
+        );
+        assert_eq!((settings.width, settings.height), (MENU_WIDTH - 16.0, 36.0));
+        assert_eq!(hide.y, settings.y + 36.0);
+        // A label that does not fit is cut on one line, the check kept.
+        assert_eq!(hide.height, 36.0);
     }
 
     fn form(name: &str, private: bool) -> ChannelForm {

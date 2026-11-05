@@ -1075,3 +1075,83 @@ icons).
   `Easing::InOutSine` within 0.02 of `ease-in-out`), held still under
   reduced motion. The call's question says the person leaves the call and
   has to join again: Rustcord does not rejoin it after the restart.
+
+## Server menu
+
+Measured on 2026-11-05 in the web client (es-419, 1440 × 813), the menu
+under the name of a server the account owns.
+
+- Groups, in order: «Mejora del servidor»; «Invitar al servidor», «Ajustes
+  del servidor», «Crear un canal», «Crear categoría», «Crear evento»,
+  «Directorio de apps» (and «Hilos activos» when there are threads);
+  «Ajustes de notificaciones», «Ajustes de privacidad»; «Editar perfil de
+  servidor», «Ocultar los canales silenciados» (a check box); «Abandonar el
+  servidor» in the danger ink (not for the owner, who deletes it in the
+  settings instead); «Copiar ID del servidor» in developer mode. Rustcord
+  leaves out «Mejora del servidor», «Directorio de apps» and «Hilos activos».
+- 220 wide, 28 right of the name's left edge and 14 under it; fill
+  `#121214` (oklab 0.183), radius 8, ring 1 px at 20 %, shadow `0 12 24`
+  black 24 %; 8 inside (the scrollbar gutter on the right).
+- Rows 36 high, padding 8, radius 2, glyph 20 on the left, the label 8
+  after it, 14/18 weight 500 (`#dcdcdf`, oklab L 0.895); the check
+  box 18 at the right end. A label too long is cut with an ellipsis.
+- Separator: 1 px at 20 % with 8 above and below.
+
+## Server settings
+
+Measured on 2026-11-05 in the web client (es-419, 1440 × 813), in a server
+the account owns.
+
+- Frame: the sidebar's region and the page's share the room past 1064
+  (at 1440: 452 and 988). The sidebar, 264 wide (padding 60 6 60 20), ends 8
+  before its region does; the page's column starts 40 into its region,
+  660 wide (740 with its padding 60 40 80), 835 on the profile; the round
+  close button, 36 with a 2 px ring in the muted ink, 40 past the column,
+  60 from the top, «ESC» 12/16 semibold 6 under it.
+- Sidebar: the server's name, then the group titles «Expresión»,
+  «Personas», «Apps», «Moderación», 14/18 medium at oklab L 0.585 (the
+  items' muted ink is 0.678), 10 in, 6 above and below; items 238 × 36, padding 6 10,
+  radius 4, 2 apart, 16/24 regular in the muted ink, the open one
+  `#97979f` at 24 % in `#dcdcdf`, under the pointer at 12 %; separators
+  218 wide, 8 from each group. Pages: «Perfil de servidor», «Etiqueta del
+  servidor», «Interacción», «Ventajas de mejora»; «Emojis», «Stickers»,
+  «Panel de sonidos»; «Miembros», «Roles», «Invitaciones», «Acceso»;
+  «Integraciones», «Directorio de apps» (an arrow out); «Configuración de
+  seguridad», «Registro de auditoría», «Baneos», «AutoMod»; «Activa la
+  comunidad»; «Plantilla del servidor», «Eliminar servidor» (danger, a
+  trash can at its end).
+- Page title 20/24 semibold; its line under it 14/18 medium, 8 below.
+  Sections 40 apart around a 1 px line (`#9595a2` at 44 %). A field's
+  title 16/20 medium, its note 14/18 in the muted ink 4 under it, the
+  field 8 under that: 40 high, radius 8, black at 12 % with a 1 px ring at
+  24 %, 16 px text 12 in.
+- «Perfil de servidor»: «Nombre»; «Ícono» («Te recomendamos una imagen de
+  al menos 512x512.», a 32 high brand button «Cambiar ícono del
+  servidor», «Eliminar ícono» once there is one); «Cartel»: ten swatches,
+  four to a row at 495 wide (117.75 × 64, 8 apart, radius 8, ring at
+  20 %), the first the icon's own color, then Soul `#ff1c90`, Volcano
+  `#e81d1e`, Marsh `#e86e1d`, Thunder `#e8c02f`, Rising `#71368a`,
+  Zephyr `#029ffc`, Cascade `#4fe2ca`, Earth `#406601`, Boulder `#272727`,
+  each a radial gradient from the bottom middle, a light (`#ff8fe6`,
+  `#ff876a`, `#ffc471`, `#ffff8a`, `#c786e0`, `#97f6ff`, `#b3ffff`,
+  `#93b858`, `#707070`) at 20 % to the color at 85 %; «Rasgos» (five boxes
+  three to a row, 40 high, an emoji button then the label); «Descripción»
+  (a 89 high area); «Juegos jugados»; «Perfil privado». Beside the form,
+  40 from it, the preview card: 300 wide, radius 16, oklab L 0.209 with a ring
+  at 20 %, the banner 120 high, the icon 70 at 16 in and 86 down, the name
+  16/20 semibold 8 under it, the counts 14/18 with their dots, «Est.»
+  under them.
+- «Interacción»: «Mensajes del sistema» (a 20/24 medium legend) with four
+  switch rows 48 apart and «Canal de mensajes del sistema» with a 238 wide
+  select at its end; «Ajustes del flujo de actividad»; «Ajustes
+  predeterminados de notificaciones» (two radios, a 12/16 note); «Canal
+  inactivo» and «Suspensión por inactividad» side by side (322 each, 16
+  apart); «Widget del servidor».
+- «Configuración de seguridad»: «Nivel de verificación» and «Filtros de
+  contenido delicado», each the chosen level as a card (oklab L 0.209, radius
+  8, 12 in, name 14/18 medium over its note) with «Cambiar» at its end,
+  which opens every level as such a card 8 apart, the chosen one with a
+  3 px bar of the accent at its start; the members list, two-factor and
+  activity alerts between them.
+- «Activa la comunidad»: a picture, «¿Estás creando una comunidad?» and a
+  brand button «Activa la comunidad».

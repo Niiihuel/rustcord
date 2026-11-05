@@ -182,10 +182,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "PNG, JPEG, WebP o GIF. Se guarda a 128 × 128; un GIF de hasta 256 KB queda animado.",
         "PNG, JPEG, WebP or GIF. Saved at 128 × 128; a GIF up to 256 KB stays animated.",
     ),
-    (
-        "Los webhooks publican mensajes de otras aplicaciones o sitios en un canal; las integraciones conectan aplicaciones y servicios con el servidor.",
-        "Webhooks post messages from other apps or sites in a channel; integrations connect apps and services to the server.",
-    ),
     ("Nuevo webhook", "New webhook"),
     ("Editar webhook", "Edit webhook"),
     ("No hay webhooks", "No webhooks"),
@@ -197,7 +193,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Sigue a otro servidor", "Follows another server"),
     ("De una aplicación", "From an app"),
     ("Creado por {name}", "Created by {name}"),
-    ("Aplicaciones y servicios", "Apps and services"),
     ("No hay integraciones", "No integrations"),
     (
         "Nadie conectó una aplicación o un servicio todavía.",
@@ -304,55 +299,9 @@ pub(super) const ENTRIES: super::Entries = &[
         "Are you sure you want to remove “{name}”? It will no longer be connected to the server.",
     ),
     // server_settings/view/rest.rs
-    (
-        "Dónde avisa el servicio, cómo se notifica a quien llega, adónde va quien queda inactivo y qué se pide y se revisa.",
-        "Where the service posts notices, how newcomers are notified, where idle members go, and what is required and scanned.",
-    ),
     ("Canal de mensajes del sistema", "System messages channel"),
-    (
-        "Donde se da la bienvenida a quien entra y se agradece a quien mejora el servidor.",
-        "Where new members are welcomed and those who boost the server are thanked.",
-    ),
     ("Sin mensajes del sistema", "No system messages"),
-    (
-        "Dar la bienvenida a quien entra",
-        "Send a welcome message when someone joins",
-    ),
-    (
-        "Ofrecer responder la bienvenida con un sticker",
-        "Offer to reply to the welcome with a sticker",
-    ),
-    (
-        "Agradecer a quien mejora el servidor",
-        "Thank whoever boosts the server",
-    ),
-    (
-        "Mostrar consejos para configurar el servidor",
-        "Show tips for setting up the server",
-    ),
-    ("Notificaciones predeterminadas", "Default notifications"),
-    (
-        "Cómo se avisa a quien entra, hasta que elija otra cosa.",
-        "How new members are notified, until they choose otherwise.",
-    ),
-    ("Inactividad en voz", "Voice inactivity"),
-    (
-        "Adónde se mueve a quien queda en silencio en un canal de voz, y después de cuánto.",
-        "Where members who stay silent in a voice channel are moved, and after how long.",
-    ),
-    ("Sin canal de inactividad", "No inactive channel"),
-    ("Canal de inactividad", "Inactive channel"),
-    ("Tiempo de inactividad", "Inactive timeout"),
     ("Nivel de verificación", "Verification level"),
-    (
-        "Lo que alguien necesita antes de poder escribir.",
-        "What someone needs before they can send messages.",
-    ),
-    ("Filtro de contenido explícito", "Explicit content filter"),
-    (
-        "De quién se revisan las imágenes y los archivos que se envían.",
-        "Whose sent images and files are scanned.",
-    ),
     (
         "Arrastra los canales para ordenarlos o pasarlos a otra categoría; también desde el menú de cada uno. Se guarda todo junto.",
         "Drag channels to reorder them or move them to another category; each one's menu does it too. Everything is saved together.",
@@ -366,20 +315,9 @@ pub(super) const ENTRIES: super::Entries = &[
     ("Ya está en esa categoría.", "It's already in that category."),
     ("Este servidor no tiene canales.", "This server has no channels."),
     ("Ícono", "Icon"),
-    (
-        "La imagen del servidor. En la simulación se guarda su nombre, no la imagen.",
-        "The server's image. In the simulation its name is saved, not the image.",
-    ),
-    (
-        "La imagen del servidor, cuadrada; se recorta al centro.",
-        "The server's image, square; it's cropped to the center.",
-    ),
-    ("Cambiar ícono", "Change icon"),
     ("Elegir una imagen", "Choose an image"),
-    ("Quitar ícono", "Remove icon"),
     ("Rasgos", "Traits"),
     ("No se pudieron leer los rasgos.", "Couldn't load the traits."),
-    ("Agregar rasgo", "Add trait"),
     ("Imagen", "Image"),
     ("Sin ícono", "No icon"),
     ("Degradé", "Gradient"),
@@ -434,20 +372,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "Las invitaciones están pausadas: nadie nuevo puede entrar con ellas hasta que se reanuden.",
         "Invites are paused: nobody new can join with them until they're resumed.",
     ),
-    ("Ninguno: sin restricciones", "None: unrestricted"),
-    ("Bajo: correo verificado", "Low: verified email"),
-    (
-        "Medio: y una cuenta de más de 5 minutos",
-        "Medium: and an account older than 5 minutes",
-    ),
-    (
-        "Alto: y 10 minutos en el servidor",
-        "High: and 10 minutes in the server",
-    ),
-    ("Máximo: y un teléfono verificado", "Highest: and a verified phone"),
-    ("No revisar nada", "Don't scan anything"),
-    ("Revisar a quienes no tienen rol", "Scan members without a role"),
-    ("Revisar a todos", "Scan everyone"),
     ("Últimos en entrar", "Newest members"),
     ("Primeros en entrar", "Oldest members"),
     ("Cuentas más nuevas", "Newest accounts"),

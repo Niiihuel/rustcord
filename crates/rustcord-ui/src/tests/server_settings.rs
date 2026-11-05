@@ -156,11 +156,82 @@ fn painted_has(host: &mut Host, text: &str) -> bool {
 }
 
 #[test]
+fn the_sidebar_lists_the_pages_in_discords_groups_and_order() {
+    let mut host = Host::new();
+    let lab = host.lab();
+    host.open_settings(lab);
+    // The sidebar scrolls in this window: read at its top, then at its end.
+    let mut items: Vec<String> = Vec::new();
+    for end in [false, true] {
+        if end {
+            host.tree.reveal("ss:delete-server");
+        }
+        let frame = host.frame();
+        let mut seen: Vec<(f32, String)> = frame
+            .regions
+            .iter()
+            .filter(|region| region.id.starts_with("ss:page:") || region.id == "ss:delete-server")
+            .map(|region| (region.rect.y, region.id.clone()))
+            .collect();
+        seen.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (_, id) in seen {
+            if !items.contains(&id) {
+                items.push(id);
+            }
+        }
+    }
+    assert_eq!(
+        items,
+        [
+            "ss:page:profile",
+            "ss:page:engagement",
+            "ss:page:channels",
+            "ss:page:emojis",
+            "ss:page:stickers",
+            "ss:page:members",
+            "ss:page:roles",
+            "ss:page:invites",
+            "ss:page:integrations",
+            "ss:page:safety",
+            "ss:page:audit",
+            "ss:page:bans",
+            "ss:page:automod",
+            "ss:page:community",
+            "ss:page:onboarding",
+            "ss:delete-server",
+        ]
+    );
+    for title in ["Expresión", "Personas", "Apps", "Moderación", "Comunidad"] {
+        assert!(painted_has(&mut host, title), "{title}");
+    }
+    // The profile, as Discord's: the icon's buttons, the banner's colors and
+    // five boxes of traits.
+    assert!(host.on_screen("ss:icon:pick"));
+    assert!(
+        !host.on_screen("ss:icon:remove"),
+        "nothing to take away without an icon"
+    );
+    for (_, color, _) in rustcord_components::server_settings::BANNER_COLORS {
+        let id = format!(
+            "ss:accent:{}",
+            rustcord_components::server_settings::hex(color)
+        );
+        host.tree.reveal(&id);
+        assert!(host.on_screen(&id), "{id}");
+    }
+    // A color chosen is drafted, and goes with the bar's «Guardar cambios».
+    host.click("ss:accent:029ffc");
+    assert!(painted_has(&mut host, "Tienes cambios sin guardar"));
+    host.click("ss:reset");
+    assert!(!host.settings().dirty(&host.store));
+}
+
+#[test]
 fn renaming_the_owned_server_saves_and_shows_the_name_the_provider_confirms() {
     let mut host = Host::new();
     let lab = host.lab();
     host.open_settings(lab);
-    assert!(painted_has(&mut host, "Perfil del servidor"));
+    assert!(painted_has(&mut host, "Perfil de servidor"));
     assert!(
         painted_has(&mut host, "sin conexión real"),
         "the simulation is still labelled as such"
@@ -188,7 +259,7 @@ fn renaming_the_owned_server_saves_and_shows_the_name_the_provider_confirms() {
     assert!(!host.settings().dirty(&host.store));
     assert!(!painted_has(&mut host, "Tienes cambios sin guardar"));
     assert!(
-        painted_has(&mut host, "LABORATORIO DE LIMN"),
+        painted_has(&mut host, "Laboratorio de limn"),
         "the sidebar's heading follows"
     );
 }
@@ -198,7 +269,7 @@ fn the_accent_and_description_are_saved_together_and_reset_drops_them() {
     let mut host = Host::new();
     let lab = host.lab();
     host.open_settings(lab);
-    host.click("ss:accent:e74c3c");
+    host.click("ss:accent:e81d1e");
     host.write(crate::server_settings::DESCRIPTION, "Donde se prueba limn.");
     host.click("ss:reset");
     assert!(!host.settings().dirty(&host.store));
@@ -207,12 +278,12 @@ fn the_accent_and_description_are_saved_together_and_reset_drops_them() {
         host.tree.input_value(crate::server_settings::DESCRIPTION),
         host.store.server(lab).unwrap().description.as_deref()
     );
-    host.click("ss:accent:e74c3c");
+    host.click("ss:accent:e81d1e");
     host.write(crate::server_settings::DESCRIPTION, "Donde se prueba limn.");
     host.click("ss:save");
     host.answer();
     let server = host.store.server(lab).unwrap();
-    assert_eq!(server.accent, rustcord_model::Rgb(0xE7_4C_3C));
+    assert_eq!(server.accent, rustcord_model::Rgb(0xE8_1D_1E));
     assert_eq!(server.description.as_deref(), Some("Donde se prueba limn."));
 }
 
@@ -478,7 +549,7 @@ fn a_server_the_account_does_not_own_shows_why_nothing_can_be_changed() {
         "No tienes permiso para cambiar el servidor en Taller de Rust"
     ));
     assert!(
-        !host.on_screen("ss:accent:e74c3c"),
+        !host.on_screen("ss:accent:e81d1e"),
         "the colors are not offered"
     );
     assert!(
@@ -1204,13 +1275,18 @@ fn revoking_an_invitation_asks_first_and_shows_at_once() {
     host.answer();
     let invites = host.store.invites(lab).unwrap().to_vec();
     let code = invites[0].code.clone();
+    // Discord's table: who made it, the code, the uses and when it ends.
     let painted = host.painted().join("");
+    for column in [
+        "Persona que invita",
+        "Código de invitación",
+        "Usos",
+        "Caduca",
+    ] {
+        assert!(painted.contains(column), "{column} in {painted}");
+    }
     assert!(
-        painted.contains(&code) && painted.contains("Creada por"),
-        "{painted}"
-    );
-    assert!(
-        painted.contains("No vence") && painted.contains("Vence: "),
+        painted.contains(&code) && painted.contains("Nunca"),
         "{painted}"
     );
     host.click(&format!("ss:invite:{code}:revoke"));
@@ -1726,11 +1802,16 @@ fn the_profile_reads_its_traits_and_saves_them_with_a_new_picture() {
     ));
     host.answer();
     assert!(painted_has(&mut host, "🦀 Rust"), "the card shows them");
-    // Below the icon and the banner: scrolled into view.
-    host.tree.reveal_at_start("ss:trait:add", 400.0);
+    // Below the icon and the banner: scrolled into view. Discord's five
+    // boxes are there, the empty ones too: writing in one adds its trait.
+    host.tree.reveal_at_start("ss:trait:0:label", 400.0);
     assert!(painted_has(&mut host, "Rasgos"));
     assert!(!painted_has(&mut host, "Tienes cambios sin guardar"));
-    host.press("ss:trait:add");
+    for id in ["ss:trait:3:label", "ss:trait:4:label"] {
+        host.tree.reveal(id);
+        let frame = host.frame();
+        assert!(frame.regions.iter().any(|region| region.id == id), "{id}");
+    }
     host.write("ss:trait:3:label", "Gráficos");
     host.write("ss:trait:3:emoji", "🖼️");
     host.press("ss:icon:pick");
@@ -1822,11 +1903,11 @@ fn a_community_is_left_and_made_again_only_with_its_channels() {
     let mut host = Host::new();
     let lab = host.lab();
     host.open_settings(lab);
-    host.click("ss:page:safety");
-    host.tree.reveal_at_start("ss:community", 200.0);
-    assert!(painted_has(&mut host, "Es una comunidad"));
-    assert!(painted_has(&mut host, "Canal de reglas"));
-    host.press("ss:community");
+    // A community's own group, as Discord's: its overview.
+    host.click("ss:page:community");
+    assert!(painted_has(&mut host, "Vista general de la comunidad"));
+    assert!(painted_has(&mut host, "Canal de normas o directivas"));
+    host.click("ss:community");
     host.sent.clear();
     host.press("ss:save");
     let Some(Command::EditServer { edit, .. }) = host.sent.last().cloned() else {
@@ -1835,8 +1916,12 @@ fn a_community_is_left_and_made_again_only_with_its_channels() {
     assert_eq!(edit.community, Some(false));
     host.answer();
     assert!(!host.store.server(lab).unwrap().options.community);
+    // Discord's «Activa la comunidad» in its place.
+    assert!(painted_has(&mut host, "¿Estás creando una comunidad?"));
+    assert!(!host.on_screen("ss:page:onboarding"));
     // Again, without a rules channel: said, not sent.
-    host.press("ss:community");
+    host.click("ss:community");
+    assert!(painted_has(&mut host, "Canal de normas o directivas"));
     host.press("ss:set:rules:none");
     host.sent.clear();
     host.press("ss:save");
@@ -1870,10 +1955,34 @@ fn safety_settings_are_drafted_together_and_refused_where_not_managed() {
     let mut host = Host::new();
     let lab = host.lab();
     host.open_settings(lab);
-    host.click("ss:page:safety");
+    // Discord's «Interacción»: the service's messages, the notifications
+    // and the inactive channel.
+    host.click("ss:page:engagement");
     assert!(painted_has(&mut host, "Canal de mensajes del sistema"));
-    host.press("ss:pick:verification");
-    host.press("ss:set:verification:3");
+    assert!(painted_has(
+        &mut host,
+        "Ajustes predeterminados de notificaciones"
+    ));
+    host.frame();
+    host.tree.reveal("ss:pick:afk-timeout");
+    assert!(painted_has(&mut host, "Suspensión por inactividad"));
+    // Its «Configuración de seguridad»: a level is changed from its card.
+    host.click("ss:page:safety");
+    assert!(painted_has(&mut host, "Nivel de verificación"));
+    assert!(
+        !host.on_screen("ss:set:verification:3"),
+        "only the chosen card"
+    );
+    host.click("ss:pick:verification");
+    host.click("ss:set:verification:3");
+    assert!(
+        !host.on_screen("ss:set:verification:3"),
+        "closed once chosen"
+    );
+    assert!(painted_has(
+        &mut host,
+        "También debe ser miembro de este servidor"
+    ));
     host.press("ss:system-messages:joins");
     host.press("ss:set:afk-timeout:900");
     host.press("ss:set:system:none");

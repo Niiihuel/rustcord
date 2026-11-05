@@ -6,8 +6,7 @@ use limn::{Button, ButtonSize, ButtonVariant, Component, Element, Icon, Switch};
 use rustcord_i18n::t;
 use rustcord_model::AutoModKind;
 
-use crate::server_settings::list_row;
-use crate::{icon, line, strong_line, text, Look};
+use crate::{icon, line, text, Look};
 
 /// The mark of a kind of rule; `None` for one Rustcord does not know.
 pub fn kind_glyph(kind: Option<AutoModKind>) -> Icon {
@@ -37,10 +36,31 @@ pub struct RuleLine {
 }
 
 fn lead(glyph: Icon, look: &Look) -> Element {
-    Element::panel(crate::centered(icon(glyph, look.muted)))
-        .size(Some(32.0), Some(32.0))
-        .radius(16.0)
-        .background(look.hover)
+    Element::panel(crate::centered(
+        icon(glyph, look.text).size(Some(24.0), Some(24.0)),
+    ))
+    .size(Some(40.0), Some(40.0))
+    .radius(20.0)
+    .background(look.hover)
+}
+
+/// A rule, or a kind of rule, as Discord's AutoMod draws them: a card
+/// rounded 8 on the raised ground, its 40 px mark, its name 16 semibold
+/// over what it does, and its buttons at the end.
+fn card(lead: Element, copy: Vec<Element>, buttons: Vec<Element>) -> Element {
+    let mut row = vec![
+        lead.centered_y(),
+        Element::column(copy).gap(2.0).flex(1.0).centered_y(),
+    ];
+    row.extend(buttons.into_iter().map(Element::centered_y));
+    Element::row(row).gap(16.0).padding(16.0)
+}
+
+fn framed(card: Element, look: &Look) -> Element {
+    Element::panel(card)
+        .radius(8.0)
+        .background(look.raised)
+        .border(look.border, 1.0)
 }
 
 fn small(id: String, glyph: Icon, label: String, enabled: bool, look: &Look) -> Element {
@@ -57,9 +77,10 @@ fn small(id: String, glyph: Icon, label: String, enabled: bool, look: &Look) -> 
 /// A row of the list: its mark, name and notes, its switch, and buttons to
 /// edit it (when Rustcord can) and delete it.
 pub fn rule_row(row: &RuleLine, look: &Look) -> Element {
-    let mut copy = vec![strong_line(&row.name, 15.0, look.text)];
+    let mut copy =
+        vec![line(&row.name, 16.0, look.text).font_family(limn::FontFamily::SansSemibold)];
     if !row.notes.is_empty() {
-        copy.push(line(row.notes.join(" · "), 13.0, look.muted));
+        copy.push(line(row.notes.join(" · "), 14.0, look.muted));
     }
     let id = row.id;
     let mut buttons = vec![Switch::new(
@@ -86,7 +107,7 @@ pub fn rule_row(row: &RuleLine, look: &Look) -> Element {
         row.can,
         look,
     ));
-    list_row(lead(row.glyph, look), copy, buttons, 64.0, look)
+    framed(card(lead(row.glyph, look), copy, buttons), look)
 }
 
 /// A kind of rule to make: what it does, and «Crear» while the server has
@@ -100,20 +121,21 @@ pub fn new_rule_row(
     look: &Look,
 ) -> Element {
     let copy = vec![
-        strong_line(title, 15.0, look.text),
-        text(description, 13.0, look.muted),
+        line(title, 16.0, look.text).font_family(limn::FontFamily::SansSemibold),
+        text(description, 14.0, look.muted),
     ];
-    let create = Button::new(format!("ss:am:new:{key}"), t("Crear"), look.palette())
-        .variant(ButtonVariant::Outline)
-        .button_size(ButtonSize::Small)
-        .enabled(enabled)
-        .accessibility_label(format!("{} {title}", t("Crear")))
-        .render();
-    list_row(
-        lead(kind_glyph(Some(kind)), look),
-        copy,
-        vec![create],
-        72.0,
+    // Discord's brand button.
+    let create = Button::new(
+        format!("ss:am:new:{key}"),
+        t("Crear"),
+        look.accent_palette(),
+    )
+    .button_size(ButtonSize::Small)
+    .enabled(enabled)
+    .accessibility_label(format!("{} {title}", t("Crear")))
+    .render();
+    framed(
+        card(lead(kind_glyph(Some(kind)), look), copy, vec![create]),
         look,
     )
 }

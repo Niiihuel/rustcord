@@ -709,6 +709,19 @@ pub(super) fn typed(settings: &mut ServerSettings, store: &Store, id: &str, valu
             return true;
         };
         let mut traits = shown_traits(settings, store);
+        // Each of the five boxes is a trait: one written past the last is
+        // added, those between stay empty and are not saved.
+        if index < MAX_TRAITS && index >= traits.len() && !value.trim().is_empty() {
+            traits.resize(
+                index + 1,
+                ServerTrait {
+                    label: String::new(),
+                    emoji: None,
+                    emoji_id: None,
+                    emoji_animated: false,
+                },
+            );
+        }
         if let Some(found) = traits.get_mut(index) {
             match part {
                 "label" => found.label = value.to_owned(),
