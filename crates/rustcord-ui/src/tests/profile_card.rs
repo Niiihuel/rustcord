@@ -967,3 +967,52 @@ fn the_own_card_sets_its_status_and_changes_its_roles_where_the_account_may() {
     assert!(host.ui.profiles.custom.is_some());
     assert_eq!(host.ui.profile, None);
 }
+
+// As Discord's, the own card's «…» has only what applies to oneself: no full
+// profile, inviting, ignoring, blocking or reporting; with nothing left, no
+// button.
+#[test]
+fn the_own_cards_more_menu_keeps_only_what_applies_to_oneself() {
+    use rustcord_components::profile::ids;
+    use rustcord_components::voice::MenuEntry;
+    let mut host = Host::new();
+    let general = host.open_channel("general");
+    let server = host.store.channel(general).unwrap().server;
+    let me = host.store.me().unwrap();
+    let more = |host: &Host| {
+        crate::profile::card_of(
+            &host.ui,
+            &host.store,
+            server,
+            me,
+            &rustcord_components::Look::DARK,
+        )
+        .unwrap()
+        .more
+    };
+    let actions = |entries: &[MenuEntry]| -> Vec<String> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                MenuEntry::Item(id, ..) | MenuEntry::Danger(id, ..) => Some(id.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    // The simulation shares no profile page: with the developer mode, the ID.
+    host.ui.prefs.developer = true;
+    let (button, entries) = more(&host).expect("copying the ID applies");
+    assert_eq!(button, format!("{}{me}", ids::CARD_MORE));
+    let shown = actions(&entries);
+    let copy = format!("{}{}", rustcord_components::voice::ids::COPY_ID, me.0);
+    assert!(shown.contains(&copy), "{shown:?}");
+    assert!(
+        shown.iter().all(|id| !id.starts_with(ids::FULL)
+            && !id.starts_with(ids::REPORT)
+            && !id.starts_with("friend:")),
+        "{shown:?}"
+    );
+    // Nothing left: no «…».
+    host.ui.prefs.developer = false;
+    assert_eq!(more(&host), None);
+}

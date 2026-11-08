@@ -468,7 +468,9 @@ pub fn card_of(
         identity: crate::identity::card(ui, store, server, user, &held, look),
         loading: loaded.is_none() && store.profile_loading_in(user, server),
         relation: relation(store, user),
-        more: (store.me() != Some(user)).then(|| more_entries(ui, store, user, server)),
+        more: Some(more_entries(ui, store, user, server))
+            .filter(|entries| !entries.is_empty())
+            .map(|entries| (format!("{}{user}", ids::CARD_MORE), entries)),
         open_menu: ui
             .profiles
             .menu
@@ -741,13 +743,20 @@ fn relation(store: &Store, user: UserId) -> Option<Relation> {
 
 /// The entries of the «…» menu of `user`'s card, in three groups: their
 /// profile, sharing and inviting; ignoring, blocking; and the developer's ID.
+/// As Discord's, the same menu for anyone: on the account's own card what
+/// does not apply to oneself (its full profile here, inviting, ignoring,
+/// blocking, reporting) is left out, and with nothing left there is no «…».
 fn more_entries(ui: &Ui, store: &Store, user: UserId, server: Option<ServerId>) -> Vec<MenuEntry> {
     let item = |id: String, label: &str| MenuEntry::Item(id, label.to_owned(), None);
+    let own = store.me() == Some(user);
     let mut groups = Vec::new();
-    let mut view = vec![item(
-        format!("{}{user}", ids::FULL),
-        t("Ver perfil completo"),
-    )];
+    let mut view = Vec::new();
+    if !own {
+        view.push(item(
+            format!("{}{user}", ids::FULL),
+            t("Ver perfil completo"),
+        ));
+    }
     if store
         .provider
         .as_ref()
@@ -755,14 +764,20 @@ fn more_entries(ui: &Ui, store: &Store, user: UserId, server: Option<ServerId>) 
     {
         view.push(item(format!("{}{user}", ids::SHARE), t("Compartir perfil")));
     }
-    view.extend(crate::person_menu::invite_submenu(ui, store, user, server));
+    if !own {
+        view.extend(crate::person_menu::invite_submenu(ui, store, user, server));
+    }
     groups.push(view);
-    let mut safety = crate::ignore::menu(store, user);
-    safety.extend(crate::person_menu::block_items(store, user));
-    if store
-        .provider
-        .as_ref()
-        .is_some_and(|info| info.capabilities.report_form.is_some())
+    let mut safety = Vec::new();
+    if !own {
+        safety.extend(crate::ignore::menu(store, user));
+        safety.extend(crate::person_menu::block_items(store, user));
+    }
+    if !own
+        && store
+            .provider
+            .as_ref()
+            .is_some_and(|info| info.capabilities.report_form.is_some())
     {
         safety.push(MenuEntry::Danger(
             format!("{}{user}", ids::REPORT),

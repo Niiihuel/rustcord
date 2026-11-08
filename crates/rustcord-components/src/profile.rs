@@ -467,8 +467,9 @@ pub struct Profile {
     /// The friendship's round button on the banner; `None` hides it: the
     /// account's own card, bots, blocked people, a provider without requests.
     pub relation: Option<Relation>,
-    /// The «…» menu's entries; `None` hides its button, on the account's own card.
-    pub more: Option<Vec<MenuEntry>>,
+    /// The «…» button's action and its menu's entries; `None` hides it, as
+    /// Discord's when nothing in it applies (the account's own card, at times).
+    pub more: Option<(String, Vec<MenuEntry>)>,
     /// The card's menu that is open, if any: its entries are the ones above.
     pub open_menu: Option<CardMenu>,
     /// The account blocks or ignores them: a notice under the name.
@@ -1394,9 +1395,8 @@ fn person_buttons(
             look,
         ));
     }
-    if let (Some(entries), Some(action)) = (&profile.more, profile.full_action.as_ref()) {
+    if let Some((id, entries)) = &profile.more {
         let open = profile.open_menu == Some(CardMenu::More);
-        let id = action.replacen(ids::FULL, ids::CARD_MORE, 1);
         let mut entries: Vec<MenuEntry> = if open { entries.clone() } else { Vec::new() };
         if full {
             entries.retain(
@@ -1407,7 +1407,7 @@ fn person_buttons(
             }
         }
         buttons.push(card_menu(
-            button(&id, Icon::More, t("Más"), look),
+            button(id, Icon::More, t("Más"), look),
             entries,
             open,
             ids::CARD_MORE_DISMISS,
@@ -4229,7 +4229,7 @@ mod tests {
         // Someone without a friendship: the button sends the request.
         let stranger = Profile {
             relation: Some(relation(Friendship::None, "friend:10:add", Vec::new())),
-            more: Some(Vec::new()),
+            more: Some((format!("{}10", ids::CARD_MORE), Vec::new())),
             full_action: Some(format!("{}10", ids::FULL)),
             ..ada()
         };
@@ -4479,7 +4479,7 @@ mod tests {
             connections: Default::default(),
             profile: Profile {
                 full_action: Some(format!("{}10", ids::FULL)),
-                more: Some(more),
+                more: Some((format!("{}10", ids::CARD_MORE), more)),
                 open_menu: Some(CardMenu::More),
                 member_since: vec![
                     Since {

@@ -1760,6 +1760,7 @@ fn pf_the_more_menu_shares_and_reports_as_the_provider_allows() {
         )
         .unwrap();
         card.more
+            .map(|(_, entries)| entries)
             .unwrap_or_default()
             .into_iter()
             .filter_map(|entry| match entry {
