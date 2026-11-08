@@ -67,6 +67,19 @@ impl Http {
                 .await?;
                 Ok(Vec::new())
             }
+            // What the official client sends when its pins popout opens.
+            Command::AckPins { channel } => {
+                self.request_answer(
+                    secret,
+                    Method::POST,
+                    &format!("/channels/{channel}/pins/ack"),
+                    None,
+                    4096,
+                    true,
+                )
+                .await?;
+                Ok(Vec::new())
+            }
             Command::SearchMessages {
                 request,
                 search,

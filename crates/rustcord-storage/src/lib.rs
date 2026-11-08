@@ -2093,6 +2093,7 @@ mod tests {
             through: Some(MessageId(1)),
             unread_from: None,
             revision: 3,
+            pins_seen: Default::default(),
         };
         let file = DraftFile {
             path: "/tmp/a.png".into(),
@@ -2216,6 +2217,7 @@ mod tests {
             through: Some(MessageId(1)),
             unread_from: None,
             revision: 3,
+            pins_seen: Default::default(),
         };
         {
             let mut storage = Storage::open(&path).unwrap().unlocked();
@@ -2297,6 +2299,7 @@ mod tests {
             through: Some(MessageId(1)),
             unread_from: None,
             revision: 1,
+            pins_seen: Default::default(),
         };
         storage
             .apply_messages(
@@ -2394,6 +2397,7 @@ mod tests {
             through: Some(MessageId(1)),
             unread_from: Some(MessageId(1)),
             revision: 2,
+            pins_seen: Default::default(),
         };
         {
             // As version 4 left it: every account's rows in plain text.

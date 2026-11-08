@@ -3,7 +3,7 @@
 
 use rustcord_components::server_settings::permission_id;
 use rustcord_model::{Permissions, RoleId, ServerId, UserId};
-use rustcord_provider::RoleEdit;
+use rustcord_provider::{InviteFrom, InvitePlace, RoleEdit};
 
 use super::*;
 use crate::server_settings::{Page, NAME, REASON, ROLE_NAME};
@@ -1510,51 +1510,58 @@ fn a_timeout_is_chosen_confirmed_and_then_offered_to_lift() {
 }
 
 #[test]
-fn a_new_invitation_is_made_with_its_choices_and_its_code_copied() {
+fn a_new_invitation_opens_discords_modal_whose_settings_make_another() {
     let mut host = Host::new();
     let lab = host.lab();
     host.open_settings(lab);
     host.click("ss:page:invites");
     host.answer();
-    host.click("ss:invite:new");
-    assert!(painted_has(&mut host, "Crear invitación"));
-    host.press("ss:invite-age:6");
-    host.press("ss:invite-uses:2");
-    host.press("ss:invite:temporary");
     host.sent.clear();
-    host.press("ss:invite:create");
+    host.click("ss:invite:new");
+    assert!(host.ui.invite.is_some(), "Discord's modal");
+    assert!(matches!(
+        host.sent.last(),
+        Some(Command::CreateInvite {
+            from: InviteFrom::Opening {
+                place: InvitePlace::Settings,
+                previous: None,
+            },
+            ..
+        })
+    ));
+    host.answer();
+    // Its settings: never expires, 5 uses, temporary; a new link is asked for.
+    host.press("invite:edit");
+    host.press("invite:age:7");
+    host.press("invite:uses:2");
+    host.press("invite:temporary");
+    host.press("invite:generate");
     let Some(Command::CreateInvite {
         max_age_secs,
         max_uses,
         temporary,
+        from,
         ..
     }) = host.sent.last().cloned()
     else {
         panic!("{:?}", host.sent);
     };
     assert_eq!((max_age_secs, max_uses, temporary), (0, 5, true));
-    // Twice is still one invitation.
-    host.press("ss:invite:create");
-    assert_eq!(host.sent.len(), 1);
+    assert_eq!(from, InviteFrom::Generating(InvitePlace::Settings));
     host.answer();
-    let code = host
-        .settings()
-        .advanced
-        .invite
-        .as_ref()
-        .unwrap()
-        .made
-        .clone()
-        .unwrap();
-    assert_eq!(host.store.invites(lab).unwrap()[0].code, code);
-    assert!(painted_has(&mut host, "Invitación creada"));
+    let code = host.store.invites(lab).unwrap()[0].code.clone();
+    assert!(painted_has(
+        &mut host,
+        "Tu enlace de invitación caduca después de 5 usos."
+    ));
     // The simulation has no links: the code itself is copied, and it says so.
     assert_eq!(
-        intents_of(&mut host, "ss:invite:copy"),
+        intents_of(&mut host, "invite:copy"),
         [Intent::Copy(code.clone())]
     );
     assert!(painted_has(&mut host, "no lleva a ningún lado"));
-    host.press("ss:invite:done");
+    host.press("invite:close");
+    assert!(host.ui.invite.is_none());
     assert_eq!(
         intents_of(&mut host, &format!("ss:invite:{code}:copy")),
         [Intent::Copy(code)]
@@ -1764,6 +1771,7 @@ fn a_permission_lost_before_an_invitation_sends_nothing() {
     host.open_settings(lab);
     host.click("ss:page:invites");
     host.press("ss:invite:new");
+    host.press("invite:edit");
     host.store
         .provider
         .as_mut()
@@ -1771,14 +1779,13 @@ fn a_permission_lost_before_an_invitation_sends_nothing() {
         .capabilities
         .create_invites = false;
     host.sent.clear();
-    host.press("ss:invite:create");
+    host.press("invite:generate");
     assert!(host.sent.is_empty());
     assert!(noticed(
         &host,
         "No se creó la invitación",
         "Este proveedor no permite"
     ));
-    assert!(host.settings().advanced.invite.is_none());
 }
 
 fn png(edge: u32) -> Vec<u8> {

@@ -478,8 +478,8 @@ pub(super) const ENTRIES: super::Entries = &[
         "you don't have permission to invite in that channel",
     ),
     (
-        "una invitación dura hasta 7 días y hasta 100 usos",
-        "an invite lasts up to 7 days and up to 100 uses",
+        "una invitación dura hasta 30 días y hasta 100 usos",
+        "an invite lasts up to 30 days and up to 100 uses",
     ),
     (
         "el servidor ya tiene {max} emojis",

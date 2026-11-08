@@ -2243,6 +2243,30 @@ async fn sharing_sends_the_screen_end_to_end_encrypted_and_answers_the_receivers
             "max_resolution": {"type": "fixed", "width": 1920, "height": 1080},
         }]})
     );
+    // Another quality while it goes out: op 12 describes it again, and back.
+    let described = |width: u32, height: u32, fps: u32, bitrate: u32| {
+        json!({"audio_ssrc": 11, "video_ssrc": 33, "rtx_ssrc": 34, "streams": [{
+            "type": "screen", "rid": "100", "ssrc": 33, "rtx_ssrc": 34, "active": true,
+            "quality": 100, "max_bitrate": bitrate, "max_framerate": fps,
+            "max_resolution": {"type": "fixed", "width": width, "height": height},
+        }]})
+    };
+    controls.send_replace(Controls {
+        stream_quality: Some(rustcord_model::StreamQuality::default()),
+        ..Controls::default()
+    });
+    assert_eq!(
+        expect(&mut peer, &mut acks, 12).await,
+        described(1280, 720, 30, 3_500_000)
+    );
+    controls.send_replace(Controls {
+        stream_quality: Some(quality),
+        ..Controls::default()
+    });
+    assert_eq!(
+        expect(&mut peer, &mut acks, 12).await,
+        described(1920, 1080, 60, 9_000_000)
+    );
     // Bob, who watches, joins the stream's group.
     let mut bob = Dave::new(BOB, CHANNEL).unwrap();
     bob.connected(&[ALICE]).unwrap();
@@ -2511,6 +2535,29 @@ async fn sharing_asks_the_gateway_connects_as_the_sender_and_lets_go_on_each_sto
         &events[..],
         [Event::StreamPhase { owner, phase: StreamPhase::Connecting, .. }] if owner.0 == ALICE
     ));
+    // Another quality reaches its connection, and is asked for if it
+    // connects again; a new share starts at its own.
+    let controls = |calls: &Calls| {
+        calls
+            .call
+            .as_ref()
+            .unwrap()
+            .controls
+            .borrow()
+            .stream_quality
+    };
+    let higher = StreamQuality {
+        height: 1080,
+        fps: 60,
+    };
+    calls.share_quality(ChannelId(CHANNEL), odd);
+    assert_eq!(controls(&calls), None, "not offered");
+    calls.share_quality(ChannelId(CHANNEL), higher);
+    assert_eq!(controls(&calls), Some(higher));
+    let share = |calls: &Calls| calls.call.as_ref().unwrap().share.as_ref().unwrap().quality;
+    assert_eq!(share(&calls), Some(higher));
+    calls.share(ChannelId(CHANNEL), quality).unwrap();
+    assert_eq!((controls(&calls), share(&calls)), (None, Some(quality)));
     // Created (op 18) once the call's voice session is known.
     assert_eq!(wanted.borrow_and_update().unwrap().share, None);
     calls.dispatch(

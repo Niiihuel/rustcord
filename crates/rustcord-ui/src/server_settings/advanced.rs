@@ -38,14 +38,16 @@ pub const TIMEOUTS: [(i64, &str); 6] = [
     (24 * 60, es("1 día")),
     (7 * 24 * 60, es("1 semana")),
 ];
-/// How long a new invitation lasts, in seconds; 0 never expires.
-pub const INVITE_AGES: [(u32, &str); 7] = [
+/// How long a new invitation lasts, in seconds, as Discord's client offers
+/// it to an account; 0 never expires.
+pub const INVITE_AGES: [(u32, &str); 8] = [
     (30 * 60, es("30 minutos")),
     (60 * 60, es("1 hora")),
     (6 * 60 * 60, es("6 horas")),
     (12 * 60 * 60, es("12 horas")),
     (24 * 60 * 60, es("1 día")),
     (7 * 24 * 60 * 60, es("7 días")),
+    (30 * 24 * 60 * 60, es("30 días")),
     (0, es("Nunca")),
 ];
 /// The history a ban deletes, as the dialog offers it: its seconds, and what
@@ -78,17 +80,6 @@ pub struct TimeoutDraft {
     pub user: UserId,
     pub length: usize,
     pub reason: String,
-}
-
-/// A new invitation being chosen, sent (`sending`) or made (`made`, its code).
-#[derive(Clone, Debug, PartialEq)]
-pub struct InviteDraft {
-    pub channel: Option<ChannelId>,
-    pub age: usize,
-    pub uses: usize,
-    pub temporary: bool,
-    pub sending: Option<u64>,
-    pub made: Option<String>,
 }
 
 /// A new emoji or sticker: its picture, ready to send, and what is written.
@@ -138,7 +129,6 @@ pub struct WebhookDraft {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Advanced {
     pub timeout: Option<TimeoutDraft>,
-    pub invite: Option<InviteDraft>,
     pub upload: Option<UploadDraft>,
     /// The picture being chosen with this request, for this kind.
     pub picking: Option<(u64, ExpressionKind)>,
@@ -146,8 +136,8 @@ pub struct Advanced {
     pub webhook: Option<WebhookDraft>,
     pub delete_webhook: Option<WebhookId>,
     pub delete_integration: Option<IntegrationId>,
-    /// The dropdown of a dialog that is open: `timeout-length`, `invite-channel`,
-    /// `invite-age`, `invite-uses`, `prune-days`, `webhook-channel`, `removal-history`.
+    /// The dropdown of a dialog that is open: `timeout-length`, `prune-days`,
+    /// `webhook-channel`, `removal-history`.
     pub select: Option<&'static str>,
 }
 
@@ -156,7 +146,6 @@ impl Advanced {
     pub(super) fn close(&mut self) -> bool {
         self.select.take().is_some()
             || self.timeout.take().is_some()
-            || self.invite.take().is_some()
             || self.upload.take().is_some()
             || self.prune.take().is_some()
             || self.webhook.take().is_some()
@@ -378,101 +367,15 @@ pub(super) fn clicked(
             advanced.select = None;
         }
 
-        // A new invitation, from the invitations page.
+        // A new invitation, from the invitations page: Discord's modal.
         ["invite", "new"] if abilities.create_invites.allowed() => {
-            let channel = invite_channels(store, server).first().copied();
-            advanced.invite = Some(InviteDraft {
-                channel,
-                age: 5,
-                uses: 0,
-                temporary: false,
-                sending: None,
-                made: None,
-            });
-        }
-        ["invite", "channel"] => advanced.toggle("invite-channel"),
-        ["invite", "age"] => advanced.toggle("invite-age"),
-        ["invite", "uses"] => advanced.toggle("invite-uses"),
-        ["invite-channel", id] => {
-            let chosen = id.parse().ok().map(ChannelId);
-            if let Some(draft) = &mut advanced.invite {
-                if chosen.is_some_and(|channel| invite_channels(store, server).contains(&channel)) {
-                    draft.channel = chosen;
-                }
-            }
-            advanced.select = None;
-        }
-        ["invite-age", choice] => {
-            if let (Some(draft), Some(choice)) = (&mut advanced.invite, index(choice)) {
-                if choice < INVITE_AGES.len() {
-                    draft.age = choice;
-                }
-            }
-            advanced.select = None;
-        }
-        ["invite-uses", choice] => {
-            if let (Some(draft), Some(choice)) = (&mut advanced.invite, index(choice)) {
-                if choice < INVITE_USES.len() {
-                    draft.uses = choice;
-                }
-            }
-            advanced.select = None;
-        }
-        ["invite", "temporary"] => {
-            if let Some(draft) = &mut advanced.invite {
-                draft.temporary = !draft.temporary;
-            }
-        }
-        ["invite", "create"] => {
-            advanced.select = None;
-            let Some(draft) = advanced
-                .invite
-                .as_mut()
-                .filter(|draft| draft.sending.is_none() && draft.made.is_none())
-            else {
-                return true;
-            };
-            let channel = draft
-                .channel
-                .filter(|channel| invite_channels(store, server).contains(channel));
-            match (abilities.create_invites.reason(), channel) {
-                (None, Some(channel)) => {
-                    let request = ui.fresh_request();
-                    draft.sending = Some(request);
-                    intents.push(Intent::Command(Command::CreateInvite {
-                        request,
-                        server,
-                        channel,
-                        max_age_secs: INVITE_AGES[draft.age.min(INVITE_AGES.len() - 1)].0,
-                        max_uses: INVITE_USES[draft.uses.min(INVITE_USES.len() - 1)].0,
-                        temporary: draft.temporary,
-                    }));
-                }
-                (None, None) => refused(
-                    ui,
-                    t("No se creó la invitación"),
-                    Some(t("No puedes invitar a ningún canal de este servidor.").into()),
-                    now,
-                ),
-                (reason, _) => {
-                    advanced.invite = None;
-                    refused(
-                        ui,
-                        t("No se creó la invitación"),
-                        reason.map(str::to_owned),
-                        now,
-                    );
-                }
-            }
-        }
-        ["invite", "copy"] => {
-            if let Some(code) = advanced
-                .invite
-                .as_ref()
-                .and_then(|draft| draft.made.clone())
-            {
-                copy_invite(ui, store, &code, now, intents);
-            }
+            intents.extend(crate::invite_modal::open_server(
+                ui,
+                store,
+                server,
+                rustcord_provider::InvitePlace::Settings,
+                now,
+            ));
         }
         ["invite", code, "copy"] => {
             if store
@@ -481,10 +384,6 @@ pub(super) fn clicked(
             {
                 copy_invite(ui, store, code, now, intents);
             }
-        }
-        ["invite", "done" | "cancel"] => {
-            advanced.invite = None;
-            advanced.select = None;
         }
 
         // New emojis and stickers, from their pages.
@@ -808,20 +707,6 @@ pub(super) fn on_applied(
     let server = settings.server;
     let advanced = &mut settings.advanced;
     match applied {
-        Applied::InviteCreated {
-            request,
-            server: of,
-            code,
-        } if *of == server => {
-            if let Some(draft) = advanced
-                .invite
-                .as_mut()
-                .filter(|draft| draft.sending == Some(*request))
-            {
-                draft.sending = None;
-                draft.made = Some(code.clone());
-            }
-        }
         Applied::Created {
             request,
             created: Created::Expression(of, _),
@@ -864,15 +749,6 @@ pub(super) fn on_applied(
             }
         }
         Applied::Failed { failure, .. } => match failure {
-            Failure::NewInvite { request, .. } => {
-                if let Some(draft) = advanced
-                    .invite
-                    .as_mut()
-                    .filter(|draft| draft.sending == Some(*request))
-                {
-                    draft.sending = None;
-                }
-            }
             Failure::NewExpression { request, .. } => {
                 if let Some(draft) = advanced
                     .upload

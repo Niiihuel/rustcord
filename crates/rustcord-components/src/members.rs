@@ -24,6 +24,8 @@ pub const HEADING: f32 = 50.0;
 pub const INSET: (f32, f32) = (8.5, 8.0);
 /// A crown, after the name of whoever owns the server.
 pub const CROWN: &str = crate::glyphs::glyph!("crown");
+/// The crown's gold, measured on Discord's member list.
+pub const CROWN_COLOR: Color = Color::rgb(206, 129, 0);
 
 /// One person of the list.
 #[derive(Clone, Debug, PartialEq)]
@@ -160,7 +162,7 @@ pub fn member(row: &MemberRow, profile: Option<&Profile>, look: &Look) -> Elemen
     if row.owner {
         marks.push(
             Element::icon(Icon::Custom(CROWN))
-                .foreground(look.accent)
+                .foreground(CROWN_COLOR)
                 .size(Some(13.0), Some(13.0))
                 .accessible(limn::Access::default().description(t("Dueño del servidor"))),
         );
@@ -304,6 +306,7 @@ mod tests {
             role_removals: Vec::new(),
             role_menu: None,
             edit_profile: false,
+            set_custom: false,
             example_button: false,
             games: Vec::new(),
             wishlist: Vec::new(),
@@ -462,8 +465,9 @@ mod tests {
                     limn::DrawCommand::Icon {
                         rect,
                         icon: limn::Icon::Custom(CROWN),
+                        tint,
                         ..
-                    } => Some(*rect),
+                    } => Some((*rect, *tint)),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -471,8 +475,9 @@ mod tests {
         assert!(crowns(false).is_empty());
         let crown = crowns(true);
         // 7 px characters: the name ends at 10.5 + 34 + 13.5 + 21.
+        // In Discord's gold, whatever the accent.
         assert!(
-            matches!(crown[..], [rect] if (rect.x - 83.0).abs() <= 1.0 && rect.width == 13.0),
+            matches!(crown[..], [(rect, CROWN_COLOR)] if (rect.x - 83.0).abs() <= 1.0 && rect.width == 13.0),
             "{crown:?}"
         );
     }

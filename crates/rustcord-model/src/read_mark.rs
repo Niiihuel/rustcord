@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::MessageId;
+use crate::{MessageId, Timestamp};
 
 /// An account-local reading choice. A reminder never rewinds a provider cursor.
 /// Revisions order local choices, not provider confirmations.
@@ -13,4 +13,21 @@ pub struct ReadMark {
     pub unread_from: Option<MessageId>,
     #[serde(default)]
     pub revision: u64,
+    /// The newest pin the account saw when it opened the channel's pins;
+    /// zero for none. Not an `Option`: the restore's memory credit counts
+    /// every mark's size.
+    #[serde(default)]
+    pub pins_seen: Timestamp,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_mark_kept_before_pins_were_seen_still_reads() {
+        let mark: ReadMark = serde_json::from_str(r#"{"through":7,"revision":2}"#).unwrap();
+        assert_eq!(mark.through, Some(MessageId(7)));
+        assert_eq!(mark.pins_seen, Timestamp(0));
+    }
 }

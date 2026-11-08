@@ -225,7 +225,7 @@ fn person_row(person: &GroupPerson, look: &Look) -> Element {
     if person.owner {
         names.push(
             Element::icon(Icon::Custom(crate::members::CROWN))
-                .foreground(look.accent)
+                .foreground(crate::members::CROWN_COLOR)
                 .size(Some(13.0), Some(13.0))
                 .accessible(limn::Access::default().description(t("Dueño del grupo")))
                 .centered_y(),

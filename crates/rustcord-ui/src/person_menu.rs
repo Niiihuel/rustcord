@@ -13,7 +13,7 @@ use rustcord_components::Look;
 use rustcord_i18n::t;
 use rustcord_model::{ChannelId, MessageId, RelationshipKind, Server, ServerId, UserId};
 use rustcord_provider::Created;
-use rustcord_provider::{Command, Failure, RequestId};
+use rustcord_provider::{Command, Failure, InviteFrom, RequestId};
 use rustcord_state::{Applied, RailEntry, Store};
 
 use crate::server_settings::advanced::{invite_channels, invite_link};
@@ -655,6 +655,7 @@ fn invite(
         max_age_secs: INVITE_AGE_SECS,
         max_uses: 1,
         temporary: false,
+        from: InviteFrom::Person,
     })];
     intents.extend(progress(ui, store, now));
     // Their conversation is opened for the link, unless it is there or refused.

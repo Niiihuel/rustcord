@@ -747,7 +747,7 @@ impl Cards {
                 message,
                 author,
                 continued,
-                day,
+                day: None,
                 first_new: false,
                 start: None,
                 reply: None,
@@ -766,7 +766,14 @@ impl Cards {
             },
             &self.look,
         );
-        parts::jumpable(row, card.entry.channel.0, message.id.0, &self.look)
+        // The room a row keeps over its text: a group opens with more.
+        let above = if continued { 2.0 } else { self.style.group_gap };
+        let row = parts::jumpable(row, above, card.entry.channel.0, message.id.0, &self.look);
+        match day {
+            // Discord's pill, outside the message «Ir» is placed in.
+            Some(day) => Element::column(vec![parts::day(day, &self.look), row]),
+            None => row,
+        }
     }
 }
 

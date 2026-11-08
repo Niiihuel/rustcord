@@ -283,6 +283,9 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Más opciones", "More options"),
     ("Subir un archivo", "Upload a file"),
+    // The composer's GIF and sticker buttons, in Discord's words.
+    ("Abrir selector de GIF", "Open GIF picker"),
+    ("Abrir selector de stickers", "Open sticker picker"),
     ("Pegar del portapapeles", "Paste from clipboard"),
     ("Archivos copiados o una imagen", "Copied files or an image"),
     ("{one} está escribiendo…", "{one} is typing…"),

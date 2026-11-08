@@ -63,6 +63,14 @@ pub mod ids {
     pub const PIP_OVER: &str = "pip:over";
     /// The picture-in-picture's eye and count: who watches, in its hint.
     pub const PIP_VIEWERS: &str = "pip:viewers";
+    /// The gear of the account's own stream there, Discord's «Ajustes de la
+    /// transmisión», and its menu's items besides the quality and the
+    /// sound (the picker's): stop, the quality's submenu, the report.
+    pub const PIP_SETTINGS: &str = "pip:settings";
+    pub const PIP_SETTINGS_DISMISS: &str = "pip:settings:dismiss";
+    pub const PIP_STOP: &str = "pip:settings:stop";
+    pub const PIP_QUALITY: &str = "pip:settings:quality";
+    pub const PIP_REPORT: &str = "pip:settings:report";
     /// The surface the still of the account's own stream goes on, on its card.
     pub const OWN_THUMB_SURFACE: &str = "video:own-thumb";
     /// The quality picker that opens before sharing the screen: its
@@ -725,7 +733,7 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
         },
         // A stream over says so, and offers to be watched again or closed.
         None => match &view.stream {
-            Some(stream) if stream.over => over_picture(view, look),
+            Some(stream) if stream.over => over_picture(view, size.width, look),
             // A stream, or the account's own, before its first frame: it
             // loads, turning, as the official client's tile does.
             Some(_) => loading(view),
@@ -834,12 +842,28 @@ fn own_over(view: &Preview, title: Element, look: &Look) -> Element {
     .padding(12.5)
 }
 
-/// What a stream over shows, centred on its tile, with no picture: a failure's
-/// title, its reason under it and the line to the help; an ended stream's
-/// wording as its title. «Cerrar transmisión» comes 16 px under.
-fn over_picture(view: &Preview, look: &Look) -> Element {
+/// What a stream over shows, centred on its tile `width` wide, with no
+/// frame: a failure's title, its reason under it and the line to the help;
+/// an ended stream's wording as its title, under Discord's art on a tile
+/// wide enough. «Cerrar transmisión» comes under.
+fn over_picture(view: &Preview, width: f32, look: &Look) -> Element {
     let failed = view.stream.as_ref().is_some_and(|stream| stream.failed);
     let mut text = Vec::new();
+    // Over, Discord's couch 48 over its words, then 20 px words and the
+    // button 24 under them: 185 high on a tile from 1000 wide, 134 from 550,
+    // none on a smaller one.
+    let art = if failed || width < 550.0 {
+        None
+    } else if width < 1000.0 {
+        Some(134.0)
+    } else {
+        Some(185.0)
+    };
+    if let Some(height) = art {
+        let art = crate::illustration::Art::StreamEnded;
+        text.push(crate::illustration::art(art, height / art.size().1, look).centered_x());
+        text.push(gap(0.0, 44.0));
+    }
     if failed {
         text.push(strong_line(
             t("No se pudo iniciar la transmisión :("),
@@ -849,10 +873,12 @@ fn over_picture(view: &Preview, look: &Look) -> Element {
         text.push(strong_line(view.waiting.clone(), 14.0, look.muted));
         text.push(help_line(look));
     } else {
-        text.push(strong_line(view.waiting.clone(), 16.0, OVER_INK));
+        let size = if art.is_some() { 20.0 } else { 16.0 };
+        text.push(strong_line(view.waiting.clone(), size, OVER_INK).centered_x());
     }
     let close = stream_text_button(&view.stop.0, t(view.stop.1), ButtonVariant::Secondary, look);
-    centered(Element::column(vec![Element::column(text).gap(4.0), close]).gap(16.0))
+    let space = if art.is_some() { 24.0 } else { 16.0 };
+    centered(Element::column(vec![Element::column(text).gap(4.0), close.centered_x()]).gap(space))
 }
 
 /// «¿Tienes problemas con tu transmisión? Déjanos ayudarte.», where the last
@@ -1074,10 +1100,21 @@ pub struct PipView {
     /// Who watches it: the eye and their count, bottom right, when any;
     /// under the pointer, their pictures and names as the stage's list.
     pub viewers: Vec<Participant>,
+    /// The gear of the account's own stream, before the buttons.
+    pub settings: Option<StreamSettings>,
     /// Its controls at the bottom right, after the viewers.
     pub buttons: Vec<PipButton>,
     /// Where its top left corner is in the window.
     pub at: Point,
+}
+
+/// What the gear of the account's own stream shows: its menu open or not,
+/// the quality sent and whether the applications' sound goes along.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StreamSettings {
+    pub open: bool,
+    pub quality: StreamQuality,
+    pub sound: bool,
 }
 
 /// One of the picture-in-picture's buttons.
@@ -1245,6 +1282,10 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
             .render(),
         );
     }
+    if let Some(settings) = view.settings {
+        bottom.push(gap(16.0, 0.0));
+        bottom.push(stream_settings(settings, look));
+    }
     for button in &view.buttons {
         let glyph = match button.glyph {
             PipGlyph::PopOut => Icon::Custom(POP_OUT),
@@ -1283,6 +1324,47 @@ pub fn pip(view: &PipView, look: &Look) -> Element {
         Element::row(vec![tile, Element::spacer().flex(1.0)]),
         Element::spacer().flex(1.0),
     ])
+}
+
+/// The gear of the account's own stream and its menu, as Discord's: stop,
+/// the quality in a submenu, the sound and, apart, the report.
+fn stream_settings(settings: StreamSettings, look: &Look) -> Element {
+    let item = |id: &str, label: &str| DropdownMenuItem::new(id, label);
+    let entries = vec![
+        DropdownMenuEntry::Item(
+            item(ids::PIP_STOP, t("Dejar de transmitir"))
+                .icon(Icon::Custom(SCREEN_STOP))
+                .destructive(look.danger),
+        ),
+        DropdownMenuEntry::Item(
+            item(ids::PIP_QUALITY, t("Calidad de la transmisión"))
+                .submenu(quality_entries(settings.quality)),
+        ),
+        sound_entry(settings.sound),
+        DropdownMenuEntry::Separator,
+        DropdownMenuEntry::Item(
+            item(ids::PIP_REPORT, t("Informar problema"))
+                .icon(Icon::ErrorCircle)
+                .destructive(look.danger),
+        ),
+    ];
+    let gear = pip_button(
+        ids::PIP_SETTINGS,
+        Icon::Settings,
+        t("Ajustes de la transmisión"),
+        look,
+    );
+    DropdownMenu::new(
+        gear,
+        entries,
+        settings.open,
+        ids::PIP_SETTINGS_DISMISS,
+        look.menu_palette(),
+    )
+    .context_menu_style()
+    .filled_choice(look.accent, look.on_accent)
+    .placement(PopoverPlacement::TopEnd)
+    .render()
 }
 
 /// The voice section of the account's box, one card with it: 100 high, its
@@ -3891,7 +3973,7 @@ fn bar(view: &Stage, look: &Look) -> Element {
         look,
     );
     let screen = match video.picker {
-        Some(chosen) => go_live(screen, chosen, video, view.size, look),
+        Some(chosen) => go_live(screen, chosen, video, view.size.height, look),
         None => screen,
     };
     // Discord's 4 of padding inside its 1 px edge, which limn draws inside
@@ -4044,47 +4126,82 @@ const BAR_SIDE: f32 = 136.0;
 /// Narrower than this the stage's bar has no room for the invitation.
 const INVITE_MIN_WIDTH: f32 = 650.0;
 
-/// The Go Live modal over `button`, as Discord's: what to
-/// share, the stream's quality and its options in the footer, and going
-/// live. `chosen` is the quality, `window` the window's size.
+/// The Go Live modal over `button`, as Discord's (measured on the owner's
+/// capture of its Windows client, 2026-11-08): no title and no close button,
+/// its tabs at the top, what to share centered under them, and the footer
+/// with what goes out, the presets, the button that goes live and the gear.
+/// `chosen` is the quality, `height` the window's.
 fn go_live(
     button: Element,
     chosen: StreamQuality,
     video: &VideoControls,
-    window: Size,
+    height: f32,
     look: &Look,
 ) -> Element {
-    let body = Element::column(vec![
-        share_tabs(video.devices, look),
-        gap(0.0, 24.0),
-        if video.devices {
-            no_devices(look)
-        } else if video.sources.is_empty() {
-            screen_cards(video.kind, look)
-        } else {
-            source_list(video, look)
-        },
-    ]);
+    let content = if video.devices {
+        no_devices(look)
+    } else if video.sources.is_empty() {
+        centered(screen_cards(video.kind, look))
+    } else {
+        Element::column(vec![
+            gap(0.0, GO_LIVE_PADDING),
+            ScrollArea::new(SOURCES_SCROLL, source_list(video, look))
+                .appearance(look.scrollbar(true))
+                .render()
+                .flex(1.0),
+            gap(0.0, GO_LIVE_PADDING),
+        ])
+    };
     let footer = go_live_footer(gear_popout(chosen, video, look), chosen, video, look);
-    Modal::new(
-        button,
-        true,
-        "",
-        "",
-        ids::SHARE_DISMISS,
-        look.menu_palette(),
+    let surface = Element::panel(Element::column(vec![
+        share_tabs(video.devices, look),
+        content.flex(1.0),
+        footer,
+    ]))
+    .padding(GO_LIVE_PADDING)
+    // limn keeps a floating card inside the window, narrower if it must.
+    .size(
+        Some(GO_LIVE_WIDTH),
+        Some((height - 90.0).min(GO_LIVE_HEIGHT)),
     )
-    .width(Modal::fit_width(window.width, GO_LIVE_WIDTH))
-    .height((window.height - 90.0).min(GO_LIVE_HEIGHT))
-    .backdrop_dismiss(true)
-    .body(body)
-    .footer(footer)
-    .render()
+    .radius(GO_LIVE_RADIUS)
+    .background(Look::alpha(look.card, 255))
+    .border(look.border, 1.0)
+    .shadow(look.shadow, Point::new(0.0, 16.0), 32.0, 0.0)
+    .accessible(
+        Access::new(Role::Dialog)
+            .id(format!("{}:dialog", ids::SHARE_DISMISS))
+            .name(t("Compartir pantalla").to_owned()),
+    );
+    // Escape and a click beside it close it, as Discord's.
+    Element::popover(
+        button,
+        surface,
+        ids::SHARE_DISMISS,
+        PopoverPlacement::Center,
+    )
+    .popover_scrim(Color::rgba(0, 0, 0, 184))
+    .popover_backdrop_dismiss(true)
 }
 
-/// The modal's width, and its height where the window leaves room.
-const GO_LIVE_WIDTH: f32 = 720.0;
-const GO_LIVE_HEIGHT: f32 = 550.0;
+/// Discord's modal: 960 wide, 24 in from its edges, rounded 12, and as high
+/// as its footer 24 from the bottom (Nitro's offer under it is not here),
+/// where the window leaves room.
+const GO_LIVE_WIDTH: f32 = 960.0;
+const GO_LIVE_HEIGHT: f32 = 546.0;
+const GO_LIVE_PADDING: f32 = 24.0;
+const GO_LIVE_RADIUS: f32 = 12.0;
+/// Its two cards, 16 apart, and the width their names wrap within, 48 in
+/// from the sides.
+const SHARE_CARD: Size = Size {
+    width: 244.0,
+    height: 164.0,
+};
+const SHARE_CARD_LABEL: f32 = 148.0;
+/// A preset's segment in the footer.
+const PRESET_WIDTH: f32 = 49.0;
+/// Rustcord's own list of what to share (Windows) scrolls under this id.
+const SOURCES_SCROLL: &str = "vz:share:sources";
 /// The two presets of the footer: SD, 720p at 30, and HD, 1080p at 60.
 const SD: StreamQuality = StreamQuality {
     height: 720,
@@ -4095,38 +4212,36 @@ const HD: StreamQuality = StreamQuality {
     fps: 60,
 };
 
-/// One segment of a segmented control: `content`, centred, filled when
-/// `selected`.
+/// One segment of a segmented control, Discord's: 32 high and rounded 8,
+/// `content` centered; the chosen one filled in the modal's own ground.
 fn segment(id: &str, content: Element, selected: bool, look: &Look) -> Element {
     let segment = Element::clickable(id, centered(content))
         .size(None, Some(32.0))
-        .radius(6.0)
-        .hover_background(if selected { look.raised } else { look.hover });
+        .radius(8.0);
     if selected {
-        segment
-            .background(lighter(look.raised, 12))
-            .border(look.border, 1.0)
+        segment.background(Look::alpha(look.card, 255))
     } else {
-        segment
+        segment.hover_background(look.hover)
     }
 }
 
-/// Segments in a bordered pill of `height` high.
-fn segmented(segments: Vec<Element>, height: f32, look: &Look) -> Element {
+/// Segments on the darkest ground, 4 in and 4 apart: 40 high, rounded 12.
+fn segmented(segments: Vec<Element>, look: &Look) -> Element {
     Element::panel(Element::row(segments).gap(4.0).padding(4.0))
-        .size(None, Some(height))
-        .radius(8.0)
-        .border(look.border, 1.0)
+        .size(None, Some(40.0))
+        .radius(12.0)
+        .background(Look::alpha(look.rail, 255))
 }
 
-/// The modal's tabs: applications, and the devices a camera is.
+/// The modal's tabs: applications, a window's glyph, and the devices a
+/// camera is. The chosen one's name in the text's color, the rest muted.
 fn share_tabs(devices: bool, look: &Look) -> Element {
-    let tab = |id: &str, glyph: Icon, label: &str, selected: bool| {
+    let tab = |id: &str, glyph: Element, label: &str, selected: bool| {
         let ink = if selected { look.text } else { look.muted };
         segment(
             id,
             Element::row(vec![
-                icon(glyph, ink).centered_y(),
+                glyph.centered_y(),
                 strong_line(label, 14.0, ink).centered_y(),
             ])
             .gap(8.0),
@@ -4135,17 +4250,31 @@ fn share_tabs(devices: bool, look: &Look) -> Element {
         )
         .flex(1.0)
     };
+    let ground = if devices { look.rail } else { look.card };
     segmented(
         vec![
-            tab(ids::SHARE_APPS, Icon::Grid, t("Aplicaciones"), !devices),
-            tab(ids::SHARE_DEVICES, Icon::Video, t("Dispositivos"), devices),
+            tab(
+                ids::SHARE_APPS,
+                window_glyph(Size::new(15.0, 12.0), look.muted, Look::alpha(ground, 255)),
+                t("Aplicaciones"),
+                !devices,
+            ),
+            tab(
+                ids::SHARE_DEVICES,
+                icon(Icon::Video, look.muted)
+                    .large_icon(20.0)
+                    .size(Some(20.0), Some(20.0)),
+                t("Dispositivos"),
+                devices,
+            ),
         ],
-        40.0,
         look,
     )
 }
 
-/// The screen and the window to share, where the system chooses (Linux).
+/// The screen and the window to share, where the system chooses (Linux):
+/// Discord's two black cards under the heading, their glyph and name
+/// muted; the one chosen outlined in the accent.
 fn screen_cards(kind: ShareKind, look: &Look) -> Element {
     let heading = centered(
         Element::text(t("Comparte una pantalla, ventana o aplicación"))
@@ -4153,71 +4282,70 @@ fn screen_cards(kind: ShareKind, look: &Look) -> Element {
             .font_size(20.0)
             .foreground(look.text),
     )
-    .size(None, Some(28.0));
+    .size(None, Some(24.0));
+    let ground = Look::alpha(look.rail, 255);
     let card = |id: &str, glyph: Element, label: &str, selected: bool| {
-        let fill = if selected {
-            lighter(look.raised, 30)
-        } else {
-            lighter(look.raised, 12)
-        };
-        let mut card = Element::clickable(
+        let label = text(label, 14.0, look.muted)
+            .line_height(18.0)
+            .center_content()
+            .size(Some(SHARE_CARD_LABEL), None);
+        Element::clickable(
             id,
             centered(Element::column(vec![
                 centered(glyph).size(None, Some(32.0)),
-                gap(0.0, 16.0),
-                centered(strong_line(label, 14.0, look.text)).size(None, Some(20.0)),
+                gap(0.0, 12.0),
+                label.centered_x(),
             ])),
         )
-        .flex(1.0)
-        .padding(32.0)
-        .radius(8.0)
-        .background(fill)
-        .hover_background(lighter(look.raised, 22));
-        if selected {
-            card = card.border(look.accent, 1.0);
-        }
-        card
+        .size(Some(SHARE_CARD.width), Some(SHARE_CARD.height))
+        .radius(4.0)
+        .background(ground)
+        .hover_background(look.raised)
+        .border(if selected { look.accent } else { look.border }, 1.0)
     };
     Element::column(vec![
         heading,
-        gap(0.0, 32.0),
+        gap(0.0, 40.0),
         Element::row(vec![
             card(
                 ids::SHARE_SCREEN,
                 Element::icon(Icon::Screen)
                     .large_icon(32.0)
-                    .foreground(look.text),
+                    .foreground(look.muted),
                 t("Comparte toda la pantalla"),
                 kind == ShareKind::Screen,
             ),
             card(
                 ids::SHARE_WINDOW,
-                window_glyph(look),
+                window_glyph(Size::new(30.0, 24.0), look.muted, ground),
                 t("Comparte una ventana"),
                 kind == ShareKind::Window,
             ),
         ])
-        .gap(16.0),
+        .gap(16.0)
+        .centered_x(),
     ])
 }
 
-/// A window, as Discord's card draws it: a rounded box with its title bar's
-/// three dots (no glyph of the set says "window").
-fn window_glyph(look: &Look) -> Element {
+/// A window, as Discord's glyph draws it: a rounded box of `ink` with its
+/// title bar's three dots cut out of it, in `ground` (no glyph of the set
+/// says "window"). Its parts follow its height, an eighth of it a dot.
+fn window_glyph(size: Size, ink: Color, ground: Color) -> Element {
+    let unit = size.height / 8.0;
     let dot = || {
         Element::panel(Element::spacer())
-            .size(Some(3.0), Some(3.0))
-            .radius(1.5)
-            .background(look.raised)
+            .size(Some(unit), Some(unit))
+            .radius(unit / 2.0)
+            .background(ground)
     };
     Element::panel(Element::column(vec![
-        Element::row(vec![dot(), dot(), dot()]).gap(2.0),
+        Element::row(vec![dot(), dot(), dot()]).gap(unit * 2.0 / 3.0),
         Element::spacer().flex(1.0),
     ]))
-    .padding(4.0)
-    .size(Some(32.0), Some(24.0))
-    .radius(4.0)
-    .background(look.text)
+    .padding(unit * 4.0 / 3.0)
+    .size(Some(size.width), Some(size.height))
+    .radius(unit * 4.0 / 3.0)
+    .background(ink)
 }
 
 /// Rustcord's own list of what it can share (Windows): screens, then windows,
@@ -4289,55 +4417,73 @@ fn no_devices(look: &Look) -> Element {
     ]))
 }
 
-/// The gear's popout: the resolution and the rate, the sound, and the
-/// screen to choose again. It opens above the gear.
-fn gear_popout(chosen: StreamQuality, video: &VideoControls, look: &Look) -> Element {
-    let item = |id: String, label: String, on: bool| {
-        DropdownMenuEntry::Item(DropdownMenuItem::new(id, label).selected(on))
+/// The stream's quality as Discord's menus list it: the frame rates, then
+/// the resolutions, each a radio with the one chosen on.
+fn quality_entries(chosen: StreamQuality) -> Vec<DropdownMenuEntry> {
+    let radio = |id: String, label: String, on: bool| {
+        DropdownMenuEntry::Item(DropdownMenuItem::new(id, label).radio(on))
     };
     let mut entries = vec![DropdownMenuEntry::Heading(
-        t("Resolución de la pantalla").into(),
+        t("Velocidad de fotogramas").into(),
     )];
+    entries.extend(StreamQuality::RATES.iter().map(|fps| {
+        radio(
+            format!("{}{fps}", ids::FPS),
+            format!("{fps} FPS"),
+            chosen.fps == *fps,
+        )
+    }));
+    entries.push(DropdownMenuEntry::Heading(t("Resolución").into()));
     entries.extend(StreamQuality::HEIGHTS.iter().map(|height| {
-        item(
+        radio(
             format!("{}{height}", ids::QUALITY),
             format!("{height}p"),
             chosen.height == *height,
         )
     }));
-    entries.push(DropdownMenuEntry::Heading(
-        t("Velocidad de fotogramas").into(),
-    ));
-    entries.extend(StreamQuality::RATES.iter().map(|fps| {
-        item(
-            format!("{}{fps}", ids::FPS),
-            format!("{fps}fps"),
-            chosen.fps == *fps,
-        )
-    }));
+    entries
+}
+
+/// «Compartir audio de la transmisión», checked while the applications'
+/// sound goes along.
+fn sound_entry(sound: bool) -> DropdownMenuEntry {
+    DropdownMenuEntry::Item(
+        DropdownMenuItem::new(ids::SOUND, t("Compartir audio de la transmisión")).checkbox(sound),
+    )
+}
+
+/// The gear's popout: the rates and the resolutions, the sound, and the
+/// screen to choose again. It opens above the gear.
+fn gear_popout(chosen: StreamQuality, video: &VideoControls, look: &Look) -> Element {
+    let mut entries = quality_entries(chosen);
     entries.push(DropdownMenuEntry::Separator);
-    entries.push(DropdownMenuEntry::Item(
-        DropdownMenuItem::new(ids::SOUND, t("Silenciar audio de transmisión"))
-            .checkbox(!video.sound),
-    ));
+    entries.push(sound_entry(video.sound));
     if video.pick_again {
-        entries.push(item(
-            ids::PICK_SCREEN.into(),
-            t("Elegir otra pantalla").into(),
-            false,
-        ));
+        entries.push(DropdownMenuEntry::Item(DropdownMenuItem::new(
+            ids::PICK_SCREEN,
+            t("Elegir otra pantalla"),
+        )));
     }
-    let gear = IconButton::new(ids::SHARE_OPTIONS, Icon::Settings, look.menu_palette())
-        .variant(ButtonVariant::Secondary)
-        .sizing(ButtonSizing {
-            height: 40.0,
-            font_size: 14.0,
-            icon_size: 20.0,
-            horizontal_padding: 10.0,
-            inner_spacing: 0.0,
-        })
-        .tooltip(t("Opciones"))
-        .render();
+    // Discord's: 40 square, rounded 8, a veil over the modal's ground.
+    let gear = IconButton::new(
+        ids::SHARE_OPTIONS,
+        Icon::Settings,
+        ComponentPalette {
+            border: GROUP_EDGE,
+            ..filled(look.hover, look.selected, look)
+        },
+    )
+    .variant(ButtonVariant::Secondary)
+    .sizing(ButtonSizing {
+        height: 40.0,
+        font_size: 14.0,
+        icon_size: 20.0,
+        horizontal_padding: 10.0,
+        inner_spacing: 0.0,
+    })
+    .width(40.0)
+    .tooltip(t("Opciones"))
+    .render();
     DropdownMenu::new(
         gear,
         entries,
@@ -4346,53 +4492,71 @@ fn gear_popout(chosen: StreamQuality, video: &VideoControls, look: &Look) -> Ele
         look.menu_palette(),
     )
     .context_menu_style()
+    // Discord's radios: the accent with a white dot.
+    .filled_choice(look.accent, look.on_accent)
     .width(MORE_WIDTH)
     .placement(PopoverPlacement::TopEnd)
     .render()
 }
 
-/// The footer: what is chosen in words, the presets, the gear and the
-/// button that goes live. Windows needs a source chosen; the devices tab
-/// has nothing to go live with.
+/// The footer, as Discord's: what goes out, its parts 8 apart around a faint
+/// dot, then the presets, the button that goes live and the gear. Windows
+/// needs a source chosen; the devices tab has nothing to go live with.
 fn go_live_footer(
     gear: Element,
     chosen: StreamQuality,
     video: &VideoControls,
     look: &Look,
 ) -> Element {
+    // Discord calls its 720p at 30 «Juegos», smoother video.
+    let (title, kind) = if chosen == SD {
+        (t("Juegos"), Some(t("Video más fluido")))
+    } else {
+        (t("Personalizados"), None)
+    };
     let audio = if video.sound {
         t("Audio del sistema")
     } else {
         t("Transmisión silenciada")
     };
     let (height, fps) = (chosen.height, chosen.fps);
+    let parts = kind.map(str::to_owned).into_iter().chain([
+        format!("{height}p"),
+        format!("{fps}fps"),
+        audio.to_owned(),
+    ]);
+    let mut said = Vec::new();
+    for part in parts {
+        if !said.is_empty() {
+            said.push(
+                Element::panel(Element::spacer())
+                    .size(Some(2.0), Some(2.0))
+                    .radius(1.0)
+                    .background(look.border)
+                    .centered_y(),
+            );
+        }
+        said.push(text(part, 12.0, look.dim).centered_y());
+    }
     let summary = Element::column(vec![
-        strong_line(t("Personalizados"), 16.0, look.text),
-        line(
-            tr!("{height}p • {fps}fps • {audio}", height, fps, audio),
-            12.0,
-            look.muted,
-        ),
+        strong_line(title, 16.0, look.text),
+        Element::row(said).gap(8.0).size(None, Some(16.0)),
     ])
-    .flex(1.0);
+    .gap(2.0)
+    .centered_y()
+    .flex(1.0)
+    // In a narrow window the controls keep their room; this is cut.
+    .clip_children();
     let presets = segmented(
-        [(SD, "SD"), (HD, "HD")]
+        [(SD, "SD", ids::SHARE_SD), (HD, "HD", ids::SHARE_HD)]
             .into_iter()
-            .map(|(preset, label)| {
-                segment(
-                    if preset == SD {
-                        ids::SHARE_SD
-                    } else {
-                        ids::SHARE_HD
-                    },
-                    text(label, 14.0, look.text),
-                    chosen == preset,
-                    look,
-                )
-                .size(Some(56.0), Some(32.0))
+            .map(|(preset, label, id)| {
+                let on = chosen == preset;
+                let ink = if on { look.text } else { look.muted };
+                segment(id, strong_line(label, 14.0, ink), on, look)
+                    .size(Some(PRESET_WIDTH), Some(32.0))
             })
             .collect(),
-        40.0,
         look,
     );
     let linux = video.sources.is_empty();
@@ -4403,19 +4567,18 @@ fn go_live_footer(
         (t("Transmitir"), chosen_source && !video.devices)
     };
     let go = Button::new(ids::SHARE, label, look.accent_palette())
-        .size(ControlSize::Regular)
+        .sizing(ButtonSizing {
+            height: 40.0,
+            font_size: 16.0,
+            icon_size: 20.0,
+            horizontal_padding: 16.0,
+            inner_spacing: 8.0,
+        })
         .enabled(enabled)
         .render();
-    Element::panel(
-        Element::row(vec![
-            summary,
-            Element::row(vec![presets, gear, go]).gap(8.0).centered_y(),
-        ])
-        .gap(16.0)
-        .padding(16.0),
-    )
-    .radius(8.0)
-    .background(lighter(look.menu, 8))
+    Element::row(vec![summary, presets, go, gear])
+        .gap(8.0)
+        .size(None, Some(40.0))
 }
 
 /// The people over a call the account is not in, at most, as Discord's preview.
@@ -5557,17 +5720,24 @@ mod tests {
             "Aplicaciones",
             "Dispositivos",
             "Comparte una pantalla, ventana o aplicación",
-            "Comparte toda la pantalla",
             "Comparte una ventana",
             "Realiza una selección",
-            "Personalizados",
-            "720p • 30fps • Audio del sistema",
+            "Juegos",
+            "Video más fluido",
+            "720p",
+            "30fps",
+            "Audio del sistema",
         ] {
             assert!(
                 shown.iter().any(|text| text == expected),
                 "{expected} in {shown:?}"
             );
         }
+        // Its card's name wraps, as Discord's.
+        assert!(
+            shown.concat().contains("Comparte toda la pantalla"),
+            "{shown:?}"
+        );
     }
 
     #[test]
@@ -5593,10 +5763,14 @@ mod tests {
         }
         let shown = texts(&laid);
         for expected in [
-            "1080p • 60fps • Transmisión silenciada",
-            "Resolución de la pantalla",
+            "Personalizados",
+            "1080p",
+            "60fps",
+            "Transmisión silenciada",
+            "Resolución",
             "Velocidad de fotogramas",
-            "Silenciar audio de transmisión",
+            "60 FPS",
+            "Compartir audio de la transmisión",
         ] {
             assert!(
                 shown.iter().any(|text| text == expected),
@@ -6130,6 +6304,7 @@ mod tests {
                 button(ids::window(2), "Abrir en otra ventana", PipGlyph::PopOut),
                 button(ids::stop_watching(2), "Dejar de ver", PipGlyph::StopShare),
             ],
+            settings: None,
             at: pip_home(window),
         };
         let painted = |laid: &limn::Frame| -> Vec<String> {
@@ -6282,12 +6457,66 @@ mod tests {
             waiting: String::new(),
             note: None,
             viewers: Vec::new(),
+            settings: None,
             buttons: Vec::new(),
             at: Point::new(333.0, 222.0),
         };
         let (_, laid) = frame(pip(&view, &Look::DARK), window);
         let card = rect_of(&laid, ids::PIP);
         assert_eq!((card.x, card.y), (333.0, 222.0));
+    }
+
+    #[test]
+    fn the_own_streams_picture_in_picture_has_discords_gear_with_stop_quality_sound_and_report() {
+        let window = Size::new(1280.0, 800.0);
+        let mut view = PipView {
+            surface: ids::SCREEN_SURFACE.into(),
+            title: "Tu pantalla".into(),
+            channel: "Sala común".into(),
+            name: "Persona 1".into(),
+            frame: Some((1280, 720)),
+            waiting: String::new(),
+            note: None,
+            viewers: Vec::new(),
+            settings: Some(StreamSettings {
+                open: false,
+                quality: StreamQuality::default(),
+                sound: true,
+            }),
+            buttons: vec![PipButton {
+                id: ids::OWN_STREAM_STOP.into(),
+                hint: "Dejar de transmitir",
+                glyph: PipGlyph::StopShare,
+            }],
+            at: pip_home(window),
+        };
+        let (_, closed) = frame(pip(&view, &Look::ONYX), window);
+        let ids = controls(&closed);
+        assert!(ids.contains(&ids::PIP_SETTINGS.to_owned()), "{ids:?}");
+        assert!(!ids.contains(&ids::PIP_STOP.to_owned()), "closed: {ids:?}");
+        // The gear before the stop button, as Discord's.
+        assert!(rect_of(&closed, ids::PIP_SETTINGS).x < rect_of(&closed, ids::OWN_STREAM_STOP).x);
+        view.settings = view.settings.map(|settings| StreamSettings {
+            open: true,
+            ..settings
+        });
+        let (_, open) = frame(pip(&view, &Look::ONYX), window);
+        let ids = controls(&open);
+        for id in [ids::PIP_STOP, ids::PIP_QUALITY, ids::SOUND, ids::PIP_REPORT] {
+            assert!(ids.contains(&id.to_owned()), "{id} in {ids:?}");
+        }
+        let shown = texts(&open);
+        for expected in [
+            "Dejar de transmitir",
+            "Calidad de la transmisión",
+            "Compartir audio de la transmisión",
+            "Informar problema",
+        ] {
+            assert!(
+                shown.iter().any(|text| text == expected),
+                "{expected} in {shown:?}"
+            );
+        }
     }
 
     #[test]
@@ -7555,6 +7784,21 @@ mod tests {
         // Its own ID: the call bar's red button keeps `stop_watching`.
         assert!(controls(&ended).contains(&ids::close_stream(2)));
         assert!(said.contains(&"Cerrar transmisión".to_owned()));
+        // Discord's couch over it on a tile from 550 wide: none in the grid,
+        // 134 high focused on a stage under 1000 wide.
+        let couch = |laid: &limn::Frame| {
+            laid.commands.iter().find_map(|command| match command {
+                limn::DrawCommand::RasterImage { rect, image, .. }
+                    if image.alt() == "stream-ended" =>
+                {
+                    Some(rect.height)
+                }
+                _ => None,
+            })
+        };
+        assert_eq!(couch(&ended), None);
+        let (_, focused) = frame(stage(view(vec![over(2, true)], false), &look), size);
+        assert_eq!(couch(&focused), Some(134.0));
         // No picture, and «Cerrar transmisión» is not danger (the bar's red
         // button, under it, is).
         let bar_top = size.height - BAR_BOTTOM - BAR_HEIGHT;

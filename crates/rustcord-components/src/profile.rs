@@ -480,12 +480,16 @@ pub struct Profile {
     /// Per role of `roles`: the action that takes it away, when the account
     /// may. Only what the checklist lists can be taken away.
     pub role_removals: Vec<Option<String>>,
-    /// The roles' checklist, when the account may change them.
-    pub role_menu: Option<Vec<MenuEntry>>,
+    /// The action of the roles' «+» and the checklist it opens, when the
+    /// account may change them.
+    pub role_menu: Option<(String, Vec<MenuEntry>)>,
     /// The field under the card that writes to them, when the account may.
     pub message: Option<MessageField>,
     /// The account's own card offers «Editar perfil».
     pub edit_profile: bool,
+    /// The account's own card: its bubble sets the custom status, and says
+    /// «Añadir estado» while there is none.
+    pub set_custom: bool,
     /// The preview of the profile's editor offers an example button instead.
     pub example_button: bool,
     /// The games of their collection, all of them: a card shows four.
@@ -888,6 +892,20 @@ fn bubble(
         .border(hairline(look, 41), 1.0)
 }
 
+/// The bubble of a card's head: the custom status, or with `action` (the
+/// account's own) `invitation` to set one; `action` opens the dialog.
+fn status_bubble(
+    profile: &Profile,
+    action: Option<&str>,
+    invitation: &str,
+    look: &Look,
+) -> Option<Element> {
+    match custom_status(profile) {
+        Some((custom, emoji)) => Some(bubble(custom, emoji, false, action, look)),
+        None => action.map(|_| bubble(invitation, None, true, action, look)),
+    }
+}
+
 /// What someone set beside their status: its line and a server's emoji
 /// before it, when they set either.
 fn custom_status(profile: &Profile) -> Option<(&str, Option<&crate::identity::TextPicture>)> {
@@ -972,7 +990,11 @@ fn bubbled_head(
         layers.push(at(x + 7.0, top - 7.0, dot(20.0)));
         layers.push(Element::column(vec![
             gap(0.0, top),
-            Element::row(vec![gap(x, 0.0), bubble.flex(1.0), gap(size.left, 0.0)]),
+            Element::row(vec![
+                gap(x, 0.0),
+                bubble.shrink_to_fit(),
+                gap(size.left, 0.0),
+            ]),
         ]));
     }
     layers
@@ -1532,8 +1554,12 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     if profile.loading {
         return card_skeleton(&format!("profile:loading:{}", profile.handle), look);
     }
-    let bubble =
-        custom_status(profile).map(|(custom, emoji)| bubble(custom, emoji, false, None, look));
+    let bubble = status_bubble(
+        profile,
+        profile.set_custom.then_some(ids::CUSTOM),
+        t("Añadir estado"),
+        look,
+    );
     let note = profile
         .full_action
         .as_ref()
@@ -1552,7 +1578,6 @@ pub fn card(profile: &Profile, look: &Look) -> Element {
     }
     body.extend(card_mutuals(profile, look));
     body.extend(card_about(profile, width, look));
-    body.extend(game_card(profile, 12.0, boxed(profile, look, 16), look));
     body.extend(card_roles(profile, look));
     // Without a full profile to open (the account's own), the field stays.
     if let Some(note) = profile.note.as_ref().filter(|_| note.is_none()) {
@@ -1874,12 +1899,14 @@ fn mutual_part(id: String, faces: &[Face], words: String, size: f32, look: &Look
 }
 
 /// The parts of a card under its mutuals: the bio (see [`bio`]), the bot's
-/// line and what the person does, in Discord's order and without headings.
+/// line, the game collection and what the person does (their voice card
+/// first), in Discord's order and without headings.
 fn card_about(profile: &Profile, width: f32, look: &Look) -> Vec<Element> {
     let mut body: Vec<Element> = bio(profile, true, width, look).into_iter().collect();
     if profile.bot {
         body.push(text(t("Cuenta automatizada (bot)."), 12.0, look.faint));
     }
+    body.extend(game_card(profile, 12.0, boxed(profile, look, 16), look));
     body.extend(activity_parts(profile, width, look));
     body
 }
@@ -1978,18 +2005,17 @@ fn card_roles(profile: &Profile, look: &Look) -> Option<Element> {
             )
         })
         .collect();
-    if let (Some(entries), Some(action)) = (&profile.role_menu, &profile.full_action) {
-        let id = action.replacen(ids::FULL, ids::CARD_ROLES, 1);
+    if let Some((id, entries)) = &profile.role_menu {
         let open = profile.open_menu == Some(CardMenu::Roles);
         let menu = if open { entries.clone() } else { Vec::new() };
         let anchor = if profile.roles.is_empty() {
-            Button::new(id, t("Añadir roles"), look.menu_palette())
+            Button::new(id.clone(), t("Añadir roles"), look.menu_palette())
                 .variant(ButtonVariant::Ghost)
                 .icon(Icon::Add)
                 .render()
         } else {
             square_button(
-                &id,
+                id,
                 Icon::Add,
                 t("Añadir roles"),
                 t("Añadir roles").to_owned(),
@@ -2641,17 +2667,7 @@ fn status_menu(current: Status, look: &Look) -> Element {
 pub fn own_popout(popout: &OwnPopout, look: &Look) -> Element {
     let profile = &popout.profile;
     let action = popout.custom_denied.is_none().then_some(ids::CUSTOM);
-    let bubble = match custom_status(profile) {
-        Some((custom, emoji)) => Some(bubble(custom, emoji, false, action, look)),
-        None if action.is_some() => Some(bubble(
-            t("Establecer estado personalizado"),
-            None,
-            true,
-            action,
-            look,
-        )),
-        None => None,
-    };
+    let bubble = status_bubble(profile, action, t("Establecer estado personalizado"), look);
     let mut body = vec![card_names(profile, None, true, look)];
     // Its own bio whole: there is no full profile of one's own to lead to.
     body.extend(bio(profile, false, WIDTH - 2.0 * INSET, look));
@@ -3872,6 +3888,7 @@ mod tests {
             role_removals: vec![None, None],
             role_menu: None,
             edit_profile: false,
+            set_custom: false,
             example_button: false,
             games: Vec::new(),
             wishlist: Vec::new(),
@@ -4051,6 +4068,7 @@ mod tests {
         let own = Profile {
             message: None,
             edit_profile: true,
+            set_custom: true,
             example_button: false,
             games: Vec::new(),
             wishlist: Vec::new(),
@@ -4060,7 +4078,17 @@ mod tests {
         let (_, laid) = frame(card(&own, &LOOK), Size::new(WIDTH, 900.0));
         assert!(controls(&laid).contains(&ids::EDIT.to_owned()));
         assert!(texts(&laid).contains(&"Editar perfil".to_owned()));
-        // Neither where the account cannot write to them.
+        // Its bubble opens the custom status, and invites to set one.
+        assert!(controls(&laid).contains(&ids::CUSTOM.to_owned()));
+        let unset = Profile {
+            custom: None,
+            ..own
+        };
+        let (_, laid) = frame(card(&unset, &LOOK), Size::new(WIDTH, 900.0));
+        assert!(controls(&laid).contains(&ids::CUSTOM.to_owned()));
+        assert!(texts(&laid).contains(&"Añadir estado".to_owned()));
+        // Neither where the account cannot write to them; someone else's
+        // bubble is only read, and none without a status.
         let none = Profile {
             message: None,
             ..ada()
@@ -4068,7 +4096,41 @@ mod tests {
         let (_, laid) = frame(card(&none, &LOOK), Size::new(WIDTH, 900.0));
         assert!(!controls(&laid)
             .iter()
-            .any(|id| id.starts_with(ids::MESSAGE) || id == ids::EDIT));
+            .any(|id| id.starts_with(ids::MESSAGE) || id == ids::EDIT || id == ids::CUSTOM));
+        let quiet = Profile {
+            custom: None,
+            ..ada()
+        };
+        let (_, laid) = frame(card(&quiet, &LOOK), Size::new(WIDTH, 900.0));
+        assert!(!texts(&laid).contains(&"Añadir estado".to_owned()));
+    }
+
+    #[test]
+    fn the_bubble_hugs_a_short_status_and_wraps_a_long_one_inside_the_card() {
+        let bubble = |custom: &str| {
+            let own = Profile {
+                custom: Some(custom.into()),
+                set_custom: true,
+                ..ada()
+            };
+            let (_, laid) = frame(card(&own, &LOOK), Size::new(WIDTH, 900.0));
+            laid.regions
+                .iter()
+                .find(|region| region.id == ids::CUSTOM)
+                .map(|region| region.rect)
+                .expect("the bubble")
+        };
+        // 9 right of the 80 px mark, 16 in: as wide as its words, as Discord's.
+        let short = bubble("leyendo");
+        assert!(
+            (short.x - 105.0).abs() < 1.0 && short.width < 100.0,
+            "{short:?}"
+        );
+        let long = bubble(&"una línea bastante larga ".repeat(4));
+        assert!(
+            long.x + long.width <= WIDTH - INSET + 0.5 && long.height > short.height,
+            "{long:?}"
+        );
     }
 
     #[test]
@@ -4258,13 +4320,15 @@ mod tests {
         let action = "ss:member-of:1:10:role:7";
         let profile = Profile {
             role_removals: vec![Some(action.into()), None],
-            role_menu: Some(vec![MenuEntry::Role {
-                id: action.into(),
-                name: "Moderación".into(),
-                color: None,
-                has: true,
-            }]),
-            full_action: Some(format!("{}10", ids::FULL)),
+            role_menu: Some((
+                format!("{}10", ids::CARD_ROLES),
+                vec![MenuEntry::Role {
+                    id: action.into(),
+                    name: "Moderación".into(),
+                    color: None,
+                    has: true,
+                }],
+            )),
             ..ada()
         };
         let (_, laid) = frame(card(&profile, &LOOK), Size::new(WIDTH, 900.0));

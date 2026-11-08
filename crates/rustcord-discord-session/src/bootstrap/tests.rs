@@ -60,6 +60,80 @@ fn account_navigation_resolves_merged_members_recipients_and_read_state() {
 }
 
 #[test]
+fn the_newest_pins_and_how_far_they_were_seen_come_with_ready_and_their_update() {
+    let mut value = account();
+    value["guilds"][0]["channels"][0]["last_pin_timestamp"] = json!("2026-11-01T10:00:00+00:00");
+    value["guilds"][0]["channels"][1]["last_pin_timestamp"] = json!("not a time");
+    value["read_state"]["entries"][0]["last_pin_timestamp"] = json!("2026-10-01T10:00:00+00:00");
+    let mut snapshot = ready(&value, &me()).unwrap();
+    let time = |text: &str| wire::timestamp(&json!(text)).unwrap();
+    assert_eq!(
+        snapshot.last_pins,
+        vec![(ChannelId(20), time("2026-11-01T10:00:00+00:00"))],
+        "a malformed time only loses its dot"
+    );
+    assert_eq!(
+        snapshot.pins_seen,
+        vec![(ChannelId(20), time("2026-10-01T10:00:00+00:00"))]
+    );
+    let events = update(
+        &mut snapshot,
+        "CHANNEL_PINS_UPDATE",
+        &json!({"guild_id":"10","channel_id":"20","last_pin_timestamp":"2026-11-02T10:00:00+00:00"}),
+    )
+    .unwrap();
+    let newest = time("2026-11-02T10:00:00+00:00");
+    assert!(matches!(
+        events[..],
+        [Event::PinsChanged { channel: ChannelId(20), last_pin: Some(at) }] if at == newest
+    ));
+    assert_eq!(snapshot.last_pins, vec![(ChannelId(20), newest)]);
+    // The last one taken out, and one malformed, which is dropped.
+    let events = update(
+        &mut snapshot,
+        "CHANNEL_PINS_UPDATE",
+        &json!({"channel_id":"20","last_pin_timestamp":null}),
+    )
+    .unwrap();
+    assert!(matches!(
+        events[..],
+        [Event::PinsChanged { last_pin: None, .. }]
+    ));
+    assert!(snapshot.last_pins.is_empty());
+    assert!(update(&mut snapshot, "CHANNEL_PINS_UPDATE", &json!({}))
+        .unwrap()
+        .is_empty());
+    // Another device opened them: how far is kept for a new session, never
+    // back, and a malformed one is dropped.
+    let acked = time("2026-11-02T10:00:00+00:00");
+    let events = update(
+        &mut snapshot,
+        "CHANNEL_PINS_ACK",
+        &json!({"channel_id":"20","timestamp":"2026-11-02T10:00:00+00:00","version":3}),
+    )
+    .unwrap();
+    assert!(matches!(
+        events[..],
+        [Event::PinsSeen { channel: ChannelId(20), at }] if at == acked
+    ));
+    assert_eq!(snapshot.pins_seen, vec![(ChannelId(20), acked)]);
+    update(
+        &mut snapshot,
+        "CHANNEL_PINS_ACK",
+        &json!({"channel_id":"20","timestamp":"2026-10-05T10:00:00+00:00"}),
+    )
+    .unwrap();
+    assert_eq!(snapshot.pins_seen, vec![(ChannelId(20), acked)]);
+    assert!(update(
+        &mut snapshot,
+        "CHANNEL_PINS_ACK",
+        &json!({"channel_id":"20","timestamp":"ayer"})
+    )
+    .unwrap()
+    .is_empty());
+}
+
+#[test]
 fn missing_roles_members_and_overwrites_never_grant_permissions() {
     let mut value = account();
     value["guilds"][0]["roles"] = Value::Null;

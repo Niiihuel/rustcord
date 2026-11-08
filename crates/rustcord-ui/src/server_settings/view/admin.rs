@@ -13,9 +13,8 @@ use rustcord_provider::{ExpressionKind, ProviderKind};
 
 use super::{footer, more_button, View, FIELD_HEIGHT};
 use crate::server_settings::advanced::{
-    invite_channels, invite_link, timed_out, webhook_channels, INVITE_AGES, INVITE_USES,
-    PRUNE_DAYS, TIMEOUTS, TIMEOUT_REASON, UPLOAD_DESCRIPTION, UPLOAD_NAME, UPLOAD_TAGS,
-    WEBHOOK_NAME,
+    timed_out, webhook_channels, PRUNE_DAYS, TIMEOUTS, TIMEOUT_REASON, UPLOAD_DESCRIPTION,
+    UPLOAD_NAME, UPLOAD_TAGS, WEBHOOK_NAME,
 };
 
 impl View<'_> {
@@ -418,147 +417,6 @@ impl View<'_> {
             .destructive(look.danger)
             .width(440.0)
             .render();
-        }
-        if let Some(draft) = &advanced.invite {
-            root = match &draft.made {
-                Some(code) => {
-                    // Copied whole; shown dotted in streamer mode.
-                    let link = crate::streamer::link(self.ui, &invite_link(self.store, code));
-                    let mut body = vec![Element::row(vec![
-                        TextField::new("ss:invite:link", link.clone(), "", palette)
-                            .accessibility_label(t("Enlace de la invitación"))
-                            .height(FIELD_HEIGHT)
-                            .enabled(false)
-                            .render()
-                            .flex(1.0),
-                        Button::new("ss:invite:copy", t("Copiar"), look.accent_palette())
-                            .render()
-                            .centered_y(),
-                    ])
-                    .gap(8.0)];
-                    if self.simulated() {
-                        body.push(text(
-                            t("Simulada: este código no lleva a ningún lado."),
-                            13.0,
-                            look.muted,
-                        ));
-                    }
-                    Modal::new(
-                        root,
-                        true,
-                        t("Invitación creada"),
-                        t("Comparte el enlace con quien quieras que entre."),
-                        "ss:invite:done",
-                        palette,
-                    )
-                    .width(480.0)
-                    .body(Element::column(body).gap(8.0))
-                    .footer(Element::row(vec![
-                        Element::spacer().flex(1.0),
-                        Button::new("ss:invite:done", t("Listo"), look.menu_palette()).render(),
-                    ]))
-                    .render()
-                }
-                None => {
-                    let channels: Vec<DropdownOption> = invite_channels(self.store, self.server.id)
-                        .into_iter()
-                        .map(|channel| {
-                            DropdownOption::new(
-                                format!("ss:invite-channel:{channel}"),
-                                self.channel_label(Some(channel)),
-                            )
-                            .selected(draft.channel == Some(channel))
-                        })
-                        .collect();
-                    let option = |prefix: &str, index: usize, label: &str, chosen: usize| {
-                        DropdownOption::new(format!("ss:{prefix}:{index}"), t(label))
-                            .selected(index == chosen)
-                    };
-                    let ages = INVITE_AGES
-                        .iter()
-                        .enumerate()
-                        .map(|(index, (_, label))| option("invite-age", index, label, draft.age))
-                        .collect();
-                    let uses = INVITE_USES
-                        .iter()
-                        .enumerate()
-                        .map(|(index, (_, label))| option("invite-uses", index, label, draft.uses))
-                        .collect();
-                    Modal::new(
-                        root,
-                        true,
-                        t("Crear invitación"),
-                        t("Elige adónde lleva, cuánto dura y cuántas veces se puede usar."),
-                        "ss:invite:cancel",
-                        palette,
-                    )
-                    .width(440.0)
-                    .body(
-                        Element::column(vec![
-                            FormField::new(
-                                t("Canal"),
-                                self.choice(
-                                    "invite-channel",
-                                    self.channel_label(draft.channel),
-                                    channels,
-                                    t("Canal de la invitación"),
-                                ),
-                                palette,
-                            )
-                            .render(),
-                            FormField::new(
-                                t("Vence después de"),
-                                self.choice(
-                                    "invite-age",
-                                    t(INVITE_AGES[draft.age].1).to_owned(),
-                                    ages,
-                                    t("Vencimiento"),
-                                ),
-                                palette,
-                            )
-                            .render(),
-                            FormField::new(
-                                t("Cantidad máxima de usos"),
-                                self.choice(
-                                    "invite-uses",
-                                    t(INVITE_USES[draft.uses].1).to_owned(),
-                                    uses,
-                                    t("Usos"),
-                                ),
-                                palette,
-                            )
-                            .render(),
-                            parts::switch_row(
-                                "ss:invite:temporary",
-                                t("Miembro temporal"),
-                                Some(t(
-                                    "Quien entre se va al desconectarse, salvo que le den un rol.",
-                                )),
-                                draft.temporary,
-                                true,
-                                look,
-                            ),
-                        ])
-                        .gap(12.0),
-                    )
-                    .footer(footer(
-                        "ss:invite:cancel",
-                        Button::new(
-                            "ss:invite:create",
-                            if draft.sending.is_some() {
-                                t("Creando…")
-                            } else {
-                                t("Crear")
-                            },
-                            look.accent_palette(),
-                        )
-                        .enabled(draft.sending.is_none() && draft.channel.is_some())
-                        .render(),
-                        look,
-                    ))
-                    .render()
-                }
-            };
         }
         if let Some(draft) = &advanced.upload {
             let expression = draft.expression();

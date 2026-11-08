@@ -589,6 +589,28 @@ fn open_picker(ui: &mut Ui, base: &str) -> Vec<Intent> {
     vec![Intent::Focus(field)]
 }
 
+/// The composer's emoji, GIF and sticker buttons, as Discord's: each opens
+/// the picker on its own tab, and closes it when that tab is the one open.
+fn toggle_picker(ui: &mut Ui, store: &Store, tab: emoji::PickerTab, now: Instant) -> Vec<Intent> {
+    if ui.emoji_open && ui.messages.expression_tab == tab {
+        ui.emoji_open = false;
+        return Vec::new();
+    }
+    if !ui.emoji_open {
+        // A picker opens on its first item, not the last one pointed at.
+        ui.messages.query.clear();
+        ui.messages.emoji_hovered = None;
+        ui.emoji_open = true;
+    }
+    let name = match tab {
+        emoji::PickerTab::Emoji => "emoji",
+        emoji::PickerTab::Stickers => "stickers",
+        emoji::PickerTab::Gif => "gif",
+    };
+    let id = format!("{}:tab={name}", composer_ids::EMOJI);
+    crate::expressions::clicked(ui, store, &id, now).unwrap_or_default()
+}
+
 /// Answer what messages and the composer report. `None` for the actions of other parts.
 pub(crate) fn update(
     ui: &mut Ui,
@@ -815,14 +837,9 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
             crate::uploads::touch(ui, channel?);
             vec![Intent::Focus(editor_id(channel?))]
         }
-        composer_ids::EMOJI => {
-            ui.emoji_open = !ui.emoji_open;
-            if ui.emoji_open {
-                open_picker(ui, composer_ids::EMOJI)
-            } else {
-                Vec::new()
-            }
-        }
+        composer_ids::EMOJI => toggle_picker(ui, store, emoji::PickerTab::Emoji, now),
+        composer_ids::GIF => toggle_picker(ui, store, emoji::PickerTab::Gif, now),
+        composer_ids::STICKER => toggle_picker(ui, store, emoji::PickerTab::Stickers, now),
         composer_ids::EMOJI_DISMISS => {
             ui.emoji_open = false;
             Vec::new()

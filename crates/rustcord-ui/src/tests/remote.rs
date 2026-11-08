@@ -239,10 +239,13 @@ fn an_index_in_progress_is_asked_again_once_and_pages_go_by_25() {
     });
     let intents = tick(&mut host.ui, &host.store, later);
     assert!(intents.is_empty(), "never a third time");
-    assert!(host
-        .painted()
-        .iter()
-        .any(|text| text.contains("sigue en preparación")));
+    // Its lines wrap, 280 wide as Discord's.
+    let painted = host.painted().join(" ");
+    assert!(painted
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .contains("sigue en preparación"));
     // A page of 25 out of 60: the next one starts at 25.
     host.click("message-search:refresh");
     let (request, search, _) = searched(&host);

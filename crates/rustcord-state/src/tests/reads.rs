@@ -202,6 +202,7 @@ fn local_marks_restore_only_the_same_account_without_overwriting_new_choices() {
         through: Some(MessageId(5)),
         unread_from: Some(MessageId(4)),
         revision: 8,
+        pins_seen: Default::default(),
     };
     store.restore_read_marks(ADA, vec![(GENERAL, saved)]);
     assert_eq!(store.read(GENERAL).last_read, Some(MessageId(3)));
@@ -416,6 +417,7 @@ fn restored_unknown_channel_preserves_its_saved_clock_when_it_appears_later() {
         through: Some(MessageId(500)),
         unread_from: Some(MessageId(400)),
         revision: 20,
+        pins_seen: Default::default(),
     };
     store.restore_read_marks(ME, vec![(later, mark)]);
     assert!(!store.read_channels().any(|channel| channel.id == later));
@@ -532,6 +534,7 @@ fn maximum_local_revision_still_tracks_choices_and_old_save_cannot_clear_a_new_c
         through: Some(MessageId(5)),
         unread_from: Some(MessageId(4)),
         revision: u64::MAX,
+        pins_seen: Default::default(),
     };
     store.restore_read_marks(ME, vec![(GENERAL, original)]);
     store.mark_unread(GENERAL, MessageId(2));
@@ -555,6 +558,7 @@ fn a_pending_maximum_revision_ack_preserves_a_new_maximum_revision_reminder() {
         through: Some(MessageId(5)),
         unread_from: Some(MessageId(4)),
         revision: u64::MAX,
+        pins_seen: Default::default(),
     };
     store.restore_read_marks(ME, vec![(GENERAL, original)]);
     let Some(Command::MarkRead { request, .. }) = store.retry_read_command(GENERAL) else {
@@ -568,4 +572,62 @@ fn a_pending_maximum_revision_ack_preserves_a_new_maximum_revision_reminder() {
     assert!(!store.read(GENERAL).sync_pending());
     store.read_mark_saved(GENERAL, original);
     assert_eq!(store.dirty_read_marks().len(), 1);
+}
+
+#[test]
+fn a_pin_newer_than_the_seen_one_is_unseen_until_the_pins_open() {
+    let at = Timestamp;
+    let mut first = snapshot();
+    first.last_pins = vec![(GENERAL, at(20))];
+    first.pins_seen = vec![(GENERAL, at(10))];
+    let mut store = Store::new();
+    store.apply(Event::Ready(Box::new(first.clone())), Instant::now());
+    assert!(store.read(GENERAL).unseen_pins());
+    assert!(!store.read(VOICE).unseen_pins(), "no pins, no dot");
+    // Opening them keeps what was seen with the account's reading choices.
+    store.see_pins(GENERAL);
+    assert!(!store.read(GENERAL).unseen_pins());
+    let (channel, mark) = store.dirty_read_marks().pop().unwrap();
+    assert_eq!((channel, mark.pins_seen), (GENERAL, at(20)));
+    // A new pin lights it again; none left puts it out.
+    let changed = |store: &mut Store, last_pin| {
+        store.apply(
+            Event::PinsChanged {
+                channel: GENERAL,
+                last_pin,
+            },
+            Instant::now(),
+        )
+    };
+    assert!(matches!(
+        changed(&mut store, Some(at(30))),
+        Applied::Channel(GENERAL)
+    ));
+    assert!(store.read(GENERAL).unseen_pins());
+    // Seen on another device: out here too; an older one changes nothing.
+    let seen = |store: &mut Store, when| {
+        store.apply(
+            Event::PinsSeen {
+                channel: GENERAL,
+                at: at(when),
+            },
+            Instant::now(),
+        )
+    };
+    assert!(matches!(seen(&mut store, 30), Applied::Channel(GENERAL)));
+    assert!(!store.read(GENERAL).unseen_pins());
+    assert!(matches!(seen(&mut store, 25), Applied::Nothing));
+    changed(&mut store, Some(at(40)));
+    assert!(store.read(GENERAL).unseen_pins());
+    changed(&mut store, None);
+    assert!(!store.read(GENERAL).unseen_pins());
+    // A reconnection whose provider saw less never takes back what was seen
+    // here; a restart restores it from the saved mark.
+    store.apply(Event::Ready(Box::new(first.clone())), Instant::now());
+    assert!(!store.read(GENERAL).unseen_pins());
+    let mut restarted = Store::new();
+    restarted.apply(Event::Ready(Box::new(first)), Instant::now());
+    assert!(restarted.read(GENERAL).unseen_pins());
+    restarted.restore_read_marks(ME, vec![(GENERAL, mark)]);
+    assert!(!restarted.read(GENERAL).unseen_pins());
 }

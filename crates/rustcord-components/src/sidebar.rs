@@ -161,6 +161,42 @@ pub fn header_bar(content: Element, look: &Look) -> Element {
     .background(look.sidebar)
 }
 
+/// The bar at the top of the column with `content` and, at its end, an
+/// action such as Discord's person with a plus beside the server's name.
+pub fn header_bar_with(content: Element, end: Option<Element>, look: &Look) -> Element {
+    let Some(end) = end else {
+        return header_bar(content, look);
+    };
+    Element::panel(Element::row(vec![
+        gap(INSET, 0.0),
+        content.shrink_to_fit().centered_y(),
+        Element::spacer().flex(1.0),
+        gap(8.0, 0.0),
+        end.centered_y(),
+        gap(INSET, 0.0),
+    ]))
+    .size(None, Some(HEADER))
+    .background(look.sidebar)
+}
+
+/// Discord's «Invitar al servidor» beside the server's name: its person with
+/// a plus, 20 px in a 32 box, its hint under it.
+pub fn invite_button(id: String, look: &Look) -> Element {
+    IconButton::new(
+        id,
+        Icon::Custom(crate::server_menu::glyphs::INVITE),
+        look.sidebar_palette(),
+    )
+    .variant(ButtonVariant::Ghost)
+    .sizing(crate::look::HEADER_TOOL)
+    .tooltip_with(
+        limn::TooltipSpec::new(t("Invitar al servidor")).placement(limn::TooltipPlacement::Below),
+    )
+    .ink(look.dim)
+    .hover_ink(look.text)
+    .render()
+}
+
 /// How tall the server's name is, the button that opens its menu.
 pub const NAME_HEIGHT: f32 = 31.5;
 

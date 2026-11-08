@@ -183,6 +183,7 @@ fn an_account_named_after_its_verification_shows_what_was_kept_before_ready() {
         through: Some(MessageId(10)),
         unread_from: None,
         revision: 4,
+        pins_seen: Default::default(),
     };
     {
         // What an earlier run kept, sealed with the account's key.
@@ -266,6 +267,7 @@ fn ready_waits_for_the_read_marks_result_before_reporting_a_storage_failure() {
             through: Some(MessageId(10)),
             unread_from: None,
             revision: 4,
+            pins_seen: Default::default(),
         };
         {
             let disk = unlocked(&path, &namespace);
@@ -675,6 +677,7 @@ fn a_key_made_anew_drops_what_the_lost_one_sealed_and_no_read_fails_for_it() {
             through: Some(MessageId(10)),
             unread_from: None,
             revision: 4,
+            pins_seen: Default::default(),
         };
         disk.set_read_mark(&namespace, channel, mark).unwrap();
     }

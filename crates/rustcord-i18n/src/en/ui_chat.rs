@@ -220,7 +220,6 @@ pub(super) const ENTRIES: super::Entries = &[
         "The first message can have up to 2000 characters",
     ),
     ("No se pudo crear la publicación", "Couldn't create the post"),
-    ("No se pueden cargar más", "Can't load more"),
     ("Enlace copiado", "Link copied"),
     ("El nombre tiene de 1 a {max} caracteres", "The name must have 1 to {max} characters"),
     ("Hilos", "Threads"),

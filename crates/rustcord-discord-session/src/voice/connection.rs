@@ -331,6 +331,9 @@ pub(crate) struct Controls {
     pub camera: bool,
     /// The account's shared screen is paused: its connection sends nothing.
     pub paused: bool,
+    /// The quality the shared screen went on at after it started; `None`
+    /// while it is the one it started at.
+    pub stream_quality: Option<StreamQuality>,
 }
 
 /// The voice server endpoint must be Discord's media infrastructure. The
@@ -707,6 +710,7 @@ async fn serve(
                 if changed.is_err() { return Ok(()); }
                 connection.controls = *controls.borrow();
                 connection.pause();
+                connection.requality();
                 None
             }
             _ = tick.tick() => connection.tick().await.err(),
@@ -823,6 +827,7 @@ async fn serve(
                         }
                     } => if resumed {
                         connection.controls = *controls.borrow();
+                        connection.requality();
                         break;
                     },
                 }
@@ -1283,6 +1288,25 @@ impl Connection<'_> {
             sender.pacer.clear();
             sender.waiting = true;
         }
+    }
+
+    /// The shared screen goes on at another quality: its rate's ceiling
+    /// follows, and the next tick describes it again (op 12), as the start
+    /// did; what follows starts at a key frame.
+    fn requality(&mut self) {
+        let Some(quality) = self.controls.stream_quality else {
+            return;
+        };
+        let Some(sender) = self
+            .sender
+            .as_mut()
+            .filter(|sender| sender.kind == VideoKind::Screen && sender.quality != quality)
+        else {
+            return;
+        };
+        sender.quality = quality;
+        sender.rate = Rate::new(MIN_BITRATE, quality.max_bitrate());
+        sender.announced = false;
     }
 
     /// The connection shares the account's screen, rather than its camera.

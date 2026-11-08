@@ -943,6 +943,8 @@ impl Store {
                 channel,
                 messages,
             } => self.loaded_pins(channel, request, messages),
+            Event::PinsChanged { channel, last_pin } => self.pins_changed(channel, last_pin),
+            Event::PinsSeen { channel, at } => self.pins_seen_elsewhere(channel, at),
             Event::RelationshipChanged(relationship) => self.relationship_changed(relationship),
             Event::RelationshipRemoved { user } => self.relationship_removed(user),
             Event::StreamPreview {
@@ -1452,6 +1454,7 @@ impl Store {
             snapshot.last_messages,
             snapshot.first_unread,
         );
+        self.ready_pins(snapshot.last_pins, snapshot.pins_seen);
         // A new session may have missed messages: conversations are fetched
         // again to their end when opened, and keep what they had meanwhile.
         for timeline in self.timelines.values_mut() {

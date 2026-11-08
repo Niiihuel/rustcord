@@ -265,6 +265,7 @@ fn snapshot() -> Snapshot {
         read_versions: Vec::new(),
         first_unread: Vec::new(),
         relationships: None,
+        ..Default::default()
     }
 }
 

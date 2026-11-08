@@ -14,6 +14,9 @@ pub(crate) use glyph;
 
 /// Kinds of channel limn has no icon for.
 pub const MEGAPHONE: &str = glyph!("megaphone");
+/// The composer's GIF and sticker buttons, Discord's.
+pub const GIF: &str = glyph!("gif");
+pub const STICKER: &str = glyph!("sticker");
 pub const FORUM: &str = glyph!("forum");
 pub const THREAD: &str = glyph!("thread");
 pub const STAGE: &str = glyph!("stage");

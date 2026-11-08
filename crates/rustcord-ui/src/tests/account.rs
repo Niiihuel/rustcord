@@ -436,23 +436,26 @@ fn the_rail_offers_a_servers_menu_without_folders_and_invites_from_it() {
         buttons.iter().all(|id| !id.starts_with("rail:")),
         "no folder entries without folders: {buttons:?}"
     );
-    assert!(buttons.contains(&format!("sm:invite:{lab}")));
+    assert!(buttons.contains(&format!("sm:invite-rail:{lab}")));
     assert_eq!(
         buttons.contains(&format!("sm:read:{lab}")),
         host.store.server_unread(lab).0,
         "reads are offered while something waits"
     );
-    // The invitation is made, and its link copied with a notice.
+    // Discord's modal opens and asks for the link, saying it is the rail's.
     let from = host.sent.len();
-    host.ac_choose(&format!("sm:invite:{lab}"));
+    host.ac_choose(&format!("sm:invite-rail:{lab}"));
     assert!(matches!(
         host.sent.last(),
-        Some(Command::CreateInvite { server, .. }) if *server == lab
+        Some(Command::CreateInvite {
+            server,
+            from: rustcord_provider::InviteFrom::Opening {
+                place: rustcord_provider::InvitePlace::RailMenu,
+                ..
+            },
+            ..
+        }) if *server == lab
     ));
     host.answer_account(from);
-    assert!(host
-        .ui
-        .notices
-        .iter()
-        .any(|notice| notice.title == "Enlace de invitación copiado"));
+    assert!(host.ui.invite.is_some());
 }

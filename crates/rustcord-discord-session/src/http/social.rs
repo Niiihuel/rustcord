@@ -104,7 +104,8 @@ impl Http {
                         secret,
                         Method::POST,
                         "/users/@me/channels",
-                        Some(json!({"recipient_id": user.to_string()})),
+                        // As the web client opens one: a list of one.
+                        Some(json!({"recipients": [user.to_string()]})),
                         ANSWER,
                         false,
                     )

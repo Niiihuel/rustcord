@@ -377,16 +377,22 @@ fn channels_overwrites_and_names_are_checked_before_leaving() {
     };
     assert!(allowed(&snapshot, &hook("Avisos de CI")).is_ok());
     assert!(refused(&snapshot, hook("Mi Discord")).contains("discord"));
-    let invite = |max_age_secs| Command::CreateInvite {
+    let invite = |max_age_secs, previous: Option<&str>| Command::CreateInvite {
         request: 1,
         server: SERVER,
         channel: CHAT,
         max_age_secs,
         max_uses: 0,
         temporary: false,
+        from: rustcord_provider::InviteFrom::Opening {
+            place: rustcord_provider::InvitePlace::HeaderButton,
+            previous: previous.map(str::to_owned),
+        },
     };
-    assert!(allowed(&snapshot, &invite(INVITE_MAX_AGE)).is_ok());
-    assert!(refused(&snapshot, invite(INVITE_MAX_AGE + 1)).contains("7 días"));
+    assert!(allowed(&snapshot, &invite(INVITE_MAX_AGE, Some("kkWKkYTZr"))).is_ok());
+    assert!(refused(&snapshot, invite(INVITE_MAX_AGE + 1, None)).contains("30 días"));
+    // The code handed back goes in the body: never one that is not a code.
+    assert!(refused(&snapshot, invite(3600, Some("../x"))).contains("no es válida"));
     let prune = |days| Command::PruneMembers {
         request: 1,
         server: SERVER,

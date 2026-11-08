@@ -140,7 +140,14 @@ impl World {
                 max_age_secs,
                 max_uses,
                 temporary,
-            } => self.create_invite(request, server, channel, max_age_secs, max_uses, temporary),
+                from,
+            } => self.create_invite(
+                request,
+                server,
+                channel,
+                (max_age_secs, max_uses, temporary),
+                &from,
+            ),
             Command::CreateExpression {
                 request,
                 server,
@@ -1828,9 +1835,13 @@ mod tests {
             channel: core,
             message: newest,
         });
-        assert!(
-            matches!(&pinned[..], [Event::MessageUpdated(message)] if message.pinned && message.id == newest)
-        );
+        // The newest pin changed: the header's pin has its dot.
+        assert!(matches!(
+            &pinned[..],
+            [Event::MessageUpdated(message), Event::PinsChanged { channel, last_pin }]
+                if message.pinned && message.id == newest && *channel == core
+                    && *last_pin == Some(message.timestamp)
+        ));
         assert_eq!(pins_of(&mut world, core)[0].id, newest);
         assert!(
             world.history(core, None, 1).0[0].pinned,
@@ -1840,7 +1851,11 @@ mod tests {
             channel: core,
             message: newest,
         });
-        assert!(matches!(&unpinned[..], [Event::MessageUpdated(message)] if !message.pinned));
+        assert!(matches!(
+            &unpinned[..],
+            [Event::MessageUpdated(message), Event::PinsChanged { last_pin, .. }]
+                if !message.pinned && *last_pin == Some(made[0].timestamp)
+        ));
         assert_eq!(pins_of(&mut world, core), made);
         // A plain member of someone else's server may not.
         let general = named(&world, other, "general");
@@ -1878,7 +1893,7 @@ mod tests {
         );
         let pinner = pin_with(&mut world, base | Permissions::PIN_MESSAGES);
         assert!(
-            matches!(&pinner[..], [Event::MessageUpdated(message)] if message.pinned && message.id == theirs)
+            matches!(&pinner[..], [Event::MessageUpdated(message), ..] if message.pinned && message.id == theirs)
         );
     }
 

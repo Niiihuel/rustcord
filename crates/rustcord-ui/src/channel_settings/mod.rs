@@ -816,9 +816,14 @@ fn clicked(
         }
 
         // Invitations and webhooks.
+        // «crear uno»: Discord's modal, for this channel.
         ["invite", "create"] => {
-            intents.extend(crate::server_menu::invite(
-                ui, store, server, channel.id, now,
+            intents.extend(crate::invite_modal::open(
+                ui,
+                store,
+                (server, channel.id),
+                rustcord_provider::InvitePlace::Settings,
+                now,
             ));
         }
         ["invite", code, "revoke"] => {

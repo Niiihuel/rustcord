@@ -39,6 +39,8 @@ pub struct Threads {
     menu: Option<(ChannelId, (f32, f32))>,
     /// How each forum is shown, when the person chose.
     forums: HashMap<ChannelId, ForumChoice>,
+    /// What the open list searches by name.
+    query: String,
 }
 
 #[derive(Debug)]
@@ -426,6 +428,12 @@ pub(crate) fn update(
     }
     let threads = &mut ui.threads;
     match id {
+        ids::SEARCH => {
+            if let Some(value) = value {
+                threads.query = value.clone();
+            }
+            return Some(Vec::new());
+        }
         // A dialog's own close button reports its ID with `:close` after it.
         _ if id.starts_with(ids::CLOSE) => {
             threads.list = None;
@@ -552,6 +560,7 @@ pub(crate) fn update(
         return Some(Vec::new());
     }
     if let Some(channel) = number("list:").map(ChannelId) {
+        threads.query.clear();
         threads.list = store
             .channel(channel)
             .is_some_and(Store::visible)
@@ -561,17 +570,11 @@ pub(crate) fn update(
     if let Some(channel) = number("start:").map(ChannelId) {
         return Some(start(ui, store, channel, None, now));
     }
+    // None left is no failure: the button says why beside it.
     if let Some(parent) = number("more:").map(ChannelId) {
         let request = ui.fresh_request();
-        return Some(match store.load_threads(parent, request) {
-            Some(command) => vec![Intent::Command(command)],
-            None => {
-                if let Permit::Denied(reason) = store.more_threads(parent) {
-                    ui.notify(t("No se pueden cargar más"), Some(reason), true, now);
-                }
-                Vec::new()
-            }
-        });
+        let command = store.load_threads(parent, request);
+        return Some(command.map(Intent::Command).into_iter().collect());
     }
     if let Some(choice) = forum_choice(ui, store, rest) {
         return Some(choice);
@@ -867,6 +870,25 @@ pub(crate) fn opened(ui: &mut Ui, store: &mut Store, channel: ChannelId) -> Vec<
         .collect()
 }
 
+/// As Discord's list, which shows the archived threads at once when there
+/// are no open ones: while the open list has nothing to show and no page
+/// on its way, the next one is asked for, until none is left and it says
+/// there are no threads.
+pub(crate) fn fill(ui: &mut Ui, store: &mut Store) -> Vec<Intent> {
+    let Some(channel) = ui.threads.list else {
+        return Vec::new();
+    };
+    let idle = store
+        .thread_pages(channel)
+        .is_some_and(|pages| pages.loading.is_none());
+    if !idle || !store.threads(channel, true).is_empty() {
+        return Vec::new();
+    }
+    let request = ui.fresh_request();
+    let command = store.load_threads(channel, request);
+    command.map(Intent::Command).into_iter().collect()
+}
+
 /// The label of the button that asks for more threads, and why not.
 fn more(store: &Store, parent: ChannelId, forum: bool) -> (String, Option<String>) {
     // The archived ones start where the open ones end.
@@ -900,9 +922,12 @@ fn list(
         .threads(channel, true)
         .into_iter()
         .filter(|thread| thread.thread.as_ref().is_some_and(|info| info.archived));
+    // Discord's search by name: the threads whose name holds it.
+    let query = ui.threads.query.trim().to_lowercase();
     let rows = |threads: Vec<&Channel>| {
         threads
             .iter()
+            .filter(|t| query.is_empty() || t.name.to_lowercase().contains(&query))
             .map(|t| row(ui, store, t, wall, look))
             .collect()
     };
@@ -917,6 +942,7 @@ fn list(
         active: rows(active),
         archived: rows(archived.collect()),
         more: more(store, channel, false),
+        query: ui.threads.query.clone(),
     })
 }
 

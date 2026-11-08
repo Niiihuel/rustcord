@@ -540,18 +540,15 @@ pub(crate) fn view(
                 .compact()
                 .render(),
         )),
-        Shown::Problem(reason) => body.push(state(
-            Empty::new(t("No se pudo buscar"), reason, palette)
-                .icon(Icon::WarningTriangle)
-                .compact()
-                .render(),
-        )),
-        Shown::Nothing(title, hint) => body.push(state(
-            Empty::new(title, hint, palette)
-                .icon(Icon::Search)
-                .compact()
-                .render(),
-        )),
+        Shown::Problem(reason) => body.push(state(cards::nothing(
+            true,
+            t("No se pudo buscar"),
+            &reason,
+            look,
+        ))),
+        Shown::Nothing(title, hint) => {
+            body.push(state(cards::nothing(false, &title, &hint, look)))
+        }
         Shown::Results(_) => {
             body.push(results(ui, store, search, look, context).flex(1.0));
         }

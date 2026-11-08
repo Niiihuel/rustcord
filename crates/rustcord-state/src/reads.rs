@@ -1,7 +1,7 @@
 //! Account-local reading choices and independently versioned provider cursors.
 
 use rustcord_i18n::t;
-use rustcord_model::{ChannelId, MessageId, ReadMark, ServerId, UserId};
+use rustcord_model::{ChannelId, MessageId, ReadMark, ServerId, Timestamp, UserId};
 use rustcord_provider::{AuthenticationState, Command, ConnectionState, Failure, RequestId};
 
 use crate::{Applied, Store};
@@ -28,6 +28,10 @@ pub struct ReadState {
     pub unread_from: Option<MessageId>,
     /// A real provider-supplied first unread anchor, when it is known.
     pub first_unread: Option<MessageId>,
+    /// When the channel's newest pin was made, as the provider says.
+    pub last_pin: Option<Timestamp>,
+    /// The newest pin seen, here or as the provider keeps it; zero for none.
+    pub pins_seen: Timestamp,
     pub(super) pending: Option<PendingRead>,
     pub(super) local_revision: u64,
     pub(super) saved_mark: ReadMark,
@@ -44,6 +48,11 @@ impl ReadState {
             (Some(_), None) => true,
             (None, _) => false,
         }
+    }
+
+    /// A pin newer than the account has seen: the header's pin has a dot.
+    pub fn unseen_pins(&self) -> bool {
+        self.last_pin.is_some_and(|at| at > self.pins_seen)
     }
 
     pub fn sync_pending(&self) -> bool {
@@ -65,6 +74,7 @@ impl ReadState {
             through: self.last_read,
             unread_from: self.unread_from,
             revision: self.local_revision,
+            pins_seen: self.pins_seen,
         }
     }
 
@@ -74,6 +84,7 @@ impl ReadState {
             unread_from: self.unread_from,
             confirmed_read: self.confirmed_read,
             confirmed_version: self.confirmed_version,
+            pins_seen: self.pins_seen,
             local_revision: self.local_revision,
             saved_mark: self.saved_mark,
             ..Default::default()
@@ -403,6 +414,7 @@ impl Store {
                 read.first_unread = None;
             }
             read.unread_from = mark.unread_from;
+            read.pins_seen = read.pins_seen.max(mark.pins_seen);
             read.local_revision = mark.revision.max(1);
             read.saved_mark = read.mark();
             if read.last_read >= read.last_message {
@@ -575,6 +587,77 @@ impl Store {
                 read.first_unread = Some(anchor);
             }
         }
+    }
+
+    /// The provider's newest pins, which replace the ones known, and how
+    /// far it says the account saw them; what was seen here stays.
+    pub(super) fn ready_pins(
+        &mut self,
+        last: Vec<(ChannelId, Timestamp)>,
+        seen: Vec<(ChannelId, Timestamp)>,
+    ) {
+        for read in self.reads.values_mut() {
+            read.last_pin = None;
+        }
+        for (channel, at) in last {
+            if self.channels.contains_key(&channel) {
+                self.reads.entry(channel).or_default().last_pin = Some(at);
+            }
+        }
+        for (channel, at) in seen {
+            if self.channels.contains_key(&channel) {
+                let read = self.reads.entry(channel).or_default();
+                read.pins_seen = read.pins_seen.max(at);
+            }
+        }
+    }
+
+    /// The newest pin of `channel` changed.
+    pub(super) fn pins_changed(
+        &mut self,
+        channel: ChannelId,
+        last_pin: Option<Timestamp>,
+    ) -> Applied {
+        if !self.channels.contains_key(&channel) {
+            return Applied::Nothing;
+        }
+        let read = self.reads.entry(channel).or_default();
+        if read.last_pin == last_pin {
+            return Applied::Nothing;
+        }
+        read.last_pin = last_pin;
+        self.revision += 1;
+        Applied::Channel(channel)
+    }
+
+    /// Another device saw the pins of `channel` up to `at`: never back.
+    pub(super) fn pins_seen_elsewhere(&mut self, channel: ChannelId, at: Timestamp) -> Applied {
+        if !self.channels.contains_key(&channel) {
+            return Applied::Nothing;
+        }
+        let read = self.reads.entry(channel).or_default();
+        if at <= read.pins_seen {
+            return Applied::Nothing;
+        }
+        read.pins_seen = at;
+        self.revision += 1;
+        Applied::Channel(channel)
+    }
+
+    /// The account opened the pins of `channel`: its newest is seen. Kept
+    /// with the account's reading choices; whether a pin was unseen until
+    /// now, for the interface to tell the provider.
+    pub fn see_pins(&mut self, channel: ChannelId) -> bool {
+        let Some(read) = self.reads.get_mut(&channel) else {
+            return false;
+        };
+        let Some(newest) = read.last_pin.filter(|at| *at > read.pins_seen) else {
+            return false;
+        };
+        read.pins_seen = newest;
+        read.changed();
+        self.revision += 1;
+        true
     }
 
     pub(super) fn forget_read_channel(&mut self, channel: ChannelId) {

@@ -400,7 +400,7 @@ async fn opening_a_direct_conversation_reports_the_channel_the_answer_names() {
     };
     let (result, line, body) = exchange(command.clone(), response(200, &answer.to_string())).await;
     assert_eq!(line, "POST /api/v10/users/@me/channels HTTP/1.1");
-    assert_eq!(body, Some(json!({"recipient_id":"8"})));
+    assert_eq!(body, Some(json!({"recipients":["8"]})));
     let events = result.unwrap();
     assert!(matches!(&events[0], Event::UserChanged(user) if user.id == UserId(8)));
     assert!(matches!(&events[1], Event::ChannelChanged(channel)

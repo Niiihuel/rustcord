@@ -82,6 +82,68 @@ fn the_accounts_own_share_floats_when_no_stream_is_watched_and_stops_with_it() {
     assert!(!host.vz_shows(ids::PIP));
 }
 
+// Discord's «Ajustes de la transmisión» on the own share: its quality changes
+// live (the provider is told, the picker stays shut), its sound, the report
+// goes to Rustcord's issues, and stopping ends the share.
+#[test]
+fn the_own_shares_gear_changes_its_quality_live_its_sound_and_stops_it() {
+    use rustcord_model::StreamQuality;
+    let mut host = Host::new();
+    let room = host.vz_join("Sala común");
+    let me = host.vz_me();
+    host.store.begin_share(room);
+    host.event(Event::StreamPhase {
+        channel: room,
+        owner: me,
+        phase: StreamPhase::Live,
+    });
+    host.ui.video.screen.on = true;
+    host.ui.video.screen.live = crate::Live::Showing(1920, 1080, None);
+    host.open_channel("general");
+    assert!(!host.vz_shows(ids::PIP_STOP));
+    host.click(ids::PIP_SETTINGS);
+    assert!(host.vz_shows(ids::PIP_STOP) && host.vz_shows(ids::PIP_REPORT));
+    let choose = |host: &mut Host, id: &str| {
+        let action = UiAction::Clicked { id: id.into() };
+        crate::update(&mut host.ui, &mut host.store, &action, host.now)
+    };
+    // Its submenu's row keeps the menu open; a rate in it goes out at once.
+    assert!(choose(&mut host, ids::PIP_QUALITY).is_empty() && host.ui.pip.menu);
+    let sixty = StreamQuality {
+        height: 720,
+        fps: 60,
+    };
+    let intents = choose(&mut host, "vz:fps:60");
+    assert!(matches!(
+        &intents[..],
+        [Intent::Command(Command::SetStreamQuality { channel, quality })]
+            if *channel == room && *quality == sixty
+    ));
+    assert_eq!(host.ui.video.quality, sixty);
+    assert!(!host.ui.video.picker && !host.ui.pip.menu);
+    // The same quality again says nothing.
+    assert!(choose(&mut host, "vz:fps:60").is_empty());
+    // The applications' sound, from the menu.
+    host.click(ids::PIP_SETTINGS);
+    host.click(ids::SOUND);
+    assert!(host.ui.video.silent && !host.ui.video.picker);
+    // The report opens Rustcord's issues, never Discord's.
+    host.click(ids::PIP_SETTINGS);
+    let intents = choose(&mut host, ids::PIP_REPORT);
+    assert!(matches!(
+        &intents[..],
+        [Intent::OpenUrl(url)] if url.starts_with("https://github.com/Niiihuel/rustcord/issues")
+    ));
+    // «Dejar de transmitir» in it ends the share.
+    host.click(ids::PIP_SETTINGS);
+    let from = host.sent.len();
+    host.click(ids::PIP_STOP);
+    assert!(host.sent[from..]
+        .iter()
+        .any(|command| matches!(command, Command::StopStream { channel } if *channel == room)));
+    assert!(!host.vz_shows(ids::PIP));
+}
+
 #[test]
 fn the_picture_in_picture_stays_wherever_it_is_let_go_inside_the_window() {
     let mut host = Host::new();
@@ -90,7 +152,7 @@ fn the_picture_in_picture_stays_wherever_it_is_let_go_inside_the_window() {
     let owner = host.tr_streamers(room, 4, 1)[0];
     host.tr_watch(room, owner);
     host.open_channel("general");
-    let drag = |host: &mut Host, action| crate::pip::update(&mut host.ui, &host.store, &action);
+    let drag = |host: &mut Host, action| crate::pip::update(&mut host.ui, &mut host.store, &action);
     let started = |position| UiAction::DragStarted {
         id: ids::PIP.into(),
         position,

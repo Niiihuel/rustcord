@@ -5907,6 +5907,7 @@ mod tests {
             through: Some(rustcord_model::MessageId(1)),
             unread_from: None,
             revision: 3,
+            pins_seen: Default::default(),
         };
         let restored = |snapshot| rustcord_core::Restored {
             account,

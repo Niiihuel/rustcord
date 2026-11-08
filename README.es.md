@@ -359,9 +359,11 @@ incluye recursos de Discord: sus efectos de sonido públicos
 ([assets/sounds/discord](assets/sounds/discord), con su origen), el icono de
 la aplicación ([assets/icons/rustcord-discord.png](assets/icons/rustcord-discord.png)),
 el logo de Discord como marca de la interfaz
-([assets/rustcord-mark.svg](assets/rustcord-mark.svg)) y los iconos de su
-interfaz ([assets/glyphs](assets/glyphs)), y reproduce su paleta y las medidas
-de su interfaz ([docs/discord-reference.md](docs/discord-reference.md)). Esa
+([assets/rustcord-mark.svg](assets/rustcord-mark.svg)), los iconos de su
+interfaz ([assets/glyphs](assets/glyphs)) y las ilustraciones de sus estados
+vacíos ([assets/illustrations/discord](assets/illustrations/discord)), y
+reproduce su paleta y las medidas de su interfaz
+([docs/discord-reference.md](docs/discord-reference.md)). Esa
 decisión no es una autorización ni un respaldo de Discord: esos recursos y el
 nombre y el logo de Discord siguen siendo de Discord y marcas suyas, **no**
 están bajo la licencia de Rustcord y no se pueden reutilizar bajo MIT ni

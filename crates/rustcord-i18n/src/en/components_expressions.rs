@@ -94,6 +94,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("{count} hilos activos más", "{count} other active threads"),
     ("Hilos antiguos", "Older threads"),
     ("No hay hilos.", "There are no threads."),
+    ("Buscar por nombre del hilo", "Search for Thread Name"),
     (
         "Mantén el foco en una conversación con un hilo, un canal de texto temporal.",
         "Stay focused on a conversation with a thread - a temporary text channel.",

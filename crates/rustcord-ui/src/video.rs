@@ -585,10 +585,11 @@ pub(crate) fn show_devices(ui: &mut Ui, devices: bool) -> Vec<Intent> {
     Vec::new()
 }
 
-/// «Silenciar audio de transmisión» in the picker, which stays open.
-pub(crate) fn toggle_sound(ui: &mut Ui) -> Vec<Intent> {
+/// «Compartir audio de la transmisión», in the picker, which stays open if
+/// it was, or in the stream's own menu: the host follows it while live.
+pub(crate) fn toggle_sound(ui: &mut Ui, picker: bool) -> Vec<Intent> {
     ui.video.silent = !ui.video.silent;
-    ui.video.picker = true;
+    ui.video.picker = picker;
     Vec::new()
 }
 
@@ -1419,18 +1420,36 @@ pub(crate) fn toggle(
     Vec::new()
 }
 
-/// A size or a rate chosen in the quality picker, which stays open.
-pub(crate) fn choose(ui: &mut Ui, height: Option<u32>, fps: Option<u32>) -> Vec<Intent> {
-    let quality = &mut ui.video.quality;
-    *quality = StreamQuality {
-        height: height.unwrap_or(quality.height),
-        fps: fps.unwrap_or(quality.fps),
+/// A size or a rate chosen in the quality picker, which stays open if it
+/// was, or in the stream's own menu while it goes out: then the provider is
+/// told, and the host captures the same source again at it.
+pub(crate) fn choose(
+    ui: &mut Ui,
+    store: &Store,
+    height: Option<u32>,
+    fps: Option<u32>,
+    picker: bool,
+) -> Vec<Intent> {
+    let before = ui.video.quality;
+    let mut quality = StreamQuality {
+        height: height.unwrap_or(before.height),
+        fps: fps.unwrap_or(before.fps),
     };
     if !quality.valid() {
-        *quality = StreamQuality::default();
+        quality = StreamQuality::default();
     }
-    ui.video.picker = true;
-    Vec::new()
+    ui.video.quality = quality;
+    ui.video.picker = picker;
+    match store
+        .sharing()
+        .filter(|_| quality != before && sending(ui, store).is_some())
+    {
+        Some(sharing) => vec![Intent::Command(Command::SetStreamQuality {
+            channel: sharing.channel,
+            quality,
+        })],
+        None => Vec::new(),
+    }
 }
 
 /// «Compartir pantalla» in the picker: the system's dialog opens. The

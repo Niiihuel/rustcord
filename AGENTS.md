@@ -42,7 +42,10 @@ en [limn](https://github.com/Niiihuel/limn).
   cada uno con su interruptor, y la ruta no documentada de la actividad
   reciente del perfil (`/content-inventory/users/{id}/outbox`, 2026-11-04)
   y la del catálogo de insignias con sus niveles (`/users/{id}/badges`,
-  2026-11-05).
+  2026-11-05), y la que marca como vistos los mensajes fijados de un canal
+  (`POST /channels/{id}/pins/ack`, 2026-11-08), y el campo no documentado
+  `validate` al crear una invitación, con el que el cliente web reutiliza el
+  enlace anterior del canal en vez de crear otro (2026-11-08).
   Puede presentarse como el cliente web de
   Discord en un navegador (2026-10-19): user agent, `X-Super-Properties`,
   huella y propiedades del Identify, una sola identidad coherente en REST,
@@ -68,7 +71,11 @@ en [limn](https://github.com/Niiihuel/limn).
   `discord.com/assets`: Rustcord las descarga en tiempo de ejecución y sólo
   cuando se muestra un nombre que las usa, las guarda sólo en la caché
   local (cifrada con las imágenes de la cuenta) y nunca las incluye en el
-  repositorio. No abarca código, otros recursos, perfiles,
+  repositorio. Las ilustraciones de los estados vacíos tal como el cliente
+  web de Discord las sirve (hilos, fijados, bandeja, voz, transmisiones,
+  búsqueda y los demás), en `assets/illustrations/discord` (2026-11-08);
+  las animadas se usan quietas o se reimplementan, sus archivos Lottie no
+  se copian. No abarca código, otros recursos, perfiles,
   cachés, credenciales, datos de sesión ni contenidos de servidores o
   cuentas ajenas.
 - Reproductor de Spotify nativo (2026-11-05): un enlace de

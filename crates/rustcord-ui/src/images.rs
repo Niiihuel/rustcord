@@ -76,8 +76,7 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
     if let Some((user, server)) = crate::identity::shown(ui, store) {
         crate::profile::wanted(ui, store, user, server, &mut add);
     }
-    // The profile beside a direct conversation: the same, and the faces of
-    // the first mutual friends.
+    // The profile beside a direct conversation: the same.
     if let Some(user) = crate::profile::side_user(ui, store) {
         let loaded = store.profile(user, None);
         if let Some(account) = store.user(user) {
@@ -107,14 +106,6 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
             .map(|emoji| &emoji.image));
         for picture in loaded.map_or(&[][..], |loaded| &loaded.pictures) {
             add(Some(&picture.image));
-        }
-        for friend in loaded
-            .and_then(|loaded| loaded.mutual_friends.as_ref())
-            .into_iter()
-            .flatten()
-            .take(3)
-        {
-            add(store.user(*friend).and_then(|friend| friend.picture()));
         }
         crate::identity::face_marks(ui, store, None, user, false, &mut add);
         crate::profile::wanted(ui, store, user, None, &mut add);
@@ -233,14 +224,14 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
     {
         add(Some(&picture.image));
     }
-    for emoji in pinned_emoji(ui, store) {
-        add(Some(emoji));
-    }
-    // The faces of the pinned messages' authors, while the popout is open.
+    // The pinned messages, while their popout is open: their authors'
+    // faces and marks, and what they show.
     if let Some(channel) = ui.channel_list.pins {
         let server = store.channel(channel).and_then(|found| found.server);
         for message in store.pins(channel).unwrap_or_default() {
             add(store.avatar_in(server, message.author));
+            crate::identity::face_marks(ui, store, server, message.author, false, &mut add);
+            message_pictures(ui, store, channel, message, &mut add);
         }
     }
     // The faces in the inbox's cards in view.
@@ -269,68 +260,7 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
                         add(Some(emoji));
                     }
                 }
-                for sticker in &message.stickers {
-                    add(sticker.image.as_ref());
-                }
-                for emoji in emoji_pictures(message) {
-                    add(Some(emoji));
-                }
-                for image in crate::invitation_cards::images(ui, store, message) {
-                    add(Some(image));
-                }
-                if ui.prefs.image_previews {
-                    // An explicit picture the account's filter hides loads
-                    // blurred; its ThumbHash stands in until the picture is
-                    // here.
-                    let obscure = store.obscures_explicit(channel, message.author);
-                    // shortcut: a message made of parts may show a file only
-                    // through a part, but its previews still load with the row.
-                    for attachment in message.files() {
-                        if crate::attachments::hidden(ui, attachment) {
-                            continue;
-                        }
-                        let Some(preview) = &attachment.preview else {
-                            continue;
-                        };
-                        let shown = if obscure && crate::attachments::unrevealed(ui, attachment) {
-                            preview.obscured()
-                        } else {
-                            preview.clone()
-                        };
-                        if !ui.images.contains_key(&shown) {
-                            add(attachment.placeholder.as_ref());
-                        }
-                        add(Some(&shown));
-                    }
-                    for source in card_sources(ui, message, obscure) {
-                        add(Some(&source));
-                    }
-                    for cover in crate::spotify::images(ui, message) {
-                        add(Some(cover));
-                    }
-                    let revealed = ui.messages.revealed.get(&message.id);
-                    let copy = message.forwarded.as_ref();
-                    let mut lists = vec![(&message.components.parts, false, None)];
-                    lists.extend(copy.map(|copy| (&copy.components.parts, true, None)));
-                    for (forwarded, embeds) in [
-                        (false, Some(&message.embeds)),
-                        (true, copy.map(|copy| &copy.embeds)),
-                    ] {
-                        for (index, embed) in embeds.into_iter().flatten().enumerate() {
-                            lists.push((&embed.components, forwarded, Some(index)));
-                        }
-                    }
-                    // An app's pictures behind a spoiler wait for their own
-                    // reveal; explicit ones the filter hides load blurred.
-                    for (parts, forwarded, card) in lists {
-                        let first = rustcord_components::message::PARTS_SPOILER
-                            + rustcord_components::message::first_spoiler(forwarded, card);
-                        let shown = |n| revealed.is_some_and(|shown| shown.contains(&(first + n)));
-                        for picture in rustcord_model::components::pictures(parts, obscure, shown) {
-                            add(Some(&picture));
-                        }
-                    }
-                }
+                message_pictures(ui, store, channel, message, &mut add);
             }
         }
     }
@@ -491,6 +421,80 @@ pub fn wanted_images(ui: &Ui, store: &Store, tree: &UiTree) -> Vec<RemoteImage> 
     wanted
 }
 
+/// The pictures `message` of `channel` draws besides its author's face: its
+/// stickers, emoji, invitations' and, as the account wants previews, its
+/// files', cards' and parts'.
+fn message_pictures(
+    ui: &Ui,
+    store: &Store,
+    channel: ChannelId,
+    message: &rustcord_model::Message,
+    add: &mut impl FnMut(Option<&RemoteImage>),
+) {
+    for sticker in &message.stickers {
+        add(sticker.image.as_ref());
+    }
+    for emoji in emoji_pictures(message) {
+        add(Some(emoji));
+    }
+    for image in crate::invitation_cards::images(ui, store, message) {
+        add(Some(image));
+    }
+    if ui.prefs.image_previews {
+        // An explicit picture the account's filter hides loads
+        // blurred; its ThumbHash stands in until the picture is
+        // here.
+        let obscure = store.obscures_explicit(channel, message.author);
+        // shortcut: a message made of parts may show a file only
+        // through a part, but its previews still load with the row.
+        for attachment in message.files() {
+            if crate::attachments::hidden(ui, attachment) {
+                continue;
+            }
+            let Some(preview) = &attachment.preview else {
+                continue;
+            };
+            let shown = if obscure && crate::attachments::unrevealed(ui, attachment) {
+                preview.obscured()
+            } else {
+                preview.clone()
+            };
+            if !ui.images.contains_key(&shown) {
+                add(attachment.placeholder.as_ref());
+            }
+            add(Some(&shown));
+        }
+        for source in card_sources(ui, message, obscure) {
+            add(Some(&source));
+        }
+        for cover in crate::spotify::images(ui, message) {
+            add(Some(cover));
+        }
+        let revealed = ui.messages.revealed.get(&message.id);
+        let copy = message.forwarded.as_ref();
+        let mut lists = vec![(&message.components.parts, false, None)];
+        lists.extend(copy.map(|copy| (&copy.components.parts, true, None)));
+        for (forwarded, embeds) in [
+            (false, Some(&message.embeds)),
+            (true, copy.map(|copy| &copy.embeds)),
+        ] {
+            for (index, embed) in embeds.into_iter().flatten().enumerate() {
+                lists.push((&embed.components, forwarded, Some(index)));
+            }
+        }
+        // An app's pictures behind a spoiler wait for their own
+        // reveal; explicit ones the filter hides load blurred.
+        for (parts, forwarded, card) in lists {
+            let first = rustcord_components::message::PARTS_SPOILER
+                + rustcord_components::message::first_spoiler(forwarded, card);
+            let shown = |n| revealed.is_some_and(|shown| shown.contains(&(first + n)));
+            for picture in rustcord_model::components::pictures(parts, obscure, shown) {
+                add(Some(&picture));
+            }
+        }
+    }
+}
+
 /// The person a control in a list of people names: `friend:{user}:…`,
 /// `group:new:pick:{user}`, `group:{channel}:{add|remove|owner}:{user}`
 /// or `composer:mention=@{handle}`.
@@ -508,6 +512,7 @@ fn listed_person(store: &Store, id: &str) -> Option<UserId> {
     id.strip_prefix("friend:")
         .and_then(|rest| Some(rest.split_once(':')?.0))
         .or_else(|| id.strip_prefix(NEW_PICK))
+        .or_else(|| id.strip_prefix(rustcord_components::invite::ids::SEND))
         .or_else(|| {
             let (_, action) = id.strip_prefix("group:")?.split_once(':')?;
             ["add:", "remove:", "owner:"]
@@ -571,16 +576,6 @@ pub(crate) fn text_emoji(
     references
         .iter()
         .filter_map(move |reference| reference.target.emoji_picture(jumbo))
-}
-
-/// The emoji of the pinned messages, while their popout is open.
-fn pinned_emoji<'a>(ui: &Ui, store: &'a Store) -> impl Iterator<Item = &'a RemoteImage> {
-    ui.channel_list
-        .pins
-        .and_then(|channel| store.pins(channel))
-        .unwrap_or_default()
-        .iter()
-        .flat_map(|message| text_emoji(&message.text_references, false))
 }
 
 /// Whether `message` is emoji alone, drawn with their larger pictures.
@@ -650,7 +645,9 @@ pub fn playable_images(
             .map(|picture| picture.image.clone()),
     );
     // Those of the pinned messages that move, while they show.
-    playable.extend(pinned_emoji(ui, store).cloned());
+    if let Some(pins) = ui.channel_list.pins.and_then(|channel| store.pins(channel)) {
+        playable.extend(pins.iter().flat_map(emoji_pictures).cloned());
+    }
     let (Some(timeline), Some(rows)) = (
         store.timeline(channel),
         tree.visible_rows(&timeline_id(channel)),

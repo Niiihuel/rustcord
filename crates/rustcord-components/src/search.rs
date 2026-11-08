@@ -268,6 +268,43 @@ pub fn face_pill(id: &str, face: RasterImage, label: &str, look: &Look) -> Eleme
         .render()
 }
 
+/// A search with nothing to show, as Discord's: its art (the magnifying
+/// glass, broken when it `failed`) 160 square, then 40 under it the title in
+/// 16 medium and the note, at most 280 wide.
+pub fn nothing(failed: bool, title: &str, note: &str, look: &Look) -> Element {
+    use crate::illustration::{art, Art};
+    let copy = |value: &str, family: FontFamily, size: f32, ink: Color| {
+        Element::text(value)
+            .font_family(family)
+            .font_size(size)
+            .foreground(ink)
+            .center_content()
+            .max_width(280.0)
+            .shrink_to_fit()
+            .centered_x()
+    };
+    let which = if failed {
+        Art::SearchFailed
+    } else {
+        Art::SearchEmpty
+    };
+    let mut parts = vec![
+        art(which, 1.0, look).centered_x(),
+        gap(0.0, 40.0),
+        copy(title, FontFamily::SansMedium, 16.0, look.text),
+    ];
+    if !note.is_empty() {
+        parts.push(gap(0.0, 4.0));
+        parts.push(copy(note, FontFamily::Sans, 14.0, look.muted));
+    }
+    Element::column(vec![
+        Element::spacer().flex(1.0),
+        Element::column(parts),
+        Element::spacer().flex(1.0),
+    ])
+    .padding(20.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

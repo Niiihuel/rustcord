@@ -358,9 +358,11 @@ Discord assets: its public sound effects
 ([assets/sounds/discord](assets/sounds/discord), with their origin), the
 application icon ([assets/icons/rustcord-discord.png](assets/icons/rustcord-discord.png)),
 Discord's logo as the interface's mark
-([assets/rustcord-mark.svg](assets/rustcord-mark.svg)) and its interface's
-icons ([assets/glyphs](assets/glyphs)), and it reproduces its palette and its
-interface's measurements ([docs/discord-reference.md](docs/discord-reference.md)).
+([assets/rustcord-mark.svg](assets/rustcord-mark.svg)), its interface's
+icons ([assets/glyphs](assets/glyphs)) and the illustrations of its empty
+states ([assets/illustrations/discord](assets/illustrations/discord)), and it
+reproduces its palette and its interface's measurements
+([docs/discord-reference.md](docs/discord-reference.md)).
 That decision is not an authorization or an endorsement by Discord: those
 assets and Discord's name and logo remain Discord's and its trademarks, are
 **not** under Rustcord's license and cannot be reused under MIT or

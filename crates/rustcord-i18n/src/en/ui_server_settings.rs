@@ -270,10 +270,6 @@ pub(super) const ENTRIES: super::Entries = &[
     ("No se quitó el aislamiento", "The timeout wasn't removed"),
     ("No se aisló a la persona", "The person wasn't timed out"),
     ("No se creó la invitación", "The invite wasn't created"),
-    (
-        "No puedes invitar a ningún canal de este servidor.",
-        "You can't invite to any channel of this server.",
-    ),
     ("No se agregó", "It wasn't added"),
     ("No se podó", "Nothing was pruned"),
     ("No se guardó el webhook", "The webhook wasn't saved"),
@@ -300,6 +296,7 @@ pub(super) const ENTRIES: super::Entries = &[
     ("12 horas", "12 hours"),
     ("1 día", "1 day"),
     ("7 días", "7 days"),
+    ("30 días", "30 days"),
     ("1 semana", "1 week"),
     ("Nunca", "Never"),
     ("Sin límite", "No limit"),

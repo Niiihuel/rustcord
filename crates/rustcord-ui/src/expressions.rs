@@ -718,17 +718,33 @@ mod tests {
     #[test]
     fn reopening_gif_focuses_its_existing_input_and_escape_returns_to_composer() {
         let (mut ui, mut store, channel, _) = world();
-        ui.messages.expression_tab = PickerTab::Gif;
-        let actions = crate::messages::update(
-            &mut ui,
-            &mut store,
-            &limn::UiAction::Clicked {
-                id: ids::EMOJI.into(),
-            },
-            Instant::now(),
-        )
-        .unwrap();
-        assert!(matches!(&actions[..], [Intent::Focus(id)] if id == "composer:emoji:gif-url"));
+        let mut click = |ui: &mut Ui, id: &str| {
+            crate::messages::update(
+                ui,
+                &mut store,
+                &limn::UiAction::Clicked { id: id.into() },
+                Instant::now(),
+            )
+            .unwrap()
+        };
+        // Discord's GIF button opens the picker on its tab, its input focused;
+        // the emoji button goes to the emoji, and the open tab's button closes it.
+        let actions = click(&mut ui, ids::GIF);
+        assert!(ui.emoji_open && ui.messages.expression_tab == PickerTab::Gif);
+        // As its tab does: the trending GIFs are asked for, the search focused.
+        assert!(
+            matches!(actions.last(), Some(Intent::Focus(id)) if id == crate::gifs::QUERY),
+            "{actions:?}"
+        );
+        click(&mut ui, ids::EMOJI);
+        assert!(ui.emoji_open && ui.messages.expression_tab == PickerTab::Emoji);
+        click(&mut ui, ids::STICKER);
+        assert!(ui.emoji_open && ui.messages.expression_tab == PickerTab::Stickers);
+        click(&mut ui, ids::STICKER);
+        assert!(!ui.emoji_open);
+        let actions = click(&mut ui, ids::GIF);
+        assert!(matches!(actions.last(), Some(Intent::Focus(id)) if id == crate::gifs::QUERY));
+        let (mut ui, mut store) = (ui, store);
         let actions = crate::messages::keys(
             &mut ui,
             &mut store,

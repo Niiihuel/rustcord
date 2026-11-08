@@ -18,6 +18,7 @@ use limn::{Element, Modal, Point, UiAction};
 use rustcord_components::channel_menu::{
     self as parts, grouped, ids, Doomed, DuplicateForm, Entry, Item, PinCard, PinsContent,
 };
+use rustcord_components::message::{live_row, Live, MessageStyle, MessageView, GROUP_GAP};
 use rustcord_components::server_menu::{
     ids as menu_ids, NotifyLevel, DIALOG_WIDTH, MUTE_DURATIONS,
 };
@@ -27,7 +28,7 @@ use rustcord_i18n::{es, t, tr};
 use rustcord_model::{
     Channel, ChannelId, ChannelKind, MessageId, Permissions, ServerId, Timestamp,
 };
-use rustcord_provider::{ChannelEdit, Command, Created, Failure, RequestId};
+use rustcord_provider::{ChannelEdit, Command, Created, Failure, InvitePlace, RequestId};
 use rustcord_state::{Applied, Permit, Store};
 
 use crate::server_menu::{self, FOREVER};
@@ -817,7 +818,15 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
             let Some(channel) = channel else {
                 return Some(Vec::new());
             };
-            return Some(load_pins(ui, store, channel));
+            let load = load_pins(ui, store, channel);
+            // Seen as it opens: told before the pins are asked for.
+            let mut intents = if ui.channel_list.pins == Some(channel) {
+                see_pins(store, channel)
+            } else {
+                Vec::new()
+            };
+            intents.extend(load);
+            return Some(intents);
         }
         ids::PINS_RETRY => {
             let Some(channel) = channel.filter(|channel| ui.channel_list.pins == Some(*channel))
@@ -929,9 +938,15 @@ fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) -> Option<Vec
             ui.channel_list.menu = None;
             crate::desktop::toggle_favorite(ui, target)
         }
-        "invite" => {
+        // Its button in the list, or its menu.
+        "invite" | "invite-menu" => {
             let server = store.channel(target)?.server?;
-            crate::server_menu::invite(ui, store, server, target, now)
+            let place = if what == "invite" {
+                InvitePlace::ChannelRow
+            } else {
+                InvitePlace::ChannelMenu
+            };
+            crate::invite_modal::open(ui, store, (server, target), place, now)
         }
         "read" => mark_read(store, target),
         "mute" => {
@@ -1172,6 +1187,20 @@ fn duplicate(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     })]
 }
 
+/// The pins of `channel` are seen: kept with the account and, where the
+/// provider keeps them for its other devices, told to it.
+fn see_pins(store: &mut Store, channel: ChannelId) -> Vec<Intent> {
+    let told = store
+        .provider
+        .as_ref()
+        .is_some_and(|info| info.capabilities.ack_pins);
+    if store.see_pins(channel) && told {
+        vec![Intent::Command(Command::AckPins { channel })]
+    } else {
+        Vec::new()
+    }
+}
+
 pub(crate) fn close_pins(ui: &mut Ui) -> Vec<Intent> {
     let cancel = ui
         .channel_list
@@ -1292,6 +1321,10 @@ pub(crate) fn on_applied(
         cancelled = close_pins(ui);
     }
     let intents = match applied {
+        // A pin made while the popout is open shows there: it is seen.
+        Applied::Channel(channel) if ui.channel_list.pins == Some(*channel) => {
+            see_pins(store, *channel)
+        }
         Applied::Pins { channel, request } if ui.channel_list.pins == Some(*channel) => {
             if let Some(load) =
                 ui.channel_list.pins_load.as_mut().filter(|load| {
@@ -1668,8 +1701,26 @@ fn menu_entries(ui: &Ui, store: &Store, target: Target, now: Timestamp) -> Vec<E
             if !voice {
                 notify.push(notify_item(ui, store, channel, now).into());
             }
+            // Discord's «Invitar al canal», in its own group, for whoever may.
+            let invite = channel
+                .server
+                .and_then(|server| store.server_abilities(server))
+                .is_some_and(|abilities| abilities.create_invites.allowed())
+                && channel.permissions.contains(Permissions::CREATE_INVITE);
+            let invite = invite.then(|| {
+                vec![Item::new(
+                    format!("cl:invite-menu:{id}"),
+                    if voice {
+                        t("Invitar al chat de voz")
+                    } else {
+                        t("Invitar al canal")
+                    },
+                )
+                .into()]
+            });
             grouped(vec![
                 first,
+                invite.unwrap_or_default(),
                 notify,
                 vec![move_item(store, channel).into()],
                 vec![
@@ -1707,8 +1758,9 @@ pub(crate) fn header_tools(
     store: &Store,
     channel: ChannelId,
     look: &Look,
-    now: Timestamp,
+    context: &ViewContext,
 ) -> Vec<Element> {
+    let now = context.wall;
     let Some(conversation) = store.channel(channel) else {
         return Vec::new();
     };
@@ -1735,11 +1787,7 @@ pub(crate) fn header_tools(
     let cards: Option<Vec<PinCard>> = load
         .filter(|load| matches!(load.phase, PinsPhase::Ready))
         .and_then(|_| store.pins(channel))
-        .map(|pins| {
-            pins.iter()
-                .map(|message| pin_card(ui, store, conversation.server, message, look, now))
-                .collect()
-        });
+        .map(|pins| pin_cards(ui, store, channel, pins, look, now));
     let content = match load.map(|load| &load.phase) {
         Some(PinsPhase::Failed(reason)) => PinsContent::Failed(reason),
         Some(PinsPhase::Ready) => PinsContent::Ready(cards.as_deref().unwrap_or_default()),
@@ -1748,7 +1796,18 @@ pub(crate) fn header_tools(
     let can_unpin = abilities
         .as_ref()
         .is_some_and(|abilities| abilities.pin.allowed());
-    tools.push(parts::pins(open, content, can_unpin, denied, look));
+    let unseen = store.read(channel).unseen_pins();
+    // As tall as the inbox's popout, less the pins' title over the list.
+    let room = rustcord_components::inbox::size(context.window).height - 70.0;
+    tools.push(parts::pins(
+        open,
+        unseen,
+        content,
+        can_unpin,
+        denied,
+        room.max(240.0),
+        look,
+    ));
     tools
 }
 
@@ -1788,28 +1847,80 @@ pub(crate) fn header_more(
     (!entries.is_empty()).then(|| parts::more(ui.channel_list.more == Some(channel), entries, look))
 }
 
-fn pin_card(
+/// The cards of the pinned messages of `channel`: each as the conversation
+/// draws it, with its files, cards and stickers, but no actions.
+fn pin_cards(
     ui: &Ui,
     store: &Store,
-    server: Option<ServerId>,
-    message: &rustcord_model::Message,
+    channel: ChannelId,
+    pins: &[rustcord_model::Message],
     look: &Look,
     now: Timestamp,
-) -> PinCard {
-    let author = store.user(message.author);
-    PinCard {
-        message: message.id.0,
-        author: store.display_name(message.author, server),
-        ink: server
-            .and_then(|server| store.top_role(message.author, server))
-            .and_then(|role| role.color)
-            .map_or(look.text, |color| look.ink(color)),
-        accent: author.map_or(look.faint, |author| look.ink(author.accent)),
-        image: ui.picture(store.avatar_in(server, message.author)),
-        when: rustcord_components::time::stamp(message.timestamp, now),
-        content: message.content.clone(),
-        pictures: crate::identity::reference_pictures(ui, &message.text_references),
-    }
+) -> Vec<PinCard> {
+    let server = store.channel(channel).and_then(|found| found.server);
+    let names = crate::timeline::places(
+        crate::timeline::names(store, server, channel, pins, look),
+        store,
+        server,
+        pins,
+        now,
+    );
+    let mut images = crate::timeline::decoded_pictures(ui, pins);
+    images.extend(
+        pins.iter()
+            .flat_map(|message| &message.stickers)
+            .filter_map(|sticker| sticker.image.as_ref())
+            .filter_map(|source| Some((source.clone(), ui.images.get(source)?.clone()))),
+    );
+    // Discord's cards are cozy, without reactions, whatever the account's
+    // conversations are.
+    let style = MessageStyle {
+        compact: false,
+        reactions: false,
+        group_gap: GROUP_GAP,
+        sample: true,
+        ..ui.prefs.message_style()
+    };
+    pins.iter()
+        .map(|message| PinCard {
+            message: message.id.0,
+            row: live_row(
+                MessageView {
+                    message,
+                    author: crate::timeline::author(ui, store, server, message.author, look),
+                    continued: false,
+                    day: None,
+                    first_new: false,
+                    start: None,
+                    reply: None,
+                    mentions_me: false,
+                    abilities: Default::default(),
+                    reacting: false,
+                    author_card: None,
+                    width: parts::PIN_ROW_WIDTH,
+                    now,
+                    style,
+                },
+                Live {
+                    attachment_images: Some(&images),
+                    attachment_failures: Some(&ui.image_failures),
+                    sticker_images: Some(&images),
+                    revealed_files: Some(&ui.messages.revealed_files),
+                    animated: Some(&ui.animated),
+                    revealed: ui
+                        .messages
+                        .revealed
+                        .get(&message.id)
+                        .map_or(&[], Vec::as_slice),
+                    names: Some(&names),
+                    obscure_explicit: store.obscures_explicit(channel, message.author),
+                    me: store.me(),
+                    ..Live::default()
+                },
+                look,
+            ),
+        })
+        .collect()
 }
 
 /// The line over the composer of `channel` while its slow mode is on.

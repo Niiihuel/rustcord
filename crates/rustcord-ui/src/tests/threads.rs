@@ -271,6 +271,56 @@ fn the_list_of_threads_pages_open_then_archived_ones_once_each() {
     assert!(abilities.write.allowed() && !abilities.typing.allowed());
 }
 
+// As Discord's: a channel with no threads says so at once, its pages read
+// with no press and no notice, and the header's search filters by name.
+#[test]
+fn an_empty_list_reads_its_pages_alone_and_the_search_filters_by_name() {
+    let mut host = Host::new();
+    let channel = host.open_channel("muestra-tu-proyecto");
+    let sent = host.sent.len();
+    host.click(&format!("th:list:{channel}"));
+    for _ in 0..4 {
+        let from = host.sent.len();
+        host.th_answer(sent.max(from.saturating_sub(1)));
+    }
+    assert!(host.store.threads(channel, true).is_empty(), "no threads");
+    assert!(
+        host.store.more_threads(channel).reason().is_some(),
+        "all read"
+    );
+    let painted = host.painted();
+    assert!(painted.iter().any(|t| t == "No hay hilos."), "{painted:?}");
+    assert!(host.ui.notices.is_empty(), "no failure to tell");
+    // The search keeps the threads whose name holds it.
+    host.th_choose("th:close");
+    let gallery = host.open_channel("galería");
+    let sent = host.sent.len();
+    host.click(&format!("th:list:{gallery}"));
+    host.th_answer(sent);
+    host.th_type("th:search", "SÁBADO");
+    let painted = host.painted();
+    assert!(painted.iter().any(|t| t.contains("sábado")), "{painted:?}");
+    // Of the two it follows, the one named so.
+    assert!(
+        painted
+            .iter()
+            .any(|t| t == "HILOS A LOS QUE TE HAS UNIDO: 1"),
+        "{painted:?}"
+    );
+    host.th_type("th:search", "nada parecido");
+    assert!(host
+        .painted()
+        .iter()
+        .any(|t| t == "No se encontraron resultados"));
+    // Opened again, it starts with no search.
+    host.th_choose("th:close");
+    host.click(&format!("th:list:{gallery}"));
+    assert!(!host
+        .painted()
+        .iter()
+        .any(|t| t == "No se encontraron resultados"));
+}
+
 #[test]
 fn a_thread_starts_from_the_channel_and_opens_once_the_provider_names_it() {
     let mut host = Host::new();

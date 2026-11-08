@@ -13,7 +13,7 @@ use rustcord_model::{
 };
 
 use super::{mix, World, ME};
-use crate::{Created, Event, ExpressionKind, NewExpression, RequestId};
+use crate::{Created, Event, ExpressionKind, InviteFrom, NewExpression, RequestId};
 
 type Outcome = Result<Vec<Event>, String>;
 
@@ -462,14 +462,15 @@ impl World {
     }
 
     /// A new invitation through `channel`.
+    /// A new invitation, or, as the modal opens, the one `from` names while
+    /// it still works with the same options (Discord's client asks so).
     pub(super) fn create_invite(
         &mut self,
         request: RequestId,
         server: ServerId,
         channel: ChannelId,
-        max_age_secs: u32,
-        max_uses: u32,
-        temporary: bool,
+        (max_age_secs, max_uses, temporary): (u32, u32, bool),
+        from: &InviteFrom,
     ) -> Outcome {
         let found = self
             .channel(channel)
@@ -478,8 +479,35 @@ impl World {
         if !found.permissions.contains(Permissions::CREATE_INVITE) {
             return Err(t("no tienes permiso para invitar en ese canal").into());
         }
-        if max_age_secs > 7 * 24 * 60 * 60 || max_uses > 100 {
-            return Err(t("una invitación dura hasta 7 días y hasta 100 usos").into());
+        if max_age_secs > 30 * 24 * 60 * 60 || max_uses > 100 {
+            return Err(t("una invitación dura hasta 30 días y hasta 100 usos").into());
+        }
+        if let InviteFrom::Opening {
+            previous: Some(code),
+            ..
+        } = from
+        {
+            let now = self.now;
+            let kept = self.invites.get(&server).and_then(|invites| {
+                invites.iter().find(|invite| {
+                    invite.code == *code
+                        && invite.channel == Some(channel)
+                        && invite.max_uses == (max_uses > 0).then_some(max_uses)
+                        && invite.temporary == temporary
+                        && invite.expires.is_none() == (max_age_secs == 0)
+                        && invite.expires.is_none_or(|at| at > now)
+                        && invite
+                            .max_uses
+                            .is_none_or(|most| invite.uses.unwrap_or(0) < most)
+                })
+            });
+            if let Some(invite) = kept {
+                return Ok(vec![Event::InviteCreated {
+                    request,
+                    server,
+                    invite: invite.clone(),
+                }]);
+            }
         }
         const CODE: &[u8] = b"abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         // Its own stream per invitation: the same session makes the same codes.
@@ -851,7 +879,7 @@ impl World {
 mod tests {
     use super::*;
     use crate::mock::MockConfig;
-    use crate::{Command, Failure};
+    use crate::{Command, Failure, InvitePlace};
     use rustcord_model::AuditActionKind;
 
     fn world() -> World {
@@ -1134,6 +1162,7 @@ mod tests {
             max_age_secs,
             max_uses,
             temporary,
+            from: InviteFrom::Generating(InvitePlace::HeaderButton),
         };
         let made = world.manage(invite(7, 3600, 5, true), now);
         let Event::InviteCreated {
@@ -1157,10 +1186,38 @@ mod tests {
                 code: made.code.clone()
             }
         );
+        // Opening the modal again hands the same one back while it works
+        // with the same options; other options, or none to hand back, make
+        // another, as asking for a new one does.
+        let opening = |request, previous: Option<&str>, max_uses| Command::CreateInvite {
+            request,
+            server: OWNED,
+            channel,
+            max_age_secs: 3600,
+            max_uses,
+            temporary: true,
+            from: InviteFrom::Opening {
+                place: InvitePlace::HeaderButton,
+                previous: previous.map(str::to_owned),
+            },
+        };
+        let count = world.invites[&OWNED].len();
+        let again = world.manage(opening(10, Some(&made.code), 5), now);
+        assert!(
+            matches!(&again[0], Event::InviteCreated { request: 10, invite, .. }
+            if invite.code == made.code)
+        );
+        assert_eq!(world.invites[&OWNED].len(), count, "nothing new was made");
+        let other = world.manage(opening(11, Some(&made.code), 10), now);
+        assert!(matches!(&other[0], Event::InviteCreated { invite, .. }
+            if invite.code != made.code));
+        let fresh = world.manage(opening(12, None, 5), now);
+        assert!(matches!(&fresh[0], Event::InviteCreated { invite, .. }
+            if invite.code != made.code));
         let forever = world.manage(invite(8, 0, 0, false), now);
         assert!(matches!(&forever[0], Event::InviteCreated { invite, .. }
             if invite.expires.is_none() && invite.max_uses.is_none()));
-        let too_long = world.manage(invite(9, 8 * 24 * 60 * 60, 0, false), now);
+        let too_long = world.manage(invite(9, 31 * 24 * 60 * 60, 0, false), now);
         assert!(matches!(
             failed(&too_long),
             Some(Failure::NewInvite { request: 9, .. })

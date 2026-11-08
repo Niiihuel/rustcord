@@ -1052,7 +1052,9 @@ fn snapshot_bytes(snapshot: &Snapshot) -> usize {
         .saturating_add(vector_bytes(&snapshot.last_messages))
         .saturating_add(vector_bytes(&snapshot.read_states))
         .saturating_add(vector_bytes(&snapshot.read_versions))
-        .saturating_add(vector_bytes(&snapshot.first_unread));
+        .saturating_add(vector_bytes(&snapshot.first_unread))
+        .saturating_add(vector_bytes(&snapshot.last_pins))
+        .saturating_add(vector_bytes(&snapshot.pins_seen));
     if let Some(relationships) = &snapshot.relationships {
         bytes = bytes.saturating_add(vector_bytes(relationships));
         for relationship in relationships {

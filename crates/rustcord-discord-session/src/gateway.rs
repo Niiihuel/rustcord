@@ -135,6 +135,7 @@ dispatch_kinds! {
     MessageReactionRemoveAll => "MESSAGE_REACTION_REMOVE_ALL", MessageReactionRemoveEmoji => "MESSAGE_REACTION_REMOVE_EMOJI",
     MessagePollVoteAdd => "MESSAGE_POLL_VOTE_ADD", MessagePollVoteRemove => "MESSAGE_POLL_VOTE_REMOVE",
     ChannelCreate => "CHANNEL_CREATE", ChannelUpdate => "CHANNEL_UPDATE", ChannelDelete => "CHANNEL_DELETE",
+    ChannelPinsUpdate => "CHANNEL_PINS_UPDATE", ChannelPinsAck => "CHANNEL_PINS_ACK",
     GuildCreate => "GUILD_CREATE", GuildUpdate => "GUILD_UPDATE", GuildDelete => "GUILD_DELETE",
     GuildRoleCreate => "GUILD_ROLE_CREATE", GuildRoleUpdate => "GUILD_ROLE_UPDATE", GuildRoleDelete => "GUILD_ROLE_DELETE",
     GuildEmojisUpdate => "GUILD_EMOJIS_UPDATE", GuildStickersUpdate => "GUILD_STICKERS_UPDATE",

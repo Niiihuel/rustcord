@@ -474,32 +474,6 @@ pub(crate) fn status_line(
     }
 }
 
-/// The server emoji a message's text names, as pictures of a text shown
-/// outside the timeline, such as a pinned message.
-pub(crate) fn reference_pictures(
-    ui: &Ui,
-    references: &[rustcord_model::TextReference],
-) -> Vec<TextPicture> {
-    references
-        .iter()
-        .filter_map(|reference| match &reference.target {
-            rustcord_model::TextTarget::Emoji {
-                name,
-                image: Some(image),
-                ..
-            } => Some(text_picture(
-                ui,
-                &rustcord_model::TextPicture {
-                    token: reference.source.clone(),
-                    name: name.clone(),
-                    image: image.clone(),
-                },
-            )),
-            _ => None,
-        })
-        .collect()
-}
-
 /// The pictures a text names, as its component draws them.
 pub(crate) fn text_pictures(ui: &Ui, pictures: &[rustcord_model::TextPicture]) -> Vec<TextPicture> {
     pictures

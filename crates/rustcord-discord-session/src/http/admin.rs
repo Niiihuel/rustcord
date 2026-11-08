@@ -21,7 +21,8 @@ use rustcord_model::{
     ServerId, StickerId, Timestamp, User, UserId, Webhook, WebhookKind,
 };
 use rustcord_provider::{
-    Command, Created, Event, ExpressionImage, ExpressionKind, NewExpression, VoiceModeration,
+    Command, Created, Event, ExpressionImage, ExpressionKind, InviteFrom, InvitePlace,
+    NewExpression, VoiceModeration,
 };
 use serde_json::{json, Value};
 
@@ -47,6 +48,8 @@ type Answer = Result<(Vec<Event>, Vec<Echo>), RestError>;
 pub(crate) struct Extras {
     /// The documented `X-Audit-Log-Reason`, percent-encoded.
     reason: Option<HeaderValue>,
+    /// The web client's `X-Context-Properties`: where it asked from.
+    context: Option<HeaderValue>,
     /// A multipart body and its content type, for a sticker.
     form: Option<(HeaderValue, Bytes)>,
     echoes: Arc<Mutex<Vec<Echo>>>,
@@ -56,6 +59,9 @@ impl Extras {
     pub(super) fn apply(&self, mut request: RequestBuilder) -> RequestBuilder {
         if let Some(reason) = &self.reason {
             request = request.header("X-Audit-Log-Reason", reason.clone());
+        }
+        if let Some(context) = &self.context {
+            request = request.header("X-Context-Properties", context.clone());
         }
         if let Some((kind, body)) = &self.form {
             request = request
@@ -726,19 +732,30 @@ impl Http {
                 max_age_secs,
                 max_uses,
                 temporary,
+                from,
             } => {
+                let (location, body) = invite_request(from, *max_age_secs, *max_uses, *temporary);
                 let value = self
+                    .with_context(location)
                     .send(
                         secret,
                         Method::POST,
                         &format!("/channels/{channel}/invites"),
-                        Some(json!({"max_age": max_age_secs, "max_uses": max_uses,
-                            "temporary": temporary, "unique": true})),
+                        Some(body),
                         ANSWER,
                     )
                     .await?;
                 let (invite, inviter) = admin::invite(&value).map_err(|_| unclear())?;
-                if invite.channel.is_some_and(|answered| answered != *channel) {
+                // The one handed back must be the one asked for.
+                let asked = |field: &str, wanted: u64| {
+                    value[field].as_u64().is_none_or(|said| said == wanted)
+                };
+                let person = *from == InviteFrom::Person;
+                if invite.channel.is_some_and(|answered| answered != *channel)
+                    || !asked("max_uses", u64::from(*max_uses))
+                    || (!person && !asked("max_age", u64::from(*max_age_secs)))
+                    || (!person && invite.temporary != *temporary)
+                {
                     return Err(unclear());
                 }
                 let mut events: Vec<Event> = inviter.map(Event::UserChanged).into_iter().collect();
@@ -1253,6 +1270,16 @@ impl Http {
         http
     }
 
+    /// This client, telling Discord where in its interface a request was
+    /// asked from, as its web client's `X-Context-Properties` does.
+    fn with_context(&self, location: &str) -> Http {
+        let mut http = self.clone();
+        http.admin.context = serde_json::to_vec(&json!({ "location": location }))
+            .ok()
+            .and_then(|json| HeaderValue::from_str(&STANDARD.encode(json)).ok());
+        http
+    }
+
     /// This client, sending `form` as its next request's body.
     fn with_form(&self, form: (HeaderValue, Bytes)) -> Http {
         let mut http = self.clone();
@@ -1392,6 +1419,47 @@ fn unclear() -> RestError {
 /// A read whose answer cannot be read: nothing changed.
 fn unreadable() -> RestError {
     RestError::response(wire::invalid(), false)
+}
+
+/// Where Discord's web client says an invitation was asked from, and the
+/// body it sends: opening its modal it hands back the code made before for
+/// the channel (`validate`, `null` when there is none); «Generar un nuevo
+/// enlace» sends none; a person's menu asks for a unique link and leaves
+/// its lifetime to Discord (a day).
+fn invite_request(
+    from: &InviteFrom,
+    max_age: u32,
+    max_uses: u32,
+    temporary: bool,
+) -> (&'static str, Value) {
+    let place = |place: &InvitePlace| match place {
+        InvitePlace::HeaderButton => "Guild Header Invite Button",
+        InvitePlace::ServerMenu => "Guild Header",
+        InvitePlace::RailMenu => "Guild Context Menu",
+        InvitePlace::ChannelRow => "Guild Channels",
+        InvitePlace::ChannelMenu => "Context Menu",
+        InvitePlace::CallBar => "Voice Channel UI Invite Button",
+        InvitePlace::Settings => "Settings Invite",
+    };
+    let modal = json!({"max_age": max_age, "max_uses": max_uses, "target_type": null,
+        "temporary": temporary, "flags": 0});
+    match from {
+        InviteFrom::Opening {
+            place: at,
+            previous,
+        } => {
+            let mut body = json!({ "validate": previous });
+            if let (Some(body), Some(modal)) = (body.as_object_mut(), modal.as_object()) {
+                body.extend(modal.clone());
+            }
+            (place(at), body)
+        }
+        InviteFrom::Generating(at) => (place(at), modal),
+        InviteFrom::Person => (
+            "User Invite Context Menu",
+            json!({"max_uses": max_uses, "unique": true}),
+        ),
+    }
 }
 
 fn definite(reason: crate::LoginError) -> RestError {

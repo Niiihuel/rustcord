@@ -561,6 +561,10 @@ fn add_channel(
     if let Some(last) = optional_id(&data["last_message_id"])? {
         snapshot.last_messages.push((channel.id, MessageId(last)));
     }
+    // A malformed time only loses the pins' dot.
+    if let Ok(at) = wire::timestamp(&data["last_pin_timestamp"]) {
+        snapshot.last_pins.push((channel.id, at));
+    }
     snapshot.channels.push(channel);
     Ok(())
 }
@@ -744,6 +748,9 @@ pub(crate) fn ready(data: &Value, me: &User) -> Result<Snapshot, LoginError> {
             } else {
                 optional_id(cursor)?
             };
+            if let Ok(at) = wire::timestamp(&entry["last_pin_timestamp"]) {
+                snapshot.pins_seen.push((channel, at));
+            }
             snapshot.read_states.push((
                 channel,
                 cursor.map(MessageId),
@@ -764,6 +771,8 @@ fn remove_channel(snapshot: &mut Snapshot, channel: ChannelId) {
     snapshot.channels.retain(|c| c.id != channel);
     snapshot.last_messages.retain(|(c, _)| *c != channel);
     snapshot.read_states.retain(|(c, _, _)| *c != channel);
+    snapshot.last_pins.retain(|(c, _)| *c != channel);
+    snapshot.pins_seen.retain(|(c, _)| *c != channel);
 }
 
 fn remove_guild(snapshot: &mut Snapshot, server: ServerId) {
@@ -778,6 +787,8 @@ fn remove_guild(snapshot: &mut Snapshot, server: ServerId) {
     snapshot
         .read_states
         .retain(|(c, _, _)| !removed.contains(c));
+    snapshot.last_pins.retain(|(c, _)| !removed.contains(c));
+    snapshot.pins_seen.retain(|(c, _)| !removed.contains(c));
     snapshot.members.retain(|m| m.server != server);
     snapshot
         .voice
@@ -1030,6 +1041,38 @@ pub(crate) fn update(
                     remove_channel(snapshot, id);
                     events.push(Event::ChannelRemoved { channel: id });
                 }
+            }
+        }
+        // A malformed one is dropped: it only lights the pins' dot.
+        "CHANNEL_PINS_UPDATE" => {
+            let Ok(channel) = wire::id(&data["channel_id"]).map(ChannelId) else {
+                return Ok(events);
+            };
+            if snapshot.channels.iter().any(|c| c.id == channel) {
+                let last_pin = wire::timestamp(&data["last_pin_timestamp"]).ok();
+                snapshot.last_pins.retain(|(c, _)| *c != channel);
+                snapshot.last_pins.extend(last_pin.map(|at| (channel, at)));
+                events.push(Event::PinsChanged { channel, last_pin });
+            }
+        }
+        // Another device opened the pins (`POST /channels/{id}/pins/ack`):
+        // `timestamp` is the newest pin it saw. Malformed, it is dropped.
+        "CHANNEL_PINS_ACK" => {
+            let (Ok(channel), Ok(at)) = (
+                wire::id(&data["channel_id"]).map(ChannelId),
+                wire::timestamp(&data["timestamp"]),
+            ) else {
+                return Ok(events);
+            };
+            if snapshot.channels.iter().any(|c| c.id == channel) {
+                let seen = snapshot
+                    .pins_seen
+                    .iter()
+                    .find(|(c, _)| *c == channel)
+                    .map_or(at, |(_, before)| (*before).max(at));
+                snapshot.pins_seen.retain(|(c, _)| *c != channel);
+                snapshot.pins_seen.push((channel, seen));
+                events.push(Event::PinsSeen { channel, at });
             }
         }
         "THREAD_CREATE"

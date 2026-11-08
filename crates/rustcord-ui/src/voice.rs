@@ -24,7 +24,6 @@ use rustcord_provider::{Command, VoiceSupport};
 use rustcord_state::{Applied, Store};
 
 use crate::person_menu::Place;
-use crate::server_menu;
 use crate::{editor_id, profile, settings, video, Intent, SettingsPage, Ui, ViewContext};
 
 /// How many measures of the connection its details keep.
@@ -518,10 +517,12 @@ pub(crate) fn update(
     let picker = std::mem::take(&mut ui.video.picker);
     let options = std::mem::take(&mut ui.video.options);
     if let Some(height) = number(id, parts::ids::QUALITY) {
-        return Some(video::choose(ui, u32::try_from(height).ok(), None));
+        let height = u32::try_from(height).ok();
+        return Some(video::choose(ui, store, height, None, picker));
     }
     if let Some(fps) = number(id, parts::ids::FPS) {
-        return Some(video::choose(ui, None, u32::try_from(fps).ok()));
+        let fps = u32::try_from(fps).ok();
+        return Some(video::choose(ui, store, None, fps, picker));
     }
     if let Some(channel) = number(id, "voice:") {
         return Some(channel_clicked(ui, store, ChannelId(channel), now));
@@ -655,8 +656,8 @@ pub(crate) fn update(
         ids::SHARE_DEVICES => video::show_devices(ui, true),
         ids::SHARE_SCREEN => video::choose_kind(ui, ShareKind::Screen),
         ids::SHARE_WINDOW => video::choose_kind(ui, ShareKind::Window),
-        ids::SHARE_SD => video::choose(ui, Some(720), Some(30)),
-        ids::SHARE_HD => video::choose(ui, Some(1080), Some(60)),
+        ids::SHARE_SD => video::choose(ui, store, Some(720), Some(30), picker),
+        ids::SHARE_HD => video::choose(ui, store, Some(1080), Some(60), picker),
         // The gear's popout opens and closes over the picker, which stays.
         ids::SHARE_OPTIONS => {
             ui.video.options = !options;
@@ -667,7 +668,7 @@ pub(crate) fn update(
             ui.video.picker = true;
             Vec::new()
         }
-        ids::SOUND => video::toggle_sound(ui),
+        ids::SOUND => video::toggle_sound(ui, picker),
         ids::PICK_SCREEN => video::pick_screen_again(ui),
         ids::STOP_SCREEN => video::stop(ui, store, true),
         ids::OWN_STREAM_STOP => video::stop(ui, store, true),
@@ -728,8 +729,8 @@ pub(crate) fn update(
     })
 }
 
-/// «Invitar» on the call's bar: an invitation to the channel the account is in,
-/// made as the server's menu makes one.
+/// «Invitar» on the call's bar: Discord's modal, for the channel the
+/// account is in.
 fn invite_call(ui: &mut Ui, store: &Store, now: Instant) -> Vec<Intent> {
     let Some(channel) = store.call().map(|call| call.channel) else {
         return Vec::new();
@@ -737,7 +738,8 @@ fn invite_call(ui: &mut Ui, store: &Store, now: Instant) -> Vec<Intent> {
     let Some(server) = store.channel(channel).and_then(|found| found.server) else {
         return Vec::new();
     };
-    server_menu::invite(ui, store, server, channel, now)
+    let place = rustcord_provider::InvitePlace::CallBar;
+    crate::invite_modal::open(ui, store, (server, channel), place, now)
 }
 
 /// A secondary click on someone in a voice channel opens their menu there:

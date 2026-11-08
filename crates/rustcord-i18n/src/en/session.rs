@@ -156,8 +156,8 @@ pub(super) const ENTRIES: super::Entries = &[
     ),
     ("Una categoría no va dentro de otra.", "A category doesn't go inside another."),
     (
-        "Una invitación dura hasta 7 días y sirve hasta 100 veces.",
-        "An invite lasts up to 7 days and works up to 100 times.",
+        "Una invitación dura hasta 30 días y sirve hasta 100 veces.",
+        "An invite lasts up to 30 days and works up to 100 times.",
     ),
     // The audit log: what someone did, after their name.
     ("(sin nombre)", "(no name)"),

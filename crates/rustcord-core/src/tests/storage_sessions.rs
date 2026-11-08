@@ -62,6 +62,7 @@ fn local_read_choices_survive_reopen_and_cannot_cross_the_admitted_account() {
         through: Some(MessageId(100)),
         unread_from: Some(MessageId(90)),
         revision: 7,
+        pins_seen: Default::default(),
     };
     first.set_read_mark(UserId(2), channel, mark).unwrap();
     assert!(first.read_marks().unwrap().is_empty());
@@ -122,6 +123,7 @@ fn a_failed_read_restore_keeps_new_choices_in_ram_until_the_baseline_is_known() 
         through: Some(MessageId(100)),
         unread_from: Some(MessageId(80)),
         revision: 20,
+        pins_seen: Default::default(),
     };
     assert!(client.read_marks().unwrap().is_empty());
     client.set_read_mark(UserId(1), channel, old).unwrap();
@@ -181,6 +183,7 @@ fn returning_to_a_storage_account_needs_a_known_read_baseline_or_explicit_forget
         through: Some(MessageId(100)),
         unread_from: Some(MessageId(80)),
         revision: 20,
+        pins_seen: Default::default(),
     };
     client.read_marks().unwrap();
     client.set_read_mark(UserId(1), channel, mark).unwrap();

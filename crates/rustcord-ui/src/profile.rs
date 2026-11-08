@@ -481,6 +481,7 @@ pub fn card_of(
         role_menu,
         message: message_field(ui, store, user),
         edit_profile: store.me() == Some(user) && edit_denied(store).is_none(),
+        set_custom: store.me() == Some(user) && custom_denied(store).is_none(),
         example_button: false,
         games: loaded
             .and_then(|loaded| loaded.games.as_ref())
@@ -544,8 +545,8 @@ pub(crate) fn side_panel(ui: &Ui, store: &Store, look: &Look) -> Option<Element>
 }
 
 /// The pictures the profiles show beyond a face and its marks: the moving
-/// picture and banner, and the games and wishlist of `user`'s profile in
-/// `server`.
+/// picture and banner, the games and wishlist of `user`'s profile in
+/// `server`, and the faces of the mutual friends its card shows.
 pub(crate) fn wanted(
     ui: &Ui,
     store: &Store,
@@ -564,6 +565,9 @@ pub(crate) fn wanted(
     }
     for wish in loaded.wishlist.iter().flatten() {
         add(wish.picture.as_ref());
+    }
+    for friend in loaded.mutual_friends.iter().flatten().take(3) {
+        add(store.user(*friend).and_then(|friend| friend.picture()));
     }
 }
 
@@ -638,18 +642,20 @@ fn mutual_lists(
     (servers, friends)
 }
 
+/// A card's «×» per role it holds, and its «+» with the checklist it opens.
+type RoleControls = (Vec<Option<String>>, Option<(String, Vec<MenuEntry>)>);
+
 /// The roles a card may give and take in `server`: the checklist the person
-/// menu's «Roles» has, and for each role the card holds the action that
-/// takes it away, when the checklist lists it. Nothing for the account's own
-/// card, whose roles are not changed from it.
+/// menu's «Roles» has, with the action of the card's «+» that opens it, and
+/// for each role the card holds the action that takes it away, when the
+/// checklist lists it. The account's own card too, as Discord's.
 fn role_controls(
     store: &Store,
     server: Option<ServerId>,
     user: UserId,
     held: &[&rustcord_model::Role],
-) -> (Vec<Option<String>>, Option<Vec<MenuEntry>>) {
+) -> RoleControls {
     let checklist = server
-        .filter(|_| store.me() != Some(user))
         .and_then(|server| crate::server_settings::member_menu_group(store, server, user).roles)
         .and_then(|entry| match entry {
             MenuEntry::Submenu(_, entries) => Some(entries),
@@ -666,7 +672,10 @@ fn role_controls(
                 .then_some(action)
         })
         .collect();
-    (removals, checklist)
+    (
+        removals,
+        checklist.map(|entries| (format!("{}{user}", ids::CARD_ROLES), entries)),
+    )
 }
 
 /// The friendship's button of `user`'s card, and the menu it opens: none for
@@ -2082,6 +2091,9 @@ pub(crate) fn settings_page(ui: &Ui, store: &Store, size: Size, look: &Look) -> 
     // The preview is the card as others see it: no note, no field to write,
     // no full profile to open; its footer is an example button.
     preview.edit_profile = false;
+    preview.set_custom = false;
+    preview.role_removals.clear();
+    preview.role_menu = None;
     preview.example_button = true;
     preview.note = None;
     preview.message = None;
@@ -2418,7 +2430,7 @@ fn saved_in(ui: &mut Ui, store: &Store, server: ServerId, saved: bool) -> Vec<In
 fn full_view(ui: &Ui, store: &Store, look: &Look) -> Option<FullProfile> {
     use rustcord_components::profile::RecentGlyph;
     let (user, server) = ui.profiles.full?;
-    // Its «…» and the «+» of its roles are the card's, named by this action.
+    // Its «…» and the «+» of its roles are the card's.
     let profile = card_of(ui, store, server, user, look)?;
     let (mutual_servers, mutual_friends) = mutual_lists(ui, store, server, user, look);
     Some(FullProfile {

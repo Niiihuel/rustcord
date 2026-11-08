@@ -31,6 +31,7 @@ mod inbox;
 mod interactions;
 mod invitation_cards;
 mod invitations;
+mod invite_modal;
 mod messages;
 mod navigation;
 mod profile;
@@ -746,6 +747,11 @@ pub struct Ui {
     pub person_menu: Option<person_menu::PersonMenu>,
     /// An invitation to a server sent from a person's menu, until it is.
     pub person_invite: Option<person_menu::PersonInvite>,
+    /// Discord's «Invita a tus amigos», while open.
+    pub invite: Option<invite_modal::InviteModal>,
+    /// The link made last for each channel in this run, which the modal
+    /// hands back when it opens there again.
+    pub invites_made: HashMap<ChannelId, invite_modal::Made>,
     /// The question a call from a person's menu asks first, while it is open.
     pub person_call: Option<person_menu::PersonCall>,
     /// The call a person's menu starts once its conversation is opened, and
@@ -964,7 +970,7 @@ impl Ui {
     pub fn expire(&mut self, now: Instant) -> bool {
         let before = self.notices.len();
         self.notices.retain(|notice| notice.until > now);
-        let invitations_changed = invitations::expire(self, now);
+        let invitations_changed = invitations::expire(self, now) | invite_modal::expire(self, now);
         let recording_ended = settings::expire_recording(self, now);
         let pill_changed = connection::expire(self, now);
         self.notices.len() != before || invitations_changed || recording_ended || pill_changed
@@ -976,6 +982,7 @@ impl Ui {
             .iter()
             .map(|notice| notice.until.saturating_duration_since(now))
             .chain(invitations::next_expiry(self, now))
+            .chain(invite_modal::next_expiry(self, now))
             .chain(settings::recording_expiry(self, now))
             .chain(splash::expiry(self, now))
             .chain(self.connection.next_expiry(now))
@@ -1190,9 +1197,11 @@ pub fn on_applied(ui: &mut Ui, store: &mut Store, applied: &Applied, now: Instan
     intents.extend(channel_settings::on_applied(ui, store, applied));
     intents.extend(answer(ui, store, applied, now));
     intents.extend(person_menu::on_applied(ui, store, applied, now));
+    intents.extend(invite_modal::on_applied(ui, store, applied));
     relationships::on_applied(ui, store, applied);
     intents.extend(conversations::on_applied(ui, store, applied));
     intents.extend(threads::on_applied(ui, store, applied));
+    intents.extend(threads::fill(ui, store));
     intents.extend(invitations::on_applied(ui, store, applied, now));
     intents.extend(onboarding::on_applied(ui, store, applied));
     intents.extend(events::on_applied(ui, store, applied));
@@ -1377,7 +1386,6 @@ fn answer(ui: &mut Ui, store: &mut Store, applied: &Applied, now: Instant) -> Ve
         Applied::Created { request, created } => {
             server_menu::on_created(ui, store, *request, *created)
         }
-        Applied::InviteCreated { .. } => server_menu::on_invite(ui, store, applied, now),
         _ => Vec::new(),
     }
 }
@@ -1570,6 +1578,9 @@ fn answer_action(ui: &mut Ui, store: &mut Store, action: &UiAction, now: Instant
         return intents;
     }
     if let Some(intents) = invitations::update(ui, store, action, now) {
+        return intents;
+    }
+    if let Some(intents) = invite_modal::update(ui, store, action, now) {
         return intents;
     }
     if let Some(intents) = documents::update(ui, store, action) {
@@ -2036,7 +2047,11 @@ pub fn intercept(
 
 /// Move to the conversation above or below the open one in the column.
 pub fn navigate(ui: &mut Ui, store: &mut Store, down: bool) -> Vec<Intent> {
-    if invitations::visible(ui) || onboarding::visible(ui) || events::visible(ui) {
+    if invitations::visible(ui)
+        || invite_modal::visible(ui)
+        || onboarding::visible(ui)
+        || events::visible(ui)
+    {
         return Vec::new();
     }
     let order: Vec<ChannelId> = match ui.server {

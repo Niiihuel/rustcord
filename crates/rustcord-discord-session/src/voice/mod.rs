@@ -868,9 +868,10 @@ impl Calls {
             quality: Some(quality),
             ..Watch::new(me.0)
         });
-        // A new stream starts unpaused.
-        call.controls
-            .send_if_modified(|controls| std::mem::take(&mut controls.paused));
+        // A new stream starts unpaused, at the quality it asks for.
+        call.controls.send_if_modified(|controls| {
+            std::mem::take(&mut controls.paused) | controls.stream_quality.take().is_some()
+        });
         self.tell();
         Ok(vec![Event::StreamPhase {
             channel,
@@ -904,6 +905,20 @@ impl Calls {
             owner,
             phase,
         }]
+    }
+
+    /// The account's shared screen goes on at `quality`: its connection
+    /// describes it again, and asks for it if it connects again.
+    pub(crate) fn share_quality(&mut self, channel: ChannelId, quality: StreamQuality) {
+        let Some(call) = self.call.as_mut().filter(|call| call.channel == channel) else {
+            return;
+        };
+        let Some(share) = call.share.as_mut().filter(|_| quality.valid()) else {
+            return;
+        };
+        share.quality = Some(quality);
+        call.controls
+            .send_if_modified(|controls| controls.stream_quality.replace(quality) != Some(quality));
     }
 
     /// Stop sharing: the service is told, the stream's connection goes.

@@ -175,15 +175,24 @@ fn the_menu_lists_what_rustcord_does_in_discords_groups_and_order() {
     host.click(&format!("sm:notify:{lab}"));
     assert_eq!(host.ui.server_menu.dialog, Some(Dialog::Notifications(lab)));
     host.ui.server_menu.dialog = None;
-    // «Invitar al servidor» makes an invitation; «Editar perfil de servidor»
-    // asks for the name in it; «Copiar ID del servidor» copies it.
+    // «Invitar al servidor» opens Discord's modal, which asks for the link
+    // as the menu's; «Editar perfil de servidor» asks for the name in it;
+    // «Copiar ID del servidor» copies it.
     host.sent.clear();
     host.click(ids::TOGGLE);
     host.click(&format!("sm:invite:{lab}"));
-    assert!(host
-        .sent
-        .iter()
-        .any(|command| matches!(command, Command::CreateInvite { server, .. } if *server == lab)));
+    assert!(host.ui.invite.is_some());
+    assert!(host.sent.iter().any(|command| matches!(command,
+        Command::CreateInvite {
+            server,
+            from: rustcord_provider::InviteFrom::Opening {
+                place: rustcord_provider::InvitePlace::ServerMenu,
+                ..
+            },
+            ..
+        } if *server == lab)));
+    host.click("invite:close:x");
+    assert!(host.ui.invite.is_none());
     host.click(ids::TOGGLE);
     host.click(&format!("sm:profile:{lab}"));
     assert!(

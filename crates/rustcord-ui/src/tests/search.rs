@@ -397,10 +397,16 @@ fn unknown_partial_update_invalidates_device_hits_without_starting_a_query_loop(
     }));
     assert!(result_ids(&mut host).is_empty());
     assert_eq!(host.local_searches.len(), count);
-    assert!(host
-        .painted()
-        .iter()
-        .any(|text| text.contains("Actualiza la búsqueda")));
+    // Its lines wrap, 280 wide as Discord's.
+    let painted = host.painted().join(" ");
+    assert!(painted
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .contains("Actualiza la búsqueda"));
+    // Over it, Discord's magnifying glass.
+    assert!(host.frame().commands.iter().any(|command| matches!(command,
+        limn::DrawCommand::RasterImage { image, .. } if image.alt() == "search-no-results")));
     host.click("message-search:refresh");
     assert!(host.local_searches.len() > count);
 }

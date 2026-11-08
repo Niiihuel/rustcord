@@ -5,9 +5,9 @@
 //! before deleting one. Every control's ID starts with `th:`.
 
 use limn::{
-    AlertDialog, Button, ButtonVariant, Checkbox, Color, Component, ControlSize, Element, Icon,
-    Modal, Popover, PopoverPlacement, RasterImage, ScrollArea, ScrollbarAppearance, TextArea,
-    TextField, Toggle, ToggleVariant,
+    Access, AlertDialog, Button, ButtonVariant, Checkbox, Color, Component, ComponentPalette,
+    ControlSize, Element, Icon, Modal, Popover, PopoverPlacement, RasterImage, Role, ScrollArea,
+    ScrollbarAppearance, SearchField, TextArea, TextField, Toggle, ToggleVariant,
 };
 
 use rustcord_i18n::{t, tr};
@@ -18,6 +18,8 @@ use crate::{gap, icon, line, strong_line, text, Look};
 pub mod ids {
     /// The list of threads: closing it.
     pub const CLOSE: &str = "th:close";
+    /// Its search by name, in its header.
+    pub const SEARCH: &str = "th:search";
     pub const CONFIRM: &str = "th:confirm";
     pub const CONFIRM_CANCEL: &str = "th:confirm:cancel";
     /// The dialog that starts a thread or a post: its fields, choosing a tag
@@ -92,6 +94,8 @@ pub struct ThreadList {
     /// The button that asks for more archived threads: its label, and why it
     /// cannot be used now (loading, none left, not offered).
     pub more: (String, Option<String>),
+    /// What is searched by name; the rows are the threads that match.
+    pub query: String,
 }
 
 /// One tag a post may carry.
@@ -251,34 +255,31 @@ fn body(view: &ThreadList, look: &Look) -> Element {
     let palette = look.menu_palette();
     let none = view.followed.is_empty() && view.active.is_empty() && view.archived.is_empty();
     let (label, denied) = &view.more;
+    if none && !view.query.trim().is_empty() {
+        return text(t("No se encontraron resultados"), 16.0, look.muted)
+            .centered_x()
+            .padding(32.0);
+    }
     if none && denied.is_some() {
-        let mut empty = vec![
-            gap(0.0, 40.0),
-            crate::centered(
-                icon(Icon::Custom(crate::glyphs::THREAD), look.faint).size(Some(48.0), Some(48.0)),
+        // Discord's: the art 256 by 144, 12 over the title, the button 24
+        // under the text, all 32 in.
+        let start = view.start_denied.is_none().then(|| {
+            Button::new(
+                ids::start(view.channel),
+                t("Crear hilo"),
+                look.accent_palette(),
             )
-            .size(None, Some(48.0)),
-            crate::centered(strong_line(t("No hay hilos."), 16.0, look.text))
-                .size(None, Some(24.0)),
-            text(
-                t("Mantén el foco en una conversación con un hilo, un canal de texto temporal."),
-                14.0,
-                look.muted,
-            )
-            .centered_x(),
-        ];
-        if view.start_denied.is_none() {
-            empty.push(
-                Button::new(
-                    ids::start(view.channel),
-                    t("Crear hilo"),
-                    look.accent_palette(),
-                )
-                .render()
-                .centered_x(),
-            );
-        }
-        return Element::column(empty).gap(8.0).padding(16.0);
+            .render()
+        });
+        return crate::illustration::intro(
+            crate::illustration::Art::Threads,
+            t("No hay hilos."),
+            t("Mantén el foco en una conversación con un hilo, un canal de texto temporal."),
+            start,
+            (12.0, 24.0),
+            look,
+        )
+        .padding(32.0);
     }
     let mut parts = Vec::new();
     parts.extend(section(
@@ -326,18 +327,41 @@ fn body(view: &ThreadList, look: &Look) -> Element {
 }
 
 /// The header of Discord's popout, 48 high over a line: its glyph and
-/// «Hilos», and «Crear» at the end when the account may start one.
+/// «Hilos», a divider, the search by name (the accent round it while it
+/// has the focus) to «Crear» at the end, when the account may start one.
 fn header(view: &ThreadList, look: &Look) -> Element {
+    // shortcut: the search filters the threads read so far; Discord's asks
+    // its service (an undocumented route not authorized here).
+    let search = SearchField::new(
+        ids::SEARCH,
+        &view.query,
+        t("Buscar por nombre del hilo"),
+        ComponentPalette {
+            raised: Look::alpha(look.rail, 255),
+            ..look.menu_palette()
+        },
+    )
+    .height(32.0)
+    .render()
+    .radius(8.0)
+    .focus_border(look.accent, 1.5)
+    .flex(1.0)
+    .centered_y();
     let mut parts = vec![
         gap(16.0, 0.0),
         icon(Icon::Custom(crate::glyphs::THREAD), look.muted).centered_y(),
         gap(8.0, 0.0),
         strong_line(t("Hilos"), 16.0, look.text).centered_y(),
-        // shortcut: no «Buscar por nombre del hilo»; the providers have no
-        // search by name yet, add it with one.
-        Element::spacer().flex(1.0),
+        gap(16.0, 0.0),
+        Element::panel(Element::spacer())
+            .size(Some(1.0), Some(24.0))
+            .background(look.border)
+            .centered_y(),
+        gap(16.0, 0.0),
+        search,
     ];
     if view.start_denied.is_none() {
+        parts.push(gap(16.0, 0.0));
         parts.push(
             Button::new(ids::start(view.channel), t("Crear"), look.accent_palette())
                 .size(ControlSize::Compact)
@@ -367,28 +391,25 @@ pub fn popout(button: Element, view: Option<&ThreadList>, width: f32, look: &Loo
         .render()
 }
 
-/// The list of a channel's threads as a dialog over `root`, where the
-/// header has no room for its button.
+/// The list of a channel's threads over `root`, where the header has no
+/// room for its button: the popout's own content, centered.
 pub fn list(root: Element, view: &ThreadList, look: &Look) -> Element {
-    let mut head = Vec::new();
-    if view.start_denied.is_none() {
-        head.push(
-            Button::new(ids::start(view.channel), t("Crear"), look.accent_palette())
-                .size(ControlSize::Compact)
-                .render(),
-        );
-    }
-    Modal::new(
-        root,
-        true,
-        t("Hilos"),
-        view.title.clone(),
-        ids::CLOSE,
-        look.menu_palette(),
+    let surface = Element::panel(
+        Element::column(vec![header(view, look), body(view, look)]).min_size(0.0, 400.0),
     )
-    .width(WIDTH)
-    .body(Element::column(vec![Element::row(head), body(view, look)]).gap(6.0))
-    .render()
+    .size(Some(WIDTH), None)
+    .radius(8.0)
+    .background(Look::alpha(look.menu, 255))
+    .border(look.border, 1.0)
+    .clip_children()
+    .accessible(
+        Access::new(Role::Dialog)
+            .id(format!("{}:dialog", ids::CLOSE))
+            .name(t("Hilos").to_owned()),
+    );
+    Element::popover(root, surface, ids::CLOSE, PopoverPlacement::Center)
+        .popover_scrim(Color::rgba(0, 0, 0, 184))
+        .popover_backdrop_dismiss(true)
 }
 
 fn tags(choices: &[TagChoice], prefix: &str, look: &Look) -> Element {
@@ -703,6 +724,7 @@ mod tests {
                 ..thread(8, "Concurso de agosto")
             }],
             more: ("Cargar más".into(), None),
+            query: String::new(),
         };
         // Under the header's button, as Discord's popout.
         let button =
@@ -715,7 +737,13 @@ mod tests {
             Size::new(1000.0, 800.0),
         );
         let found = controls(&laid);
-        for id in ["thread:7", "thread:8", "th:start:5", "th:more:5"] {
+        for id in [
+            "thread:7",
+            "thread:8",
+            "th:start:5",
+            "th:more:5",
+            ids::SEARCH,
+        ] {
             assert!(found.contains(&id.to_owned()), "{id}: {found:?}");
         }
         let painted = texts(&laid);
@@ -731,13 +759,13 @@ mod tests {
         }
         // No other open thread: no heading for them.
         assert!(!painted.iter().any(|text| text.contains("ACTIVOS MÁS")));
-        // The narrow header's dialog shows the same and closes.
+        // The narrow header's dialog shows the same, header and all.
         let (_, laid) = frame(
             list(Element::spacer(), &view, &Look::DARK),
             Size::new(1000.0, 800.0),
         );
         let found = controls(&laid);
-        for id in ["thread:7", "th:start:5", "th:close:close"] {
+        for id in ["thread:7", "th:start:5", ids::SEARCH] {
             assert!(found.contains(&id.to_owned()), "{id}: {found:?}");
         }
         let done = ThreadList {
@@ -775,6 +803,22 @@ mod tests {
         );
         assert!(texts(&laid).contains(&"No hay hilos.".to_owned()));
         assert!(controls(&laid).contains(&"th:start:5".to_owned()));
+        // Over it, Discord's art at its size.
+        assert!(laid.commands.iter().any(|command| matches!(command,
+            limn::DrawCommand::RasterImage { rect, image, .. }
+                if image.alt() == "threads" && (rect.width, rect.height) == (256.0, 144.0))));
+        // A search that matches nothing says so, not that there are none.
+        let unmatched = ThreadList {
+            query: "zzz".into(),
+            ..nothing.clone()
+        };
+        let (_, laid) = frame(
+            list(Element::spacer(), &unmatched, &Look::DARK),
+            Size::new(1000.0, 800.0),
+        );
+        let painted = texts(&laid);
+        assert!(painted.contains(&"No se encontraron resultados".to_owned()));
+        assert!(!painted.contains(&"No hay hilos.".to_owned()));
     }
 
     #[test]

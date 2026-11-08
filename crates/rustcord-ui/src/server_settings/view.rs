@@ -4,6 +4,7 @@ use limn::{
     AlertDialog, Button, ButtonVariant, Component, DropdownOption, Element, Empty, FormField, Icon,
     Modal, SearchField, Select, TextArea, TextField,
 };
+use rustcord_components::illustration::Art;
 use rustcord_components::server_settings::{
     self as parts, audit_details, audit_label, audit_sentence, hex, AuditKind, AuditLine, BanLine,
     BannerSwatch, ExpressionLine, InviteLine, MemberLine, MenuAction, Metrics, PersonLine,
@@ -513,21 +514,21 @@ impl View<'_> {
         }
         children.push(parts::everyone_card("ss:role:everyone", look));
         if order.is_empty() {
-            children.push(
-                Empty::new(
-                    t("Organiza a tus miembros"),
-                    t("Usa roles para agrupar a los miembros del servidor y darles permisos."),
-                    look.palette(),
-                )
-                .icon(Icon::Users)
-                .action_element(parts::primary_button(
+            // Discord's: its art 72 under the card, the button 16 under the words.
+            children.push(gap(0.0, 72.0));
+            children.push(rustcord_components::illustration::intro(
+                Art::Roles,
+                t("Organiza a tus miembros"),
+                t("Usa roles para agrupar a los miembros del servidor y darles permisos."),
+                Some(parts::primary_button(
                     "ss:role:create",
                     t("Crear rol"),
                     denied.is_none(),
                     look,
-                ))
-                .render(),
-            );
+                )),
+                (32.0, 16.0),
+                look,
+            ));
             return parts::page("ss:scroll:roles", self.metrics.content, children);
         }
         children.push(
@@ -1199,15 +1200,21 @@ impl View<'_> {
         );
         match self.store.bans(self.server.id) {
             None => children.push(line(t("Cargando…"), 14.0, look.muted)),
+            // Discord's: in the list's card, its art 40 over the words.
             Some(list) if list.items.is_empty() && list.reached_end => children.push(
-                Empty::new(
-                    t("No hay personas vetadas"),
-                    t("No vetaste a nadie… y ojalá no haga falta."),
-                    look.palette(),
+                Element::panel(
+                    rustcord_components::illustration::slate(
+                        Art::Bans,
+                        40.0,
+                        t("No hay personas vetadas"),
+                        t("No vetaste a nadie… y ojalá no haga falta."),
+                        look,
+                    )
+                    .centered_x(),
                 )
-                .icon(Icon::Users)
-                .framed()
-                .render(),
+                .padding(32.0)
+                .radius(8.0)
+                .border(look.border, 1.0),
             ),
             Some(list) => {
                 let rows: Vec<Element> = list
@@ -1449,16 +1456,14 @@ impl View<'_> {
         }
         match self.store.invites(self.server.id) {
             None => children.push(line(t("Cargando…"), 14.0, look.muted)),
-            Some([]) => children.push(
-                Empty::new(
-                    t("No hay invitaciones"),
-                    t("Nadie creó un enlace para entrar todavía."),
-                    look.palette(),
-                )
-                .icon(Icon::Users)
-                .framed()
-                .render(),
-            ),
+            // Discord's: its art 20 over the words.
+            Some([]) => children.push(rustcord_components::illustration::slate(
+                Art::Invites,
+                20.0,
+                t("No hay invitaciones"),
+                t("Nadie creó un enlace para entrar todavía."),
+                look,
+            )),
             Some(invites) => {
                 let rows: Vec<Element> = invites
                     .iter()

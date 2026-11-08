@@ -2,6 +2,7 @@
 //! view are built, each from the shared snapshot of the timeline, so a
 //! conversation of thousands of messages costs what a screenful costs.
 
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -451,18 +452,18 @@ pub(crate) fn names_for(store: &Store, channel: ChannelId, look: &Look) -> Names
 
 /// What the messages of `server` can mention: the people they mention, the
 /// roles, the conversations, and who may mention everyone in `channel`.
-fn names(
+pub(crate) fn names(
     store: &Store,
     server: Option<ServerId>,
     channel: ChannelId,
-    messages: &[Arc<Message>],
+    messages: &[impl Borrow<Message>],
     look: &Look,
 ) -> Names {
     let mut people = HashMap::new();
     let mut display_names = HashMap::new();
     // The people apps' menus start with picked are named too, and
     // those a forward's copy mentions.
-    for user in messages.iter().flat_map(|message| {
+    for user in messages.iter().map(Borrow::borrow).flat_map(|message| {
         message
             .mentions
             .iter()
@@ -508,7 +509,10 @@ fn names(
         .map(|channel| (channel.name.clone(), channel.id.0))
         .collect();
     // One look per author, not per message.
-    let authors: HashSet<UserId> = messages.iter().map(|message| message.author).collect();
+    let authors: HashSet<UserId> = messages
+        .iter()
+        .map(|message| message.borrow().author)
+        .collect();
     let everyone = match (store.server(server), store.channel(channel)) {
         (Some(found), Some(conversation)) => authors
             .into_iter()
@@ -555,11 +559,14 @@ pub(crate) fn places(
     mut names: Names,
     store: &Store,
     here: Option<ServerId>,
-    messages: &[Arc<Message>],
+    messages: &[impl Borrow<Message>],
     now: Timestamp,
 ) -> Names {
     names.now = now;
-    for reference in messages.iter().flat_map(|message| &message.text_references) {
+    for reference in messages
+        .iter()
+        .flat_map(|message| &message.borrow().text_references)
+    {
         let rustcord_model::TextTarget::Link { channel, .. } = reference.target else {
             continue;
         };
@@ -581,6 +588,42 @@ pub(crate) fn places(
         names.places.insert(channel.0, label);
     }
     names
+}
+
+/// The pictures `messages` draw that are decoded: previews, their ThumbHash
+/// and blurred forms, and the emoji of their text, cards and parts.
+pub(crate) fn decoded_pictures(
+    ui: &Ui,
+    messages: &[impl Borrow<Message>],
+) -> HashMap<rustcord_model::RemoteImage, limn::RasterImage> {
+    // The host bounds this cache; avoid scanning the full loaded history
+    // on every rebuild just to find the few decoded thumbnails.
+    ui.images
+        .iter()
+        // Previews, their ThumbHash and their blurred form.
+        .filter(|(source, _)| {
+            matches!(
+                source.kind,
+                rustcord_model::ImageKind::AttachmentPreview
+                    | rustcord_model::ImageKind::ThumbHash
+                    | rustcord_model::ImageKind::Obscured
+            )
+        })
+        .map(|(source, image)| (source.clone(), image.clone()))
+        .chain(
+            messages
+                .iter()
+                .map(Borrow::borrow)
+                // Also a line's pictures of a message of emoji alone:
+                // a reply quotes it at that size.
+                .flat_map(|message| {
+                    crate::images::emoji_pictures(message)
+                        .into_iter()
+                        .chain(crate::images::text_emoji(&message.text_references, false))
+                })
+                .filter_map(|source| Some((source.clone(), ui.images.get(source)?.clone()))),
+        )
+        .collect()
 }
 
 /// The list of the open conversation, `width` wide.
@@ -703,34 +746,7 @@ pub fn timeline(
                     .map(|progress| (message.id, progress))
             })
             .collect(),
-        // The host bounds this cache; avoid scanning the full loaded history
-        // on every rebuild just to find the few decoded thumbnails.
-        attachment_images: ui
-            .images
-            .iter()
-            // Previews, their ThumbHash and their blurred form.
-            .filter(|(source, _)| {
-                matches!(
-                    source.kind,
-                    rustcord_model::ImageKind::AttachmentPreview
-                        | rustcord_model::ImageKind::ThumbHash
-                        | rustcord_model::ImageKind::Obscured
-                )
-            })
-            .map(|(source, image)| (source.clone(), image.clone()))
-            .chain(
-                messages
-                    .iter()
-                    // Also a line's pictures of a message of emoji alone:
-                    // a reply quotes it at that size.
-                    .flat_map(|message| {
-                        crate::images::emoji_pictures(message)
-                            .into_iter()
-                            .chain(crate::images::text_emoji(&message.text_references, false))
-                    })
-                    .filter_map(|source| Some((source.clone(), ui.images.get(source)?.clone()))),
-            )
-            .collect(),
+        attachment_images: decoded_pictures(ui, &messages),
         attachment_failures: ui.image_failures.clone(),
         sticker_images: messages
             .iter()

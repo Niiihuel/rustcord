@@ -4,10 +4,13 @@
 //! bottom right, shows only its picture until the pointer comes over it, and
 //! goes wherever it is dragged, inside the window, where it stays until the
 //! next drag (memory only). A click on it returns to the call. Cameras are
-//! not shown here.
+//! not shown here. The account's own stream has Discord's gear there too:
+//! stop, its quality, its sound and a report.
 
 use limn::{Element, Point, Size, UiAction, UiTree};
-use rustcord_components::voice::{self as parts, ids, PipButton, PipGlyph, PipView};
+use rustcord_components::voice::{
+    self as parts, ids, PipButton, PipGlyph, PipView, StreamSettings,
+};
 use rustcord_components::Look;
 use rustcord_i18n::{t, tr};
 use rustcord_model::StreamPhase;
@@ -16,13 +19,18 @@ use rustcord_state::Store;
 use crate::{video, Intent, Ui};
 
 /// Where the picture-in-picture was let go, where it was last laid out, and
-/// the drag in progress: where it began and where the pointer is.
+/// the drag in progress: where it began and where the pointer is. And the
+/// menu of its gear, open.
 #[derive(Debug, Default)]
 pub struct Pip {
     at: Option<Point>,
     shown: Option<Point>,
     drag: Option<(Point, Point)>,
+    pub(crate) menu: bool,
 }
+
+/// Where «Informar problema» goes: Rustcord's own issues, never Discord's.
+const REPORT: &str = "https://github.com/Niiihuel/rustcord/issues/new";
 
 /// How far the drag in progress has carried it.
 fn carried(ui: &Ui) -> Point {
@@ -93,6 +101,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size, look: &Look) -> Option<
             waiting: t("Esperando video…").into(),
             note: simulated,
             viewers: viewers(watching.owner),
+            settings: None,
             buttons: vec![
                 PipButton {
                     id: ids::window(watching.owner.0),
@@ -108,7 +117,7 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size, look: &Look) -> Option<
             at,
         });
     }
-    video::sending(ui, store)?;
+    let quality = video::sending(ui, store)?;
     let me = store.me()?;
     Some(PipView {
         surface: ids::SCREEN_SURFACE.into(),
@@ -119,6 +128,11 @@ pub(crate) fn view(ui: &Ui, store: &Store, window: Size, look: &Look) -> Option<
         waiting: t("Esperando al sistema…").into(),
         note: simulated,
         viewers: viewers(me),
+        settings: Some(StreamSettings {
+            open: ui.pip.menu,
+            quality,
+            sound: !ui.video.silent,
+        }),
         buttons: vec![PipButton {
             id: ids::OWN_STREAM_STOP.into(),
             hint: t("Dejar de transmitir"),
@@ -145,11 +159,31 @@ pub(crate) fn hold(ui: &mut Ui, tree: &UiTree) {
         .rev()
         .find(|region| region.id == ids::PIP)
         .map(|region| Point::new(region.rect.x, region.rect.y));
+    // Gone, its gear's menu does not open with the next one.
+    ui.pip.menu &= ui.pip.shown.is_some();
 }
 
 /// Answer the picture-in-picture's clicks and drags; `None` for other parts.
-pub(crate) fn update(ui: &mut Ui, store: &Store, action: &UiAction) -> Option<Vec<Intent>> {
+/// Any click closes its gear's menu; the quality and the sound chosen in it
+/// are the picker's, answered with the call's.
+pub(crate) fn update(ui: &mut Ui, store: &mut Store, action: &UiAction) -> Option<Vec<Intent>> {
+    let menu = match action {
+        // Its submenu's row only opens the submenu.
+        UiAction::Clicked { id } if id != ids::PIP_QUALITY => std::mem::take(&mut ui.pip.menu),
+        _ => ui.pip.menu,
+    };
     match action {
+        UiAction::Clicked { id } if id == ids::PIP_SETTINGS => {
+            ui.pip.menu = !menu;
+            Some(Vec::new())
+        }
+        UiAction::Clicked { id } if id == ids::PIP_SETTINGS_DISMISS || id == ids::PIP_QUALITY => {
+            Some(Vec::new())
+        }
+        UiAction::Clicked { id } if id == ids::PIP_STOP => Some(video::stop(ui, store, true)),
+        UiAction::Clicked { id } if id == ids::PIP_REPORT => {
+            Some(vec![Intent::OpenUrl(REPORT.into())])
+        }
         UiAction::Clicked { id } if id == ids::PIP => {
             ui.voice.stage = store.call().map(|call| call.channel);
             ui.voice.card = None;

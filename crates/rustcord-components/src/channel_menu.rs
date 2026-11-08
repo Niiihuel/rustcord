@@ -5,15 +5,14 @@
 //! line over the composer that says the slow mode is on.
 
 use limn::{
-    AlertDialog, Button, ButtonVariant, Color, Component, ControlSize, DropdownMenu,
-    DropdownMenuEntry, DropdownMenuItem, Element, Empty, Icon, IconButton, Markdown, Modal, Point,
-    Popover, PopoverPlacement, ScrollArea, ScrollbarAppearance, Tooltip, TooltipPlacement,
-    TooltipSpec,
+    AlertDialog, Button, ButtonVariant, Component, ControlSize, DropdownMenu, DropdownMenuEntry,
+    DropdownMenuItem, Element, Empty, Icon, IconButton, Markdown, Modal, Point, Popover,
+    PopoverPlacement, ScrollArea, ScrollbarAppearance, Tooltip, TooltipPlacement, TooltipSpec,
 };
 
 use rustcord_i18n::{t, tr};
 
-use crate::{avatar_with_image, gap, icon, line, strong_line, text, Look};
+use crate::{gap, icon, line, strong_line, text, Look};
 
 /// The actions these pieces report. Those that name a channel or a message
 /// are built by whoever answers them.
@@ -99,6 +98,9 @@ pub fn fit_width(entries: &[Entry]) -> f32 {
 pub const BELL_WIDTH: f32 = 280.0;
 /// The pinned messages popout.
 pub const PINS_WIDTH: f32 = 448.0;
+/// Where a pinned card lays its message out: the popout less its padding,
+/// the list's and the card's edges.
+pub const PIN_ROW_WIDTH: f32 = PINS_WIDTH - 2.0 * (6.0 + 6.0 + 1.0);
 /// A confirmation's width.
 pub const CONFIRM_WIDTH: f32 = 425.0;
 
@@ -313,22 +315,12 @@ pub fn more(open: bool, entries: Vec<Entry>, look: &Look) -> Element {
 }
 
 /// A pinned message as the popout shows it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct PinCard {
     pub message: u64,
-    pub author: String,
-    /// The author's name's ink.
-    pub ink: Color,
-    /// Behind the author's initial.
-    pub accent: Color,
-    /// The author's picture, once it arrived.
-    pub image: Option<limn::RasterImage>,
-    /// When it was written, as a person reads it.
-    pub when: String,
-    /// Markdown source.
-    pub content: String,
-    /// The server emoji it names, drawn in place of their tokens.
-    pub pictures: Vec<crate::identity::TextPicture>,
+    /// The message as the conversation draws it, its files and cards
+    /// included, without its actions: [`PIN_ROW_WIDTH`] wide.
+    pub row: Element,
 }
 
 /// Content of the currently opened pins request.
@@ -338,13 +330,17 @@ pub enum PinsContent<'a> {
     Ready(&'a [PinCard]),
 }
 
-/// The header action and its request's content. A denied action explains why
-/// and never exposes the previous content of the popout.
+/// The header action and its request's content, its list `room` high at
+/// most. A denied action explains why and never exposes the previous
+/// content of the popout. `unseen`: a pin the account has not seen yet,
+/// a dot on the pin.
 pub fn pins(
     open: bool,
+    unseen: bool,
     content: PinsContent<'_>,
     can_unpin: bool,
     denied: Option<&str>,
+    room: f32,
     look: &Look,
 ) -> Element {
     let mut control = IconButton::new(ids::PINS, Icon::Pin, look.palette())
@@ -367,6 +363,15 @@ pub fn pins(
             limn::Access::new(limn::Role::Button)
                 .name(t("Mensajes fijados"))
                 .description(reason),
+        );
+    } else if unseen {
+        button = unseen_dot(
+            button.accessible(
+                limn::Access::new(limn::Role::Button)
+                    .name(t("Mensajes fijados"))
+                    .description(t("Hay mensajes fijados nuevos")),
+            ),
+            look,
         );
     }
     if !open || denied.is_some() {
@@ -405,13 +410,20 @@ pub fn pins(
         ])
         .gap(8.0)
         .padding(8.0),
-        PinsContent::Ready([]) => Empty::new(
-            t("Todavía no hay mensajes fijados"),
-            t("Los mensajes que se fijen en esta conversación van a aparecer aquí."),
-            palette,
-        )
-        .icon(Icon::Pin)
-        .render(),
+        // Discord's: its art 94 by 120 in a square of 120, 8 down, and one
+        // line in 16 medium 20 under it, 32 over the bottom.
+        PinsContent::Ready([]) => Element::column(vec![
+            gap(0.0, 8.0),
+            crate::illustration::art(crate::illustration::Art::Pins, 1.0, look).centered_x(),
+            gap(0.0, 20.0),
+            Element::text(t("Todavía no hay mensajes fijados"))
+                .font_family(limn::FontFamily::SansMedium)
+                .font_size(16.0)
+                .foreground(look.text)
+                .center_content()
+                .centered_x(),
+            gap(0.0, 32.0),
+        ]),
         PinsContent::Ready(cards) => ScrollArea::new(
             "pins:list",
             Element::column(
@@ -425,7 +437,7 @@ pub fn pins(
         )
         .appearance(ScrollbarAppearance::overlay().buttons(false))
         .render()
-        .max_height(420.0),
+        .max_height(room),
     };
     let header = Element::row(vec![
         icon(Icon::Pin, look.muted).centered_y(),
@@ -448,29 +460,30 @@ pub fn pins(
         .render()
 }
 
+/// The blurple dot at the bottom right of the header's pin, where its
+/// glyph leaves room, as Discord's.
+fn unseen_dot(button: Element, look: &Look) -> Element {
+    let side = crate::look::HEADER_TOOL.height;
+    let inset = (side - crate::look::HEADER_TOOL.icon_size) / 2.0;
+    let dot = Element::panel(Element::spacer())
+        .size(Some(8.0), Some(8.0))
+        .radius(4.0)
+        .background(look.accent);
+    Element::stack(vec![
+        button,
+        Element::column(vec![
+            Element::spacer().flex(1.0),
+            Element::row(vec![Element::spacer().flex(1.0), dot]),
+        ])
+        .size(Some(side), Some(side))
+        .padding(inset - 1.0),
+    ])
+}
+
 fn pin_card(card: &PinCard, can_unpin: bool, look: &Look) -> Element {
     let palette = look.menu_palette();
-    let text_width = PINS_WIDTH - 12.0 * 2.0 - 40.0 - 12.0 - 36.0;
-    let mut said = Markdown::new(&card.content, look.palette())
-        .width(text_width)
-        .render()
-        .element;
-    crate::text::with_pictures(&mut said, &card.pictures);
-    let body = Element::row(vec![
-        avatar_with_image(&card.author, card.accent, 40.0, card.image.clone()),
-        Element::column(vec![
-            Element::row(vec![
-                strong_line(&card.author, 15.0, card.ink).shrink_to_fit(),
-                line(&card.when, 11.0, look.faint).centered_y(),
-            ])
-            .gap(8.0)
-            .size(None, Some(20.0)),
-            said,
-        ])
-        .gap(2.0)
-        .flex(1.0),
-    ])
-    .gap(12.0);
+    // The row's group gap is the card's room above; the same below.
+    let body = Element::column(vec![card.row.clone(), gap(0.0, 14.0)]);
     let mut tools = vec![
         Element::spacer().flex(1.0),
         Button::new(
@@ -500,7 +513,6 @@ fn pin_card(card: &PinCard, can_unpin: bool, look: &Look) -> Element {
         .reveal_on_hover(format!("pins:card:{}", card.message));
     Element::stack(vec![
         Element::panel(body)
-            .padding(12.0)
             .radius(8.0)
             .background(look.raised)
             .border(look.border, 1.0),
@@ -823,41 +835,36 @@ mod tests {
         let (_, empty) = frame(
             Element::row(vec![
                 Element::spacer().flex(1.0),
-                pins(true, PinsContent::Ready(&[]), true, None, &Look::DARK),
+                pins(
+                    true,
+                    false,
+                    PinsContent::Ready(&[]),
+                    true,
+                    None,
+                    420.0,
+                    &Look::DARK,
+                ),
             ]),
             WINDOW,
         );
         assert!(texts(&empty).contains(&"Todavía no hay mensajes fijados".to_owned()));
+        assert!(empty.commands.iter().any(|command| matches!(command,
+            limn::DrawCommand::RasterImage { rect, image, .. }
+                if image.alt() == "pins" && (rect.width, rect.height) == (94.0, 120.0))));
         let card = PinCard {
             message: 7,
-            author: "Ada".into(),
-            ink: Color::rgb(200, 200, 200),
-            accent: Color::rgb(1, 2, 3),
-            image: None,
-            when: "Hoy a las 10:00".into(),
-            content: "**hola** <:wave:1>".into(),
-            // Its server emoji, as a picture.
-            pictures: vec![crate::identity::TextPicture {
-                token: "<:wave:1>".into(),
-                name: "wave".into(),
-                image: limn::RasterImage::new(
-                    "a".repeat(64),
-                    limn::RasterImageFormat::Png,
-                    3,
-                    std::sync::Arc::from("AAAA"),
-                    "wave",
-                ),
-                playing: false,
-            }],
+            row: line("hola", 14.0, Look::DARK.text),
         };
         let (_, listed) = frame(
             Element::row(vec![
                 Element::spacer().flex(1.0),
                 pins(
                     true,
+                    false,
                     PinsContent::Ready(std::slice::from_ref(&card)),
                     false,
                     None,
+                    420.0,
                     &Look::DARK,
                 ),
             ]),
@@ -870,11 +877,36 @@ mod tests {
             "not allowed here"
         );
         assert!(texts(&listed).contains(&"Mensajes fijados".to_owned()));
-        assert!(!texts(&listed).iter().any(|text| text.contains("<:wave:1>")));
-        assert!(listed.commands.iter().any(|command| matches!(
-            command,
-            limn::DrawCommand::RasterImage { image, .. } if image.alt() == "wave"
-        )));
+        assert!(texts(&listed).contains(&"hola".to_owned()), "its row");
+    }
+
+    #[test]
+    fn the_pin_has_a_dot_while_a_pin_is_unseen() {
+        let dot = |unseen: bool, denied: Option<&str>| {
+            let (_, shown) = frame(
+                Element::row(vec![
+                    Element::spacer().flex(1.0),
+                    pins(
+                        false,
+                        unseen,
+                        PinsContent::Loading,
+                        false,
+                        denied,
+                        420.0,
+                        &Look::DARK,
+                    ),
+                ]),
+                WINDOW,
+            );
+            let accent = Look::DARK.accent;
+            shown.commands.iter().any(|command| {
+                matches!(command, limn::DrawCommand::FillRect { rect, color, .. }
+                    if *color == accent && rect.width == 8.0)
+            })
+        };
+        assert!(dot(true, None));
+        assert!(!dot(false, None));
+        assert!(!dot(true, Some("no")), "a denied pin shows nothing new");
     }
 
     #[test]

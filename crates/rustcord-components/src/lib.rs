@@ -22,6 +22,9 @@ pub mod desktop;
 pub mod glyphs;
 pub mod group;
 pub mod identity;
+pub mod invite;
+// Discord's empty-state illustrations.
+pub mod illustration;
 pub mod inbox;
 pub mod interactions;
 pub mod look;

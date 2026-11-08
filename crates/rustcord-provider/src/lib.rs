@@ -233,6 +233,13 @@ pub enum Command {
     StopStream {
         channel: ChannelId,
     },
+    /// The account's shared screen in `channel` goes on at `quality`: the
+    /// host sends its frames at it from now on, and those watching are told
+    /// what it is. Nothing answers it.
+    SetStreamQuality {
+        channel: ChannelId,
+        quality: StreamQuality,
+    },
     /// Turn the account's camera on or off in its call in `channel`: the
     /// host sends its encoded frames through the [`video::VideoLink`]
     /// while it is on. The account's voice state follows.
@@ -610,10 +617,11 @@ pub enum Command {
         until: Option<Timestamp>,
         reason: Option<String>,
     },
-    /// A new invitation to `server` through `channel`, lasting
+    /// An invitation to `server` through `channel`, lasting
     /// `max_age_secs` (0: it never expires) for `max_uses` (0: no limit);
     /// `temporary` members leave when they disconnect unless given a role.
-    /// Answered by [`Event::InviteCreated`].
+    /// `from` says where it is asked for, and whether the one made before
+    /// may answer. Answered by [`Event::InviteCreated`].
     CreateInvite {
         request: RequestId,
         server: ServerId,
@@ -621,6 +629,7 @@ pub enum Command {
         max_age_secs: u32,
         max_uses: u32,
         temporary: bool,
+        from: InviteFrom,
     },
     /// Add a custom emoji or sticker to `server`. Answered by
     /// [`Event::ServerChanged`] and then [`Event::Created`].
@@ -1082,6 +1091,48 @@ pub enum Command {
         owner: UserId,
         jpeg: Vec<u8>,
     },
+    /// The account saw the pins of `channel` up to its newest, with
+    /// [`Capabilities::ack_pins`]: the provider keeps it for its other
+    /// devices. Nothing answers it and nobody waits on its failure.
+    AckPins {
+        channel: ChannelId,
+    },
+}
+
+/// Where in the interface an invitation is asked for. A provider may tell
+/// its service, as its own client does with each invitation it makes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InvitePlace {
+    /// The button beside the server's name.
+    HeaderButton,
+    /// The menu under the server's name.
+    ServerMenu,
+    /// The server's menu on the rail.
+    RailMenu,
+    /// A channel's button in the list.
+    ChannelRow,
+    /// A channel's menu in the list.
+    ChannelMenu,
+    /// The bar of a voice channel's call.
+    CallBar,
+    /// The invitations of a server's or a channel's settings.
+    Settings,
+}
+
+/// How an invitation is asked for ([`Command::CreateInvite`]).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InviteFrom {
+    /// The invitation modal opening at `place`. `previous` is the code made
+    /// for this channel before with the same options: the provider answers
+    /// with it while it still works, instead of making another.
+    Opening {
+        place: InvitePlace,
+        previous: Option<String>,
+    },
+    /// The modal's «Generar un nuevo enlace» at `place`: always a new one.
+    Generating(InvitePlace),
+    /// A person's menu: a link of its own, for one person, sent to them.
+    Person,
 }
 
 /// Changes to a server; `None` leaves a field as it is.
@@ -1261,6 +1312,13 @@ pub struct Snapshot {
     /// manufacture an ID by adding to the cursor when this metadata is absent.
     #[serde(default)]
     pub first_unread: Vec<(ChannelId, MessageId)>,
+    /// When the newest pin of each channel that has pins was made.
+    #[serde(default)]
+    pub last_pins: Vec<(ChannelId, Timestamp)>,
+    /// How far the account has seen each channel's pins, as the provider
+    /// keeps it: a newer pin is unseen.
+    #[serde(default)]
+    pub pins_seen: Vec<(ChannelId, Timestamp)>,
     /// Friends, requests and blocks, one per person. `None` when the provider
     /// did not report them: that is not an empty list.
     #[serde(default)]
@@ -1673,6 +1731,7 @@ impl Failure {
             }
             Command::StartStream { channel, .. }
             | Command::StopStream { channel }
+            | Command::SetStreamQuality { channel, .. }
             | Command::PauseStream { channel, .. } => Self::Share { channel: *channel },
             Command::SetCamera { channel, .. } => Self::Camera { channel: *channel },
             Command::SetStatus(_) | Command::SetCustomStatus { .. } => Self::Status,
@@ -1942,6 +2001,7 @@ impl Failure {
             | Command::UnwatchMemberList
             | Command::LoadStreamPreview { .. }
             | Command::UploadStreamPreview { .. }
+            | Command::AckPins { .. }
             | Command::SetLocalActivity(_)
             | Command::LoadDetectableGames
             | Command::VoiceVerificationCode { .. }
@@ -2258,6 +2318,18 @@ pub enum Event {
         request: RequestId,
         channel: ChannelId,
         messages: Vec<Message>,
+    },
+    /// The newest pin of `channel` changed: when it was made, `None` when
+    /// no pin is left.
+    PinsChanged {
+        channel: ChannelId,
+        last_pin: Option<Timestamp>,
+    },
+    /// The account saw the pins of `channel` up to the one made at `at`,
+    /// elsewhere (another of its devices).
+    PinsSeen {
+        channel: ChannelId,
+        at: Timestamp,
     },
     /// The exact anchor and its neighbors, oldest first. This is not a
     /// history page and carries no claim of continuity or latest position.
@@ -2989,6 +3061,8 @@ pub struct Capabilities {
     /// The account's own stream gets a picture others see before watching
     /// it ([`Command::UploadStreamPreview`]).
     pub upload_stream_previews: bool,
+    /// Pins seen are kept by the provider too ([`Command::AckPins`]).
+    pub ack_pins: bool,
 }
 
 impl Capabilities {

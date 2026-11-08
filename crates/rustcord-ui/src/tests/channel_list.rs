@@ -1529,6 +1529,76 @@ fn a_pinned_message_shows_in_the_popout_once_the_simulation_answers_and_can_be_u
 }
 
 #[test]
+fn pinned_cards_draw_their_files_and_the_pin_has_a_dot_until_they_open() {
+    let mut host = Host::new();
+    let taller = host.cl_server("Taller de Rust");
+    let general = host.cl_named(taller, "general");
+    host.click(&format!("channel:{general}"));
+    // The simulation starts with its pins unseen.
+    assert!(host.store.read(general).unseen_pins());
+    assert_eq!(
+        host.cl_access(ids::PINS).description.as_deref(),
+        Some("Hay mensajes fijados nuevos")
+    );
+    let from = host.sent.len();
+    host.click(ids::PINS);
+    // The provider keeps them seen too, once.
+    let acks = |host: &Host| {
+        host.sent
+            .iter()
+            .filter(
+                |command| matches!(command, Command::AckPins { channel } if *channel == general),
+            )
+            .count()
+    };
+    assert_eq!(acks(&host), 1);
+    host.cl_answer(from);
+    assert!(!host.store.read(general).unseen_pins(), "opening sees them");
+    assert_eq!(host.cl_access(ids::PINS).description, None);
+    // Closed and opened again: nothing new to tell.
+    host.click(ids::PINS);
+    let again = host.sent.len();
+    host.click(ids::PINS);
+    host.cl_answer(again);
+    assert_eq!(acks(&host), 1, "nothing new to tell");
+    // Each card is the message as the conversation draws it: the videos
+    // with their names, the photos' text over them (the list scrolls to
+    // them), and their authors' names.
+    let pins = host.store.pins(general).unwrap().to_vec();
+    let said = host.cl_said();
+    for name in ["demo.mp4", "demo.webm", "Fotos de la costa"] {
+        assert!(said.contains(name), "{name} in {said}");
+    }
+    let author = host.store.display_name(pins[0].author, Some(taller));
+    assert!(said.contains(&author), "{author}");
+    // Their pictures are asked for while the popout is open.
+    host.frame();
+    let wanted = crate::wanted_images(&host.ui, &host.store, &host.tree);
+    let photos = pins
+        .iter()
+        .find(|pin| {
+            pin.attachments
+                .iter()
+                .any(|file| file.filename == "costa.jpg")
+        })
+        .unwrap();
+    for file in &photos.attachments {
+        let preview = file.preview.as_ref().unwrap();
+        assert!(
+            wanted.contains(preview) || wanted.contains(&preview.obscured()),
+            "{} is asked for",
+            file.filename
+        );
+    }
+    // Someone pins anew while it is open: seen at once.
+    host.event(Event::PinsChanged {
+        channel: general,
+        last_pin: Some(rustcord_model::Timestamp(i64::MAX)),
+    });
+    assert!(!host.store.read(general).unseen_pins());
+}
+
+#[test]
 fn the_popout_says_when_nothing_is_pinned_and_goes_to_a_pinned_message() {
     let mut host = Host::new();
     let lab = host.cl_server("Laboratorio limn");

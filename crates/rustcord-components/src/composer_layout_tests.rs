@@ -144,7 +144,8 @@ fn assert_first_line_aligned(frame: &Frame, text: &str, metrics: FontMetrics) {
 fn one_line_draft_and_placeholder_share_the_action_center_in_a_compact_card() {
     for metrics in metrics() {
         for look in [&Look::DARK, &Look::LIGHT] {
-            for width in [320.0, 600.0, 1100.0] {
+            // 310: narrow, with the emoji alone; the others with GIF and stickers.
+            for width in [310.0, 600.0, 1100.0] {
                 for draft in ["", "Hola"] {
                     for reply in [false, true] {
                         let mut view = view(width, draft);

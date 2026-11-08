@@ -168,6 +168,36 @@ async fn passive_updates_and_a_whole_server_read() {
 }
 
 #[tokio::test]
+async fn pins_seen_go_to_their_route_and_answer_nothing() {
+    let mut app = Harness::new().await;
+    guild_channel(&mut app, VIEW | HISTORY).await;
+    app.running
+        .commands
+        .send(Command::AckPins {
+            channel: ChannelId(30),
+        })
+        .await
+        .unwrap();
+    let (request, reply) = app.pending().await;
+    assert!(request.starts_with("POST /api/v10/channels/30/pins/ack "));
+    reply.send(response(204, "")).unwrap();
+    // A channel it cannot read is never asked about.
+    app.running
+        .commands
+        .send(Command::AckPins {
+            channel: ChannelId(31),
+        })
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), app.pending())
+            .await
+            .is_err(),
+        "no request"
+    );
+}
+
+#[tokio::test]
 async fn a_search_waits_for_its_index_then_pages_with_its_authors() {
     let mut app = Harness::new().await;
     guild_channel(&mut app, VIEW | HISTORY).await;

@@ -257,6 +257,7 @@ pub(crate) fn is_read(command: &Command) -> bool {
         Command::MarkRead { .. }
             | Command::MarkUnread { .. }
             | Command::MarkServerRead { .. }
+            | Command::AckPins { .. }
             | Command::SearchMessages { .. }
     )
 }
@@ -264,7 +265,9 @@ pub(crate) fn is_read(command: &Command) -> bool {
 /// An acknowledgement, which the newest for its channel replaces in the lane.
 pub(crate) fn ack_channel(command: &Command) -> Option<ChannelId> {
     match command {
-        Command::MarkRead { channel, .. } | Command::MarkUnread { channel, .. } => Some(*channel),
+        Command::MarkRead { channel, .. }
+        | Command::MarkUnread { channel, .. }
+        | Command::AckPins { channel } => Some(*channel),
         _ => None,
     }
 }
@@ -305,6 +308,9 @@ pub(crate) fn allowed(snapshot: &Snapshot, command: &Command) -> Result<(), Logi
                 .then_some(())
                 .ok_or_else(|| LoginError::new(es("Ya no estás en ese servidor.")))
         }
+        Command::AckPins { channel } => readable(snapshot, *channel)
+            .then_some(())
+            .ok_or_else(unavailable),
         Command::SearchMessages { search, offset, .. } => searchable(snapshot, search, *offset),
         _ => Err(LoginError::new(es(
             "Esta acción todavía no está disponible.",

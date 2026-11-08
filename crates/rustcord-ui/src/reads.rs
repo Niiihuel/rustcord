@@ -125,6 +125,7 @@ pub(crate) fn modal_obscured(ui: &Ui) -> bool {
         || ui.attachment_viewer.is_some()
         || ui.document_viewer.is_some()
         || crate::invitations::visible(ui)
+        || crate::invite_modal::visible(ui)
         || crate::onboarding::visible(ui)
         || crate::events::visible(ui)
         || crate::threads::covering(ui)

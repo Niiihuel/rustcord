@@ -306,6 +306,8 @@ impl Provider for MockProvider {
                 stream_previews: true,
                 // Taken and dropped; see `UploadStreamPreview`.
                 upload_stream_previews: true,
+                // Taken and dropped: what was seen stays with the account.
+                ack_pins: true,
                 create_groups: true,
                 group_members: true,
                 close_direct: true,
@@ -973,8 +975,11 @@ impl Session {
             // each session, and change as people come and go.
             Command::WatchServer(_) => {}
             // Nobody else sees a simulated stream,
-            // so its picture goes nowhere; that it was sent is enough.
-            Command::UploadStreamPreview { .. } => {}
+            // so its picture goes nowhere; that it was sent is enough. Nor its
+            // quality.
+            Command::UploadStreamPreview { .. }
+            | Command::SetStreamQuality { .. }
+            | Command::AckPins { .. } => {}
             Command::MarkUnread {
                 account,
                 channel,
@@ -2159,6 +2164,7 @@ impl World {
         let mut read_states = Vec::new();
         let mut read_versions = Vec::new();
         let mut first_unread = Vec::new();
+        let mut last_pins = Vec::new();
         for (channel, sim) in &self.sims {
             let total = sim.generated + sim.extra.len() as u64;
             // A closed conversation keeps its history but is not listed;
@@ -2190,8 +2196,10 @@ impl World {
             if let Some(first) = first {
                 first_unread.push((*channel, first));
             }
+            last_pins.extend(self.last_pin(*channel).map(|at| (*channel, at)));
         }
         last_messages.sort();
+        last_pins.sort();
         read_states.sort_by_key(|state| state.0);
         read_versions.sort_by_key(|state| state.0);
         first_unread.sort_by_key(|state| state.0);
@@ -2218,6 +2226,9 @@ impl World {
             read_states,
             read_versions,
             first_unread,
+            // Nothing is seen at the start: the pins' dot shows where any are.
+            last_pins,
+            pins_seen: Vec::new(),
             relationships: Some(self.relationships.clone()),
         }
     }
@@ -2796,6 +2807,13 @@ impl World {
             .collect()
     }
 
+    /// When the newest pin of `channel` was made.
+    // shortcut: a pin is dated by its message, not by when it was pinned;
+    // keep the moment of each pin if the simulation must light the dot for an old one.
+    fn last_pin(&self, channel: ChannelId) -> Option<Timestamp> {
+        self.pins(channel).first().map(|message| message.timestamp)
+    }
+
     /// Pin or unpin the message `id` of `channel`: in a server, only with
     /// permission to pin and to read the history, as the official client
     /// asks; in a direct conversation, anyone.
@@ -2820,9 +2838,15 @@ impl World {
                 max = PINS_MAX
             ));
         }
+        let before = self.last_pin(channel);
         message.pinned = pinned;
         self.store(channel, message.clone());
-        Ok(vec![Event::MessageUpdated(message)])
+        let mut events = vec![Event::MessageUpdated(message)];
+        let last_pin = self.last_pin(channel);
+        if last_pin != before {
+            events.push(Event::PinsChanged { channel, last_pin });
+        }
+        Ok(events)
     }
 
     fn store(&mut self, channel: ChannelId, message: Message) {
@@ -3067,9 +3091,19 @@ fn made_pins(seed: u64, channel: ChannelId, name: &str, generated: u64) -> Vec<u
             .collect(),
         "general" | "ayuda" | "limn-core" | "componentes" | "charla" | "galería" => {
             let mut rng = mix(&[seed, channel.0, 0x50_49_4E]);
-            (0..2 + rng.below(2))
+            let mut made: Vec<u64> = (0..2 + rng.below(2))
                 .map(|_| rng.below(generated))
-                .collect()
+                .collect();
+            // #general's photos and video (`showcase`) too, for the
+            // popout's pictures.
+            if name == "general" {
+                made.extend(
+                    [17, 5]
+                        .into_iter()
+                        .filter_map(|back| generated.checked_sub(back)),
+                );
+            }
+            made
         }
         _ => Vec::new(),
     }

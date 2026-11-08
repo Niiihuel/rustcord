@@ -218,6 +218,8 @@ fn app(ui: &Ui, store: &Store, context: &ViewContext, look: &rustcord_components
     let root = crate::events::overlay(ui, store, root, look, context);
     let root = crate::navigation::overlay(ui, root, look);
     let root = crate::account::overlay(ui, store, root, look, context);
+    // Over the settings that open it, under the verification a link may need.
+    let root = crate::invite_modal::overlay(ui, store, root, look, context);
     // An app's modal, under the verification it may need.
     let root = crate::interactions::overlay(ui, store, root, look, context);
     let root = crate::challenges::overlay(ui, store, root, look);
@@ -704,11 +706,7 @@ fn conversation(
         ));
     }
     tools.extend(channel_list::header_tools(
-        ui,
-        store,
-        channel,
-        look,
-        context.wall,
+        ui, store, channel, look, context,
     ));
     tools.extend(crate::conversations::header_tool(store, channel, look));
     // Private calls: to call, answer or join.

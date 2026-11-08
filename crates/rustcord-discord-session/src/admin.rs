@@ -25,15 +25,16 @@ use rustcord_model::{
     Channel, ChannelId, ChannelKind, ExpressionId, Member, OverwriteTarget, Permissions, Rgb, Role,
     RoleId, Server, ServerId, UserId,
 };
-use rustcord_provider::{Command, Event, Snapshot, VoiceModeration};
+use rustcord_provider::{Command, Event, InviteFrom, Snapshot, VoiceModeration};
 use serde_json::{json, Value};
 
 use crate::{bootstrap, messages::wall_now, wire, LoginError};
 
 /// The longest timeout Discord allows: 28 days.
 pub(crate) const TIMEOUT_MAX_MS: i64 = 28 * 24 * 60 * 60 * 1000;
-/// The longest an invitation lasts (seven days) and its most uses.
-pub(crate) const INVITE_MAX_AGE: u32 = 7 * 24 * 60 * 60;
+/// The longest an invitation lasts (30 days, as Discord's own client offers
+/// to an account) and its most uses.
+pub(crate) const INVITE_MAX_AGE: u32 = 30 * 24 * 60 * 60;
 pub(crate) const INVITE_MAX_USES: u32 = 100;
 /// The most characters of an audit log reason, as Discord takes it.
 pub(crate) const REASON_MAX: usize = 512;
@@ -696,8 +697,19 @@ pub(crate) fn allowed(snapshot: &Snapshot, command: &Command) -> Result<(), Logi
             channel,
             max_age_secs,
             max_uses,
+            from,
             ..
         } => {
+            // The code handed back goes in the body: only a well-formed one.
+            if let InviteFrom::Opening {
+                previous: Some(code),
+                ..
+            } = from
+            {
+                if !valid_code(code) {
+                    return Err(LoginError::new(es("Esa invitación no es válida.")));
+                }
+            }
             let found = standing.channel(*channel)?;
             if found.kind == ChannelKind::Category {
                 return Err(LoginError::new(es(
@@ -707,7 +719,7 @@ pub(crate) fn allowed(snapshot: &Snapshot, command: &Command) -> Result<(), Logi
             holds(found, Permissions::CREATE_INVITE)?;
             if *max_age_secs > INVITE_MAX_AGE || *max_uses > INVITE_MAX_USES {
                 return Err(LoginError::new(es(
-                    "Una invitación dura hasta 7 días y sirve hasta 100 veces.",
+                    "Una invitación dura hasta 30 días y sirve hasta 100 veces.",
                 )));
             }
             Ok(())

@@ -90,6 +90,9 @@ pub mod ids {
     /// The emoji button; every action of its picker starts with it too.
     pub const EMOJI: &str = "composer:emoji";
     pub const EMOJI_DISMISS: &str = "composer:emoji:dismiss";
+    /// The GIF and sticker buttons beside it: its picker, on their tab.
+    pub const GIF: &str = "composer:gif";
+    pub const STICKER: &str = "composer:sticker";
     /// Prefix of a chosen emoji.
     pub const EMOJI_PICK: &str = "composer:emoji=";
     pub const PLUS: &str = "composer:plus";
@@ -119,6 +122,11 @@ const PLUS_WIDTH: f32 = 60.0;
 const EMOJI_WIDTH: f32 = 52.0;
 /// An icon button's side.
 const CONTROL: f32 = 32.0;
+/// Between the GIF, sticker and emoji buttons, which show while the
+/// editor keeps this much room beside them (a call's chat at its usual
+/// width does).
+const TOOL_GAP: f32 = 8.0;
+const EDITOR_ROOM: f32 = 130.0;
 /// A person's face among the completions.
 const FACE: f32 = 24.0;
 /// limn's composer: its padding, between its controls and the editor, and
@@ -168,6 +176,35 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     } else {
         CornerRadii::same(8.0)
     };
+    // Discord's GIF and sticker before the emoji, 8 apart; its gift and
+    // apps are not here.
+    let tool = |id: &str, glyph: &'static str, hint: &str| {
+        IconButton::new(id, Icon::Custom(glyph), palette)
+            .variant(ButtonVariant::Ghost)
+            .tooltip(hint)
+            .accessibility_label(hint)
+            .render()
+    };
+    let emoji_column = column(emoji_button, EMOJI_WIDTH, false);
+    // Where nothing can be written, or they would leave the editor too
+    // little room, only the emoji.
+    let tools = 2.0 * (CONTROL + TOOL_GAP);
+    let roomy = view.width - PLUS_WIDTH - EMOJI_WIDTH - tools >= EDITOR_ROOM;
+    let trailing = if enabled && roomy {
+        Element::row(vec![
+            tool(ids::GIF, crate::glyphs::GIF, t("Abrir selector de GIF")),
+            gap(TOOL_GAP, 0.0),
+            tool(
+                ids::STICKER,
+                crate::glyphs::STICKER,
+                t("Abrir selector de stickers"),
+            ),
+            gap(TOOL_GAP, 0.0),
+            emoji_column,
+        ])
+    } else {
+        emoji_column
+    };
     // limn's composer: the editor grows between «+» and the emoji, which
     // stay beside its first line; a long reason not to write wraps.
     let mut card = Composer::new(
@@ -180,10 +217,7 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
             ..palette
         },
     )
-    .pill_controls(
-        column(plus, PLUS_WIDTH, true),
-        column(emoji_button, EMOJI_WIDTH, false),
-    )
+    .pill_controls(column(plus, PLUS_WIDTH, true), trailing)
     .inline_controls(true)
     .auto_grow(MIN_HEIGHT - 2.0 * CARD_PADDING, 300.0 - 2.0 * CARD_PADDING)
     .editor_padding(TEXT_PADDING)
@@ -517,6 +551,37 @@ mod tests {
         let ids = controls(&closed);
         assert!(
             !ids.contains(&"composer:1".to_owned()) && !ids.contains(&ids::PLUS.to_owned()),
+            "{ids:?}"
+        );
+    }
+
+    #[test]
+    fn discords_gif_and_sticker_buttons_come_before_the_emoji_where_there_is_room() {
+        let wide = laid(view(None));
+        let at = |id: &str| {
+            wide.regions
+                .iter()
+                .find(|region| region.id == id)
+                .unwrap_or_else(|| panic!("{id}"))
+                .rect
+                .x
+        };
+        assert!(at(ids::GIF) < at(ids::STICKER) && at(ids::STICKER) < at(ids::EMOJI));
+        // A call's chat at its usual width keeps them; at its narrowest,
+        // only the emoji.
+        let call = laid(ComposerView {
+            width: 360.0,
+            ..view(None)
+        });
+        assert!(controls(&call).contains(&ids::GIF.to_owned()));
+        let narrow = laid(ComposerView {
+            width: 298.0,
+            ..view(None)
+        });
+        let ids = controls(&narrow);
+        assert!(ids.contains(&ids::EMOJI.to_owned()), "{ids:?}");
+        assert!(
+            !ids.contains(&ids::GIF.to_owned()) && !ids.contains(&ids::STICKER.to_owned()),
             "{ids:?}"
         );
     }

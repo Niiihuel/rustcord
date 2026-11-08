@@ -1,8 +1,8 @@
 //! What the settings of a channel show, from their state and the store.
 
 use limn::{
-    Button, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element, Empty,
-    FontFamily, Icon, Modal, TextArea, TextField, TextSpan,
+    Button, ButtonVariant, Color, Component, ComponentPalette, ControlSize, Element, FontFamily,
+    Icon, Modal, TextArea, TextField, TextSpan,
 };
 use rustcord_components::channel_settings::{
     self as own, AccessLine, AddChoice, FieldSelect, InviteRow, PrivateCard, TargetItem,
@@ -749,16 +749,14 @@ impl View<'_> {
                     })
                     .collect();
                 if rows.is_empty() {
-                    children.push(
-                        Empty::new(
-                            t("No hay invitaciones"),
-                            t("Nadie creó un enlace a este canal todavía."),
-                            look.palette(),
-                        )
-                        .icon(Icon::Users)
-                        .framed()
-                        .render(),
-                    );
+                    // Discord's: its art 20 over the words.
+                    children.push(rustcord_components::illustration::slate(
+                        rustcord_components::illustration::Art::Invites,
+                        20.0,
+                        t("No hay invitaciones"),
+                        t("Nadie creó un enlace a este canal todavía."),
+                        look,
+                    ));
                 } else {
                     children.push(own::invite_table(&rows, look));
                 }

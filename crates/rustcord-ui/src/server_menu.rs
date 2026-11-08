@@ -22,13 +22,12 @@ use rustcord_model::{
     ChannelId, ChannelKind, NotificationChange, Overwrite, OverwriteTarget, Permissions, Rgb,
     RoleId, ServerId, Timestamp, UserId,
 };
-use rustcord_provider::{Command, Created, RequestId, ServerEdit};
-use rustcord_state::{Applied, Permit, ServerAbilities, Store};
+use rustcord_provider::{Command, Created, InvitePlace, RequestId, ServerEdit};
+use rustcord_state::{Permit, ServerAbilities, Store};
 
 pub use rustcord_components::server_menu::NotifyLevel;
 
-use crate::person_menu::INVITE_AGE_SECS;
-use crate::server_settings::advanced::{invite_channels, invite_link};
+use crate::server_settings::advanced::invite_channels;
 use crate::{open, open_server, Intent, Ui, ViewContext};
 
 pub(crate) const TOGGLE: &str = ids::TOGGLE;
@@ -119,8 +118,6 @@ enum Pending {
     },
     /// Give the server this color, and open it.
     Server { accent: Rgb },
-    /// Copy its invitation's link.
-    Invite,
 }
 
 /// The time on this machine's clock, for when a mute ends.
@@ -213,12 +210,15 @@ pub(crate) fn clicked(ui: &mut Ui, store: &mut Store, id: &str, now: Instant) ->
         };
         return change_notify_for(ui, store, server, change, now);
     }
-    if let Some(server) = number("sm:invite:") {
-        let server = ServerId(server);
-        let Some(channel) = invite_channels(store, server).first().copied() else {
-            return Vec::new();
-        };
-        return invite(ui, store, server, channel, now);
+    // Discord's «Invita a tus amigos», from where it was asked for.
+    for (prefix, place) in [
+        ("sm:invite:", InvitePlace::ServerMenu),
+        ("sm:invite-rail:", InvitePlace::RailMenu),
+        ("sm:invite-button:", InvitePlace::HeaderButton),
+    ] {
+        if let Some(server) = number(prefix) {
+            return crate::invite_modal::open_server(ui, store, ServerId(server), place, now);
+        }
     }
     if let Some(server) = number("sm:profile:") {
         let server = ServerId(server);
@@ -579,39 +579,6 @@ fn save_nick(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     })]
 }
 
-/// An invitation to `channel` of `server`, from a server's menu or the call's
-/// bar: its link is copied once made.
-pub(crate) fn invite(
-    ui: &mut Ui,
-    store: &Store,
-    server: ServerId,
-    channel: ChannelId,
-    now: Instant,
-) -> Vec<Intent> {
-    let Some(abilities) = store.server_abilities(server) else {
-        return Vec::new();
-    };
-    if let Some(reason) = abilities.create_invites.reason() {
-        ui.notify(
-            t("No se creó la invitación"),
-            Some(reason.into()),
-            true,
-            now,
-        );
-        return Vec::new();
-    }
-    let request = ui.fresh_request();
-    ui.server_menu.pending.insert(request, Pending::Invite);
-    vec![Intent::Command(Command::CreateInvite {
-        request,
-        server,
-        channel,
-        max_age_secs: INVITE_AGE_SECS,
-        max_uses: 0,
-        temporary: false,
-    })]
-}
-
 fn create_server(ui: &mut Ui, store: &Store) -> Vec<Intent> {
     if !store.create_server().allowed() {
         return Vec::new();
@@ -670,24 +637,6 @@ fn change_notify_for(
         key: NOTIFY_SETTING.into(),
         value: kept(ui),
     }]
-}
-
-/// The link of an invitation made from a server's menu is copied once made.
-pub(crate) fn on_invite(
-    ui: &mut Ui,
-    store: &Store,
-    applied: &Applied,
-    now: Instant,
-) -> Vec<Intent> {
-    let Applied::InviteCreated { request, code, .. } = applied else {
-        return Vec::new();
-    };
-    if !matches!(ui.server_menu.pending.get(request), Some(Pending::Invite)) {
-        return Vec::new();
-    }
-    ui.server_menu.pending.remove(request);
-    ui.notify(t("Enlace de invitación copiado"), None, false, now);
-    vec![Intent::Copy(invite_link(store, code))]
 }
 
 /// Something asked for here was made: let who was chosen see it, and open it.
@@ -800,7 +749,8 @@ pub(crate) fn restore(ui: &mut Ui, kept: Option<String>) {
         .collect();
 }
 
-/// The bar at the top of the column with the server's menu on it.
+/// The bar at the top of the column with the server's menu on it, and
+/// Discord's person with a plus beside the name for whoever may invite.
 pub(crate) fn header(ui: &Ui, store: &Store, server: ServerId, look: &Look) -> Element {
     let name = store
         .server(server)
@@ -808,7 +758,13 @@ pub(crate) fn header(ui: &Ui, store: &Store, server: ServerId, look: &Look) -> E
     let open = ui.server_menu.open;
     let entries = grouped(header_groups(ui, store, server));
     let name = parts::menu(sidebar::server_name(&name, open, look), entries, open, look);
-    sidebar::header_bar(name, look)
+    let invites = store
+        .server_abilities(server)
+        .is_some_and(|abilities| abilities.create_invites.allowed())
+        && crate::invite_modal::channel_for(ui, store, server).is_some();
+    let invite =
+        invites.then(|| sidebar::invite_button(format!("sm:invite-button:{server}"), look));
+    sidebar::header_bar_with(name, invite, look)
 }
 
 /// The entries of the menu under `server`'s name, in Discord's groups and
@@ -999,8 +955,8 @@ pub(crate) fn server_groups(
     if abilities.create_invites.allowed() && !invite_channels(store, server).is_empty() {
         reads.push(
             act(
-                format!("sm:invite:{server}"),
-                t("Invitar a personas"),
+                format!("sm:invite-rail:{server}"),
+                t("Invitar al servidor"),
                 Some(Icon::Invite),
             )
             .into(),

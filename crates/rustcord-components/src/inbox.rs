@@ -653,8 +653,9 @@ fn who(head: &Head, look: &Look) -> Element {
             .font_family(FontFamily::SansSemibold)
             .font_size(16.0)
             .foreground(look.text)
-            .shrink_to_fit()
-            .centered_y(),
+            // On the centering wrapper, which is what the row sizes.
+            .centered_y()
+            .shrink_to_fit(),
     );
     if head.mentions > 0 {
         name.push(gap(8.0, 0.0));
@@ -703,33 +704,72 @@ fn bell_menu(channel: u64, bell: Bell, look: &Look) -> Element {
 }
 
 /// A message in a card, with «Ir» at its top end while the pointer is over
-/// it.
-pub fn jumpable(row: Element, channel: u64, message: u64, look: &Look) -> Element {
+/// it: 24 high, 8 on either side of the word, 8 in from the end and 8 into
+/// Discord's message, which starts 2 over the text the row keeps `above`.
+pub fn jumpable(row: Element, above: f32, channel: u64, message: u64, look: &Look) -> Element {
     let jump = Element::clickable(
         ids::jump(channel, message),
-        Element::panel(
+        Element::row(vec![
+            gap(8.0, 0.0),
             Element::text(t("Ir"))
                 .font_family(FontFamily::SansMedium)
                 .font_size(12.0)
-                .foreground(look.text),
-        )
-        .padding(4.0),
+                .foreground(look.text)
+                .centered_y(),
+            gap(8.0, 0.0),
+        ]),
     )
+    .size(None, Some(24.0))
     .radius(4.0)
     .background(look.card)
     .border(SUBTLE, 1.0)
     .hover_background(look.raised)
     .accessibility_label(t("Ir al mensaje"))
     .reveal_on_hover(format!("inbox:msg:{message}:jump"));
-    Element::stack(vec![
+    // In a row, so the stack keeps the message's width and not the card's.
+    Element::row(vec![Element::stack(vec![
         row,
         Element::column(vec![
-            gap(0.0, 8.0),
+            gap(0.0, above + 6.0),
             Element::row(vec![Element::spacer().flex(1.0), jump, gap(8.0, 0.0)]),
             Element::spacer().flex(1.0),
         ]),
     ])
-    .hover_region()
+    .hover_region()])
+}
+
+/// A day's divider in a card, as Discord's: a hairline 16 in from the
+/// card's sides and the day in a pill over its middle, 12 under what is
+/// above it.
+pub fn day(label: String, look: &Look) -> Element {
+    let pill = Element::row(vec![
+        gap(4.0, 0.0),
+        Element::text(label)
+            .font_family(FontFamily::SansMedium)
+            .font_size(12.0)
+            .foreground(look.muted)
+            .centered_y(),
+        gap(4.0, 0.0),
+    ])
+    .size(None, Some(16.0))
+    .radius(8.0)
+    .background(look.canvas);
+    Element::column(vec![
+        gap(0.0, 12.0),
+        Element::row(vec![
+            gap(16.0, 0.0),
+            Element::stack(vec![
+                Element::panel(Element::spacer())
+                    .size(None, Some(1.0))
+                    .background(SUBTLE)
+                    .centered_y(),
+                pill.centered_x(),
+            ])
+            .flex(1.0),
+            gap(16.0, 0.0),
+        ])
+        .size(None, Some(16.0)),
+    ])
 }
 
 /// What a tab with nothing in it says: its glyph in a circle, a title and
@@ -996,6 +1036,45 @@ mod tests {
     }
 
     #[test]
+    fn a_long_name_ends_in_an_ellipsis_before_the_cards_tools() {
+        let look = Look::ONYX;
+        let name = "Joako, drex, Yuki, Nini~ (Rat), 24nvto, Deity, Juansi, Joako, Ana";
+        let group = Head {
+            glyph: None,
+            name: name.into(),
+            mentions: 0,
+            path: "9 miembros".into(),
+            ..head(7)
+        };
+        let card = card(
+            &group,
+            Tools::Unread {
+                bell: None,
+                folded: true,
+                local: false,
+            },
+            Body::Folded,
+            &look,
+        );
+        let (_, laid) = frame(card, Size::new(464.0, 200.0));
+        let read = region(&laid, "inbox:read:7");
+        let (text, position) = laid
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                limn::DrawCommand::Text { text, position, .. } if text.starts_with("Joako") => {
+                    Some((text.clone(), *position))
+                }
+                _ => None,
+            })
+            .expect("the name is painted");
+        assert!(text.ends_with('…'), "{text}");
+        // 7 px a character, as the test measures them.
+        let end = position.x + text.chars().count() as f32 * 7.0;
+        assert!(end <= read.x - 8.0, "{end} reaches {read:?}");
+    }
+
+    #[test]
     fn mention_and_reminder_cards_go_to_their_message() {
         let look = Look::ONYX;
         let message = || Element::text("mira esto").size(None, Some(44.0));
@@ -1034,11 +1113,46 @@ mod tests {
     #[test]
     fn a_jumpable_message_offers_ir_in_its_corner() {
         let look = Look::ONYX;
-        let row = jumpable(Element::text("hola").size(None, Some(48.0)), 7, 70, &look);
-        let (_, laid) = frame(row, Size::new(446.0, 48.0));
+        // A group's first message, 16 under the one above, in a card 16
+        // wider: «Ir» 8 in from the message's end, 6 under its name, 24
+        // high and 8 on either side of the word.
+        let row = jumpable(
+            Element::text("hola").size(Some(446.0), Some(64.0)),
+            16.0,
+            7,
+            70,
+            &look,
+        );
+        let (_, laid) = frame(Element::column(vec![row]), Size::new(462.0, 64.0));
         let jump = region(&laid, "inbox:jump:7:70");
         assert!((jump.x + jump.width - 438.0).abs() < 0.5, "{jump:?}");
-        assert_eq!(jump.y, 8.0);
+        assert_eq!((jump.y, jump.height, jump.width), (22.0, 24.0, 30.0));
+    }
+
+    #[test]
+    fn a_day_is_a_pill_over_a_hairline_16_in_from_the_card() {
+        let look = Look::ONYX;
+        let (_, laid) = frame(day("3 de agosto".into(), &look), Size::new(462.0, 28.0));
+        let fills: Vec<limn::Rect> = laid
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                limn::DrawCommand::FillRect { rect, .. } => Some(*rect),
+                _ => None,
+            })
+            .collect();
+        let line = fills
+            .iter()
+            .find(|rect| rect.height == 1.0)
+            .expect("a line");
+        assert_eq!((line.x, line.width, line.y), (16.0, 430.0, 19.5));
+        let pill = fills
+            .iter()
+            .find(|rect| rect.height == 16.0)
+            .expect("a pill");
+        // 11 characters of 7 px, 4 on either side, in the middle.
+        assert_eq!((pill.width, pill.y), (85.0, 12.0));
+        assert!((pill.x + pill.width / 2.0 - 231.0).abs() < 0.5, "{pill:?}");
     }
 
     #[test]

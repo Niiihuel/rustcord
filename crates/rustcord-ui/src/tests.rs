@@ -1191,6 +1191,7 @@ mod interactions;
 mod identity;
 mod invitation_cards;
 mod invitations;
+mod invite_modal;
 mod layout;
 mod media;
 mod messages;

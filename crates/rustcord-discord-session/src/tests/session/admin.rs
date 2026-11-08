@@ -9,8 +9,8 @@ use rustcord_model::{
     OverwriteTarget, Permissions, RoleId, ServerId, StickerId, UserId, WebhookId,
 };
 use rustcord_provider::{
-    Created, ExpressionImage, ExpressionKind, Failure, FavoriteGif, NewExpression, RoleEdit,
-    ServerEdit,
+    Created, ExpressionImage, ExpressionKind, Failure, FavoriteGif, InviteFrom, InvitePlace,
+    NewExpression, RoleEdit, ServerEdit,
 };
 
 const SERVER: ServerId = ServerId(10);
@@ -466,6 +466,8 @@ async fn invitations_are_listed_made_and_revoked() {
         matches!(app.running.next().await, Event::InvitesLoaded { invites, .. }
         if invites.len() == 1 && invites[0].code == "abc" && invites[0].max_uses.is_none())
     );
+    // The modal opening hands back the code made before, as the web
+    // client's `validate`, and says where it was asked from.
     app.send(Command::CreateInvite {
         request: 6,
         server: SERVER,
@@ -473,6 +475,10 @@ async fn invitations_are_listed_made_and_revoked() {
         max_age_secs: 3600,
         max_uses: 5,
         temporary: false,
+        from: InviteFrom::Opening {
+            place: InvitePlace::HeaderButton,
+            previous: Some("abc".into()),
+        },
     })
     .await;
     let request = app
@@ -486,12 +492,80 @@ async fn invitations_are_listed_made_and_revoked() {
         .await;
     assert_eq!(
         body(&request),
-        json!({"max_age": 3600, "max_uses": 5, "temporary": false, "unique": true})
+        json!({"validate": "abc", "max_age": 3600, "max_uses": 5, "target_type": null,
+            "temporary": false, "flags": 0})
+    );
+    assert_eq!(
+        context_of(&request),
+        r#"{"location":"Guild Header Invite Button"}"#
     );
     assert!(
         matches!(app.next_data().await, Event::InviteCreated { request: 6, invite, .. }
         if invite.code == "new" && invite.max_uses == Some(5) && invite.expires.is_some())
     );
+    // «Generar un nuevo enlace» hands nothing back; an answer with other
+    // options than asked is not taken as the link.
+    app.send(Command::CreateInvite {
+        request: 7,
+        server: SERVER,
+        channel: ChannelId(30),
+        max_age_secs: 86400,
+        max_uses: 0,
+        temporary: true,
+        from: InviteFrom::Generating(InvitePlace::Settings),
+    })
+    .await;
+    let request = app
+        .answer(
+            "POST /api/v10/channels/30/invites ",
+            response(
+                200,
+                r#"{"code":"old","channel":{"id":"30"},"max_age":3600,"max_uses":0,"uses":0,"temporary":true}"#,
+            ),
+        )
+        .await;
+    assert_eq!(
+        body(&request),
+        json!({"max_age": 86400, "max_uses": 0, "target_type": null, "temporary": true,
+            "flags": 0})
+    );
+    assert_eq!(context_of(&request), r#"{"location":"Settings Invite"}"#);
+    assert!(matches!(
+        app.next_data().await,
+        Event::Failed {
+            failure: Failure::NewInvite { request: 7, .. },
+            ..
+        }
+    ));
+    // A person's menu asks for a unique link of its own.
+    app.send(Command::CreateInvite {
+        request: 8,
+        server: SERVER,
+        channel: ChannelId(30),
+        max_age_secs: 86400,
+        max_uses: 1,
+        temporary: false,
+        from: InviteFrom::Person,
+    })
+    .await;
+    let request = app
+        .answer(
+            "POST /api/v10/channels/30/invites ",
+            response(
+                200,
+                r#"{"code":"one","channel":{"id":"30"},"max_age":86400,"max_uses":1,"uses":0,"temporary":false}"#,
+            ),
+        )
+        .await;
+    assert_eq!(body(&request), json!({"max_uses": 1, "unique": true}));
+    assert_eq!(
+        context_of(&request),
+        r#"{"location":"User Invite Context Menu"}"#
+    );
+    assert!(matches!(
+        app.next_data().await,
+        Event::InviteCreated { request: 8, .. }
+    ));
     app.send(Command::RevokeInvite {
         server: SERVER,
         code: "abc".into(),
@@ -1602,4 +1676,19 @@ async fn permission_changes_are_asked_for_by_each_of_their_types_and_merged() {
         [90, 85]
     );
     assert!(reached_end);
+}
+
+/// The `X-Context-Properties` a request carried, decoded.
+fn context_of(request: &str) -> String {
+    use base64::Engine as _;
+    let header = request
+        .lines()
+        .find_map(|line| line.strip_prefix("x-context-properties: "))
+        .expect("where it was asked from");
+    String::from_utf8(
+        base64::engine::general_purpose::STANDARD
+            .decode(header)
+            .unwrap(),
+    )
+    .unwrap()
 }

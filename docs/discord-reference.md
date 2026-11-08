@@ -212,6 +212,37 @@ of the Windows client (2026-11-04).
   their count in white), «Abrir en otra ventana», «Dejar de ver» (screen
   with a cut-out ×); 24 px glyphs, white under the pointer. No live badge
   and no hang up.
+- The account's own stream (owner's capture, 2026-11-08): its name bottom
+  left, then «Ajustes de la transmisión» (gear) and «Dejar de transmitir».
+  The gear's menu, above it: «Dejar de transmitir» (red, its glyph before
+  it), «Calidad de la transmisión ›» (submenu: «Velocidad de fotogramas»
+  15/30/60 FPS, then «Resolución» 480p to 1440p and source, radios),
+  «Compartir audio de la transmisión» (check box), a separator, «Informar
+  problema» (red, `!` in a circle). Rustcord offers its own sizes (to
+  1080p) and sends the report to its own issues, not Discord's.
+
+### Go Live modal (share your screen)
+
+From the owner's capture of the Windows client (2026-11-08), at about
+1.75 device pixels to the CSS pixel.
+
+- 960 wide, 24 in, radius 12, ground `#0a0a0c`, edge 1 px `#26262a`; no
+  title and no close button. Without Nitro's offer it ends 24 under the
+  footer.
+- Tabs: a 40-high segmented control, ground `#000`, radius 12, padding and
+  gap 4; the chosen segment `#0a0a0c`, 32 high, radius 8. A window glyph
+  («Aplicaciones») and a camera («Dispositivos») in `#96979e`, 8 from the
+  name: 14 px medium, `#dcdcdf` when chosen, `#96979e` otherwise.
+- Body, centered between the tabs and the footer: «Comparte una pantalla,
+  ventana o aplicación» 20 px bold, 40 above two cards 244 × 164, 16 apart,
+  ground `#000`, edge 1 px `#1e1e20`, radius 4; a 32 px glyph and, 12 under
+  it, the name 14/18 in `#96979e`, wrapped 48 in from the card's sides.
+- Footer, 40 high: title 16 medium `#dcdcdf` («Juegos» for 720p 30) over
+  its parts 12 px `#81828a`, 8 apart around a 2 px dot `#1b1b1e` («Video más
+  fluido · 720p · 30fps · Audio del sistema»); then SD/HD (the tabs' control,
+  segments 49 wide; Discord paints a Nitro-only HD pink), «Realiza una
+  selección» (accent, 40 high, padding 16, radius 8, 16 px), and the gear
+  (40 square, radius 8, `#1b1b1e`, edge `#29292d`, 20 px glyph), 8 apart.
 
 ### Joining and switching voice channels
 
@@ -415,6 +446,35 @@ Read from the web bundle the desktop client cached (2026-11-04).
 - Nothing: «No hay hilos.», «Mantén el foco en una conversación con un
   hilo, un canal de texto temporal.», «Crear hilo».
 
+## Empty-state illustrations
+
+Read from the public web client's bundle and CSS (2026-11-08,
+unauthenticated). The files are in `assets/illustrations/discord`, drawn at
+2× (`rustcord_components::illustration`). Sizes are CSS pixels; «dark» is
+the `images-dark` version (themes Dark, Ash and Midnight), «light» the
+`images-light` one.
+
+| Where | File | Source | Shown |
+|---|---|---|---|
+| Threads popout, none | `threads.png` | `cdn.discordapp.com/assets/content/a55e53565529b99537f24e9111b39ad84565ad76ac91760cfb5450a069dd640c.svg` (288×162) | 256×144, 12 over «No hay hilos.» (24 semibold), text 16 8 under it, «Crear hilo» 24 under that; all 32 in, at least 400 high |
+| Pinned messages, none | `pins-dark.png`, `pins-light.png` | `/assets/1772d54cb566d95b.svg`, `/assets/7ff1cd1e855cacdc.svg` | 94×120 in a 120 square, 8 from the top; one line 16 medium 20 under it, 32 over the bottom |
+| A stream that ended | `stream-ended.png` | `/assets/422703837071ae97.svg` (800×388) | `contain` 185 high on a tile from 1000 wide, 134 from 550, hidden under 550; 48 over «Esta transmisión ha finalizado.» (20 medium; 14 on a small tile), «Cerrar transmisión» 24 under |
+| Message search, no results | `search-no-results-dark.png`, `-light.png` | `/assets/0dfcd735f1a5349c.svg`, `/assets/1fa1021e7db304e1.svg` | 160×160; the text 40 under it, 16 medium, 280 wide |
+| Message search, failed | `search-error-dark.png`, `-light.png` | `/assets/c451b132a4f69f5b.svg`, `/assets/5153f8efac26047f.svg` | 160×160, as above (Discord: «Se nos ha caído la lupa…») |
+| Server bans, none | `bans-dark.png`, `bans-light.png` | `/assets/626d8d0fc1024e29.svg`, `/assets/b0363003f5348212.svg` | 256×212, 40 over the title (20 semibold, muted) and the note (16, muted, 8 under, 300 wide), in the list's card |
+| Invites, none (server and channel) | `invites-dark.png`, `invites-light.png` | `/assets/cbb4a0ecd21297ba.svg`, `/assets/8a9849bb1cbefd39.svg` | 256×130, the title 20 under it |
+| Server roles, none | `roles.png` | `cdn.discordapp.com/assets/content/b79820f6ba221c996b84565cae31b15b94dc23c5449e50f978369d2d82ac6355.svg` (288×192) | 288×192, 72 under the @everyone card, 32 over «Organiza a tus miembros» (24), text 16 8 under, «Crear rol» 16 under that |
+
+Places that have no illustration in Discord, so none in Rustcord: the
+inbox's tabs (a glyph in a circle), the friends list (its config still names
+Wumpus art, but the list renders only the note), Activo ahora, events,
+forums, the emoji and GIF pickers, the forward dialog, the settings search,
+webhooks, the audit log, a server's emojis and stickers, «No hay canales de
+texto», and the new full profile's mutual friends and servers (a heading and
+a line). A voice channel nobody is in draws its glow inline in the bundle's
+code (an SVG in JSX, or an animation), not as a served file: Rustcord keeps
+its own reimplemented glow.
+
 ## Inbox
 
 Measured on 2026-11-05 in the web client (1440 × 813, «Midnight»): computed
@@ -454,6 +514,12 @@ styles of the popout, its CSS rules and the behaviour of its chunk.
   «Ver todos los mensajes sin leer ›» when there are more. Each has «Ir»
   at its top end (12 medium, radius 4, 8 in). A click on the mark or the
   name opens the channel at its first unread.
+- Seen on the owner's capture (2026-11-08): the day is a 1 px
+  `--border-subtle` line 16 in from the card's sides, about 22 under what
+  is above it, with the day (12, `#96979e`) in a black pill 16 high over
+  its middle, 4 either side. «Ir» is about 24 square (0 8 around the word),
+  `#0a0a0c` with the subtle edge, 8 in from the message's end and 8 into
+  it: 6 under the top of its first line.
 - Which channels: unsilenced (server, category, channel), readable, with
   something after the read mark; a DM only with mentions. Order:
   favourites, DMs, mentions, then by notification level, with dividers
@@ -628,6 +694,14 @@ everything, with developer mode; the rest from the client's code.
 - Buttons: 32 high, radius 8, fill `#94949c` at 12 %, border at 16 %,
   text 14/18 medium; primary «Enviar mensaje» `#5865f2` with a white 8 %
   border.
+- The account's own card opened from the member list (owner's capture,
+  2026-11-08): «⋯» alone on the banner; a «+ Añadir estado» bubble as wide
+  as its words; name, username and badges; bio; «Colección de juegos»;
+  «En el canal de voz» with «Abrir voz»; the role tags with a «×» each and
+  a «+» where the account may manage roles; «Editar perfil» (primary, full
+  width) at the bottom. The order holds for others' cards: the collection
+  before the current activities.
+- The member list's owner crown is `#ce8100`.
 
 ## Full profile
 
@@ -1183,6 +1257,51 @@ under the name of a server the account owns.
   after it, 14/18 weight 500 (`#dcdcdf`, oklab L 0.895); the check
   box 18 at the right end. A label too long is cut with an ellipsis.
 - Separator: 1 px at 20 % with 8 above and below.
+
+## Invite modal («Invita a tus amigos»)
+
+From the owner's capture of the Windows client (2026-11-08, es-419, about
+1.5625 device pixels to the CSS pixel, the rail's 40 marks as the ruler) and
+the web bundle's code read on 2026-11-08 (never copied).
+
+- Opened by the person with a plus beside the server's name (`GroupPlusIcon`
+  20, hint «Invitar al servidor» below; Rustcord shows it only to who may
+  invite, Discord to everyone and explains the permission on click), the
+  menus' «Invitar al servidor», a channel's row and its menu («Invitar al
+  canal», «Invitar al chat de voz»), the call's bar and «crear uno» in the
+  invitations of the settings. Without a channel it targets the one open
+  (a thread's parent), else the first that takes invitations.
+- Card 480 wide, 24 in, radius 12, ground `#0a0a0c`, edge 1 px; at most the
+  window less 74 above and below. Close «×» (24 box) 16 from the top and
+  the right. Title 20/24 semibold «Invita a tus amigos a {servidor}»; 8
+  under it 16/20 muted «Los destinatarios llegarán a # canal».
+- Search 24 under the subtitle: 40 high, radius 8, fill black 12 %, edge
+  1 px at 16 %, magnifier 16 at 12, placeholder «Buscar amigos» 16.
+- List 12 under the search: rows 48 apart, avatar 32, the name 16 medium
+  10 after it over the username 12 (`text-muted`); «Invitar» at the end: 32
+  high, 14 medium, padding about 13, the secondary fill (`#94949c` at 12 %);
+  sent it reads «Invitaciones enviadas» (es-419) and is disabled. The
+  scrollbar sits in the right padding.
+- Footer under a 1 px line: 24 in on top, «O envía un enlace de invitación
+  al servidor a un amigo» 16/20; 8 under it the link in a 40 field (radius
+  8, text 16 at 12 in) with «Copiar» inside its end (32 high, 4 in, about
+  82 wide, `#5865f2`; green for a second once copied); 16 under it 12 px
+  muted «Tu enlace de invitación caduca en 30 días.» followed by the link
+  «Editar el enlace de invitación.» (`--text-link`); 16 under the last line.
+- Settings view («Ajustes del enlace de invitación al servidor»), not in
+  the capture: «Caduca después de» (30 minutos, 1 hora, 6 horas, 12 horas,
+  1 día, 7 días, 30 días, Nunca: 14, 30 and 60 days only for the accounts
+  in Discord's test of a longer default), «Cantidad máxima de usos» (Sin
+  límite, 1, 5, 10, 25, 50, 100 usos), «Otorgar membresía temporal» with its
+  note, «Cancelar» and «Generar un nuevo enlace». Rustcord lays it out with
+  its selects (40 high) and labels 16 medium; the roles picker is left out.
+- Behaviour read from the bundle: opening asks for the link at once,
+  handing back the code made for that channel in this session (`validate`,
+  kept in memory and forgotten on reconnecting); «Generar un nuevo enlace»
+  hands nothing back. The list is friends (and conversations) without
+  bots, ignored people or the server's members; a search finds members too
+  and names them «Miembro». «Invitar» opens the conversation
+  (`recipients: [id]`) and sends the bare link, one friend at a time.
 
 ## Server settings
 

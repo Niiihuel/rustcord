@@ -1280,6 +1280,7 @@ impl DiscordSessionProvider {
                             }
                         }
                         Command::StopStream { channel } => calls.stop_share(channel),
+                        Command::SetStreamQuality { channel, quality } => calls.share_quality(channel, quality),
                         Command::PauseStream { channel, paused } => {
                             for event in calls.pause(channel, paused) { emit(events, event).await?; }
                         }
@@ -1292,7 +1293,8 @@ impl DiscordSessionProvider {
                         // An acknowledgement replaces the one of its kind queued
                         // for its channel; a search, the one queued or in flight.
                         command @ (Command::MarkRead { .. } | Command::MarkUnread { .. }
-                            | Command::MarkServerRead { .. } | Command::SearchMessages { .. }) => {
+                            | Command::MarkServerRead { .. } | Command::AckPins { .. }
+                            | Command::SearchMessages { .. }) => {
                             let same = |queued: &Command| crate::reads::ack_channel(queued).is_some()
                                 && crate::reads::ack_channel(queued) == crate::reads::ack_channel(&command)
                                 && std::mem::discriminant(queued) == std::mem::discriminant(&command);
@@ -2716,6 +2718,9 @@ impl Provider for DiscordSessionProvider {
                 // The account's own picture goes up
                 // as the official client sends it; fixtures only.
                 upload_stream_previews: true,
+                // `POST /channels/{id}/pins/ack`, authorized by the owner on
+                // 2026-11-08; fixtures only.
+                ack_pins: true,
                 // Files staged to Discord's storage and named by the message;
                 // fixtures only, never tried for real.
                 attachments: true,

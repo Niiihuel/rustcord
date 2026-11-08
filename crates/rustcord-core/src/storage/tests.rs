@@ -6,6 +6,7 @@ fn read_mark(revision: u64) -> ReadMark {
         through: Some(MessageId(100)),
         unread_from: Some(MessageId(80)),
         revision,
+        pins_seen: Default::default(),
     }
 }
 

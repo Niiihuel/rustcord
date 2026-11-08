@@ -368,16 +368,13 @@ pub(super) const ENTRIES: super::Entries = &[
     // The header's bell and pins.
     ("Ajustes de notificaciones", "Notification settings"),
     ("Mensajes fijados", "Pinned messages"),
+    ("Hay mensajes fijados nuevos", "There are new pinned messages"),
     (
         "No se pudieron cargar los mensajes fijados",
         "Couldn't load pinned messages",
     ),
     ("Volver a intentar", "Try again"),
     ("Todavía no hay mensajes fijados", "No pinned messages yet"),
-    (
-        "Los mensajes que se fijen en esta conversación van a aparecer aquí.",
-        "Messages pinned in this conversation will show up here.",
-    ),
     ("Ir", "Jump"),
     ("Desfijar mensaje", "Unpin message"),
     ("Tema del canal", "Channel topic"),

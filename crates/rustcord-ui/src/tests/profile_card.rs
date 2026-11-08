@@ -865,3 +865,105 @@ fn a_full_profile_whose_read_is_in_flight_shows_lines_not_no_data() {
         assert!(widths.contains(&width), "{widths:?}");
     }
 }
+
+#[test]
+fn a_members_card_asks_for_the_faces_of_its_first_three_mutual_friends() {
+    let mut host = Host::new();
+    let (server, _, _) = listed(&mut host);
+    let ada = UserId(10);
+    let from = host.sent.len();
+    host.click(&format!("member:{ada}"));
+    let request = host.sent[from..]
+        .iter()
+        .find_map(|command| match command {
+            Command::LoadProfile { request, user, .. } if *user == ada => Some(*request),
+            _ => None,
+        })
+        .expect("asked as it opens");
+    // Four friends in common, none of them on screen elsewhere.
+    let face = |user: UserId| rustcord_model::RemoteImage {
+        url: format!("https://simulacion.invalid/avatars/{user}.png"),
+        kind: rustcord_model::ImageKind::Artwork,
+    };
+    let friends: Vec<UserId> = (0..4).map(|n| UserId(9_000 + n)).collect();
+    for friend in &friends {
+        host.event(Event::UserChanged(rustcord_model::User {
+            id: *friend,
+            avatar: Some(face(*friend)),
+            ..host.store.user(ada).unwrap().clone()
+        }));
+    }
+    host.event(Event::ProfileLoaded {
+        request,
+        profile: rustcord_model::UserProfile {
+            user: ada,
+            server: Some(server),
+            mutual_friends: Some(friends.clone()),
+            ..Default::default()
+        },
+    });
+    host.frame();
+    let wanted = wanted_images(&host.ui, &host.store, &host.tree);
+    for friend in &friends[..3] {
+        assert!(wanted.contains(&face(*friend)), "{friend}");
+    }
+    assert!(!wanted.contains(&face(friends[3])), "only the faces shown");
+}
+
+#[test]
+fn the_own_card_sets_its_status_and_changes_its_roles_where_the_account_may() {
+    use rustcord_components::profile::{ids, CardMenu};
+    let mut host = Host::new();
+    let lab = host.open_channel("limn-core");
+    let owned = host.store.channel(lab).unwrap().server.unwrap();
+    let me = host.store.me().unwrap();
+    assert_eq!(host.store.server(owned).unwrap().owner, Some(me));
+    let role = host.store.server(owned).unwrap().roles[1].clone();
+    host.event(Event::MemberChanged(rustcord_model::Member {
+        user: me,
+        server: owned,
+        nick: None,
+        roles: vec![role.id],
+        ..Default::default()
+    }));
+    host.ui.members_open = true;
+    host.click(&format!("member:{me}"));
+    host.answer_profile();
+    let shown: Vec<String> = host
+        .frame()
+        .regions
+        .iter()
+        .map(|region| region.id.clone())
+        .collect();
+    // As Discord's: the role's «×», the «+», the status bubble and «Editar perfil».
+    let remove = format!("ss:member-of:{owned}:{me}:role:{}", role.id);
+    let plus = format!("{}{me}", ids::CARD_ROLES);
+    for id in [remove.as_str(), plus.as_str(), ids::CUSTOM, ids::EDIT] {
+        assert!(shown.iter().any(|shown| shown == id), "{id}: {shown:?}");
+    }
+    host.click(&plus);
+    assert_eq!(host.ui.profiles.menu, Some((me, CardMenu::Roles)));
+    host.click(&plus);
+    let from = host.sent.len();
+    host.click(&remove);
+    assert!(host.sent[from..].iter().any(|command| matches!(
+        command,
+        Command::SetMemberRoles { user, roles, .. } if *user == me && roles.is_empty()
+    )));
+    // Where the account may not manage roles, its card has neither.
+    let general = host.channel_named("general");
+    let taller = host.store.channel(general).unwrap().server.unwrap();
+    let card = crate::profile::card_of(
+        &host.ui,
+        &host.store,
+        Some(taller),
+        me,
+        &rustcord_components::Look::DARK,
+    )
+    .unwrap();
+    assert!(card.role_menu.is_none() && card.role_removals.iter().all(Option::is_none));
+    // Its bubble opens the custom status in place of the card.
+    host.click(ids::CUSTOM);
+    assert!(host.ui.profiles.custom.is_some());
+    assert_eq!(host.ui.profile, None);
+}

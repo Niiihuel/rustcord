@@ -103,6 +103,7 @@ mod tests {
             through: Some(MessageId(100)),
             unread_from: Some(MessageId(80)),
             revision,
+            pins_seen: Default::default(),
         }
     }
 
@@ -167,6 +168,7 @@ mod tests {
             through: Some(MessageId(u64::MAX)),
             unread_from: Some(MessageId(1)),
             revision: u64::MAX,
+            pins_seen: Default::default(),
         };
         storage.set_read_mark("a", ChannelId(5), newest).unwrap();
         storage
@@ -181,6 +183,7 @@ mod tests {
             through: Some(MessageId(50)),
             unread_from: None,
             revision: 2,
+            pins_seen: Default::default(),
         };
         storage.set_read_mark("b", ChannelId(5), mark(1)).unwrap();
         storage.set_read_mark("b", ChannelId(5), clear).unwrap();
@@ -202,6 +205,7 @@ mod tests {
             through: Some(MessageId(100)),
             unread_from: Some(MessageId(90)),
             revision: u64::MAX,
+            pins_seen: Default::default(),
         };
         {
             let storage = Storage::open(&path).unwrap().unlocked();

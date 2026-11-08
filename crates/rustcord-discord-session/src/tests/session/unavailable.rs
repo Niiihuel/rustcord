@@ -123,6 +123,7 @@ macro_rules! classified {
                 | Command::StopWatching { .. }
                 | Command::StartStream { .. }
                 | Command::StopStream { .. }
+                | Command::SetStreamQuality { .. }
                 | Command::PauseStream { .. }
                 | Command::SetCamera { .. }
                 | Command::VoiceVerificationCode { .. } => {
@@ -153,7 +154,7 @@ classified! {
     LoadMembers, PruneMembers, LoadWebhooks, CreateWebhook, EditWebhook, DeleteWebhook,
     LoadIntegrations, DeleteIntegration, LoadGifFavorites, SetGifFavorite, LoadAccountSettings,
     SetNotifications, SetServerFolders, SetMessagingPrivacy, LoadNote, SetNote, MarkUnread,
-    MarkServerRead, SearchMessages, SearchMembers, LoadAppCommands, Interact, SuggestChoices,
+    MarkServerRead, AckPins, SearchMessages, SearchMembers, LoadAppCommands, Interact, SuggestChoices,
     ForwardMessage, CreatePoll, EndPoll, LoadReactions, LoadPollVoters, LoadChannel,
     ModerateVoice, SetLocalActivity, LoadDetectableGames, LoadStickerPacks, SearchGifs,
     SuggestGifs, LoadServerProfile, ReorderChannels, LoadRoleCounts, WatchPeople, RingCall,
@@ -502,6 +503,7 @@ fn samples() -> Vec<Command> {
             max_age_secs: 3600,
             max_uses: 0,
             temporary: false,
+            from: rustcord_provider::InviteFrom::Person,
         },
         Command::CreateExpression {
             request: 20,
@@ -589,6 +591,7 @@ fn samples() -> Vec<Command> {
             account: ME,
             server: SERVER,
         },
+        Command::AckPins { channel: TEXT },
         Command::SearchMessages {
             request: 25,
             search: RemoteSearch {
