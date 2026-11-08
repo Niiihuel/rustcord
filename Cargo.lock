@@ -5808,7 +5808,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-components"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5822,7 +5822,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-core"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -5848,7 +5848,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-desktop"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "eframe",
  "egui",
@@ -5874,7 +5874,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-discord"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5892,7 +5892,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-discord-session"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -5921,11 +5921,11 @@ dependencies = [
 
 [[package]]
 name = "rustcord-i18n"
-version = "0.2.6"
+version = "0.2.7"
 
 [[package]]
 name = "rustcord-login"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "getrandom 0.3.4",
  "gtk4",
@@ -5944,7 +5944,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-media"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "arc-swap",
  "cpal",
@@ -5975,7 +5975,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-model"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "regex-syntax",
  "rustcord-i18n",
@@ -5985,7 +5985,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-platform"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "arboard",
  "futures-util",
@@ -6009,7 +6009,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-provider"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "bytes",
  "rustcord-i18n",
@@ -6021,7 +6021,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-release"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
@@ -6034,7 +6034,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-state"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "rustcord-i18n",
  "rustcord-model",
@@ -6043,7 +6043,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-storage"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "chacha20poly1305 0.10.1",
  "getrandom 0.3.4",
@@ -6059,7 +6059,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-ui"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "limn",
  "rustcord-components",
@@ -6073,7 +6073,7 @@ dependencies = [
 
 [[package]]
 name = "rustcord-update"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek 2.2.0",
