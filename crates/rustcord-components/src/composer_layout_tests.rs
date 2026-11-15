@@ -162,9 +162,9 @@ fn one_line_draft_and_placeholder_share_the_action_center_in_a_compact_card() {
                             .iter()
                             .find(|region| region.id == "composer:fixture")
                             .unwrap();
-                        // The card is 48 tall: limn's padding around the editor.
+                        // The card is 56 tall: limn's padding around the editor.
                         assert!(
-                            (32.0..=33.0).contains(&editor.rect.height),
+                            (40.0..=41.0).contains(&editor.rect.height),
                             "{:?}",
                             editor.rect
                         );

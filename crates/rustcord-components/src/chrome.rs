@@ -144,8 +144,9 @@ pub fn channel_header(
         parts.extend([face.centered_y(), gap(14.0, 0.0)]);
     } else if !nav.compact {
         parts.extend([
-            icon(glyph, look.dim).large_icon(18.0).centered_y(),
-            gap(14.0, 0.0),
+            // Discord's: a 20 px glyph, 11 before the name.
+            icon(glyph, look.dim).large_icon(20.0).centered_y(),
+            gap(12.0, 0.0),
         ]);
     }
     parts.extend([strong_line(title, 16.0, look.text)
@@ -155,7 +156,7 @@ pub fn channel_header(
         parts.push(gap(12.0, 0.0));
         parts.push(
             Element::panel(Element::spacer())
-                .size(Some(1.0), Some(22.0))
+                .size(Some(1.0), Some(24.0))
                 .background(look.border)
                 .centered_y(),
         );

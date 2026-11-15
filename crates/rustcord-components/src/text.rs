@@ -166,6 +166,16 @@ fn unicode(span: TextSpan, pictures: Pictures<'_>, count: &Cell<usize>) -> Vec<T
     out
 }
 
+/// A pill's ink and ground: Discord's for a mention in the accent, a
+/// role's own color over itself.
+fn pill_inks(ink: Color, look: &Look) -> (Color, Color) {
+    if ink == look.accent {
+        look.mention_pill()
+    } else {
+        (ink, Look::alpha(ink, 40))
+    }
+}
+
 /// A link of the text: one to a conversation of the provider opens in Rustcord,
 /// as a pill naming it when written as its bare address; one whose text is
 /// not its address says so, to be asked about before it opens.
@@ -179,6 +189,8 @@ fn link(span: TextSpan, names: &Names, references: &[TextReference], look: &Look
     else {
         return span;
     };
+    // Discord draws a link as its text alone: no icon of its site before it.
+    let span = TextSpan { icon: None, ..span };
     let bare = span.text.trim() == url;
     let place = references
         .iter()
@@ -191,8 +203,9 @@ fn link(span: TextSpan, names: &Names, references: &[TextReference], look: &Look
     match place {
         Some((channel, message)) if bare => TextSpan {
             text: place_label(names, channel, message),
-            color: look.accent,
-            background: Some(Look::alpha(look.accent, 40)),
+            color: look.mention_pill().0,
+            background: Some(look.mention_pill().1),
+            font_family: FontFamily::SansMedium,
             action: Some(place_action(channel, message)),
             ..span
         },
@@ -319,10 +332,12 @@ fn resolve(
                 )
             }
         };
+        let (ink, ground) = pill_inks(ink, look);
         let pill = TextSpan {
             text: label,
             color: ink,
-            background: Some(Look::alpha(ink, 40)),
+            background: Some(ground),
+            font_family: FontFamily::SansMedium,
             action,
             ..span.clone()
         };
@@ -625,8 +640,11 @@ fn split(
             };
             if let Some((ink, action)) = found {
                 let mut pill = piece(&rest[..1 + token.len()]);
-                pill.color = ink;
-                pill.background = Some(Look::alpha(ink, 40));
+                (pill.color, pill.background) = {
+                    let (ink, ground) = pill_inks(ink, look);
+                    (ink, Some(ground))
+                };
+                pill.font_family = FontFamily::SansMedium;
                 pill.action = action;
                 out.push(piece(&std::mem::take(&mut plain)));
                 out.push(pill);
@@ -900,6 +918,57 @@ mod tests {
         assert!(all
             .iter()
             .any(|span| span.text == "<@7>" && span.action.as_deref() == Some("reveal:0")));
+        // Discord's pill: a lighter ink over its blurple at 24 %, in medium.
+        let (ink, ground) = look.mention_pill();
+        assert_eq!(
+            (ink, ground),
+            (Color::rgb(140, 160, 253), Look::alpha(look.accent, 61))
+        );
+        let pill = all.iter().find(|span| span.text == "#general").unwrap();
+        assert_eq!((pill.color, pill.background), (ink, Some(ground)));
+        assert_eq!(pill.font_family, FontFamily::SansMedium);
+        // Another accent is its own ink, as a role's color is.
+        let green = Color::rgb(40, 160, 90);
+        assert_eq!(look.with_accent(green).mention_pill().0, green);
+    }
+
+    #[test]
+    fn a_link_is_its_text_alone_in_discord_s_ink_on_its_midnight() {
+        let look = Look::ONYX;
+        assert_eq!(look.link(), Color::rgb(39, 129, 231));
+        assert_eq!(look.spine(), Color::rgb(56, 57, 64));
+        // Another ground keeps the palette's own.
+        assert_ne!(Look::DARK.link(), look.link());
+        assert_eq!(Look::DARK.spine(), Look::DARK.border);
+        let palette = look.palette();
+        let mut element = Markdown::new("mira https://ejemplo.test/a y *esto*", palette)
+            .width(500.0)
+            .colors(look.markdown_colors(palette))
+            .render()
+            .element;
+        decorate(
+            &mut element,
+            &Names::default(),
+            &[],
+            &[],
+            false,
+            &Spoilers {
+                revealed: &[],
+                action: "reveal:".into(),
+                first: 0,
+            },
+            Pictures::default(),
+            &look,
+        );
+        let all = spans(&mut element);
+        let link = all
+            .iter()
+            .find(|span| span.text.contains("ejemplo.test"))
+            .unwrap();
+        assert_eq!((link.color, &link.icon), (look.link(), &None));
+        // Emphasis is as dark as the text around it.
+        let leaning = all.iter().find(|span| span.text == "esto").unwrap();
+        assert_eq!(leaning.color, look.text);
     }
 
     #[test]

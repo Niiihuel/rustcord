@@ -356,6 +356,53 @@ impl Look {
 
     /// A filled control in the accent, such as the send button: limn fills a
     /// default button with the palette's text and draws on it in its surface.
+    /// Whether this is Discord's Midnight: its measured inks apply.
+    fn midnight(&self) -> bool {
+        self.canvas == Self::ONYX.canvas
+    }
+
+    /// A link's ink in what was written: Discord's `--text-link` on its
+    /// Midnight ground, where the palette's own blue is paler.
+    pub fn link(&self) -> Color {
+        if self.midnight() {
+            Color::rgb(39, 129, 231)
+        } else {
+            limn::MarkdownColors::for_palette(self.palette()).link
+        }
+    }
+
+    /// What Markdown is written in on `palette`: its inks, with the link's
+    /// and an emphasis as dark as the text around it, as Discord's.
+    pub fn markdown_colors(&self, palette: ComponentPalette) -> limn::MarkdownColors {
+        limn::MarkdownColors {
+            emphasis: palette.text,
+            link: self.link(),
+            ..limn::MarkdownColors::for_palette(palette)
+        }
+    }
+
+    /// The ink and the ground of a mention of someone or of a channel:
+    /// Discord's `--mention-foreground` over `--mention-background` (its
+    /// blurple at 24 %) while the accent is that blurple; any other accent
+    /// over itself.
+    pub fn mention_pill(&self) -> (Color, Color) {
+        let ink = if self.accent == Self::ONYX.accent {
+            Color::rgb(140, 160, 253)
+        } else {
+            self.accent
+        };
+        (ink, Self::alpha(self.accent, 61))
+    }
+
+    /// The line from a reply to what it answers: Discord's `--spine-default`.
+    pub fn spine(&self) -> Color {
+        if self.midnight() {
+            Color::rgb(56, 57, 64)
+        } else {
+            self.border
+        }
+    }
+
     pub fn accent_palette(&self) -> ComponentPalette {
         ComponentPalette {
             surface: self.on_accent,

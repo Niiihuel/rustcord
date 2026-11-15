@@ -1163,6 +1163,72 @@ given gg sans' vertical metrics (1020 / −320). Its weights are drawn where
 their stems match gg sans' (the `l`, `o` and `n` at 100 px): regular at
 `wght` 360, medium 440, semibold 560, bold 670.
 
+## Message list, member list and composer (from the stylesheets)
+
+Read on 2026-11-14 from the web client's public stylesheets (no session):
+the rules of its message, markup, divider, reaction, member and text-area
+modules, with their variables resolved for Midnight. The measured sessions
+above run at the client's `density-cozy` (`--space-xs` 10, `--space-sm` 16,
+`--space-md` 20: the rail's marks at x = 20, the panel at x = 10), not
+`density-default` (8, 12, 16): resolve a `--space-*` rule against cozy.
+These are CSS rules, not a rendered page: what the client's scripts set
+(the columns' widths, a text's variant) is not in them.
+
+**A message (cozy).** Avatar 40 at `--custom-message-margin-horizontal`
+(20) from the edge, 2 under the name line's top; the text starts at
+40 + 2 × 20 and ends 20 from the right. The header is one more line of the
+text: name and first line are 22 apart, with no gap. Name 16 medium
+`--text-strong`; time 12 medium `--chat-text-muted` on the name's baseline,
+4 + 4 after it; «(editado)» 10 px. Groups start
+`--custom-group-spacing-start` (17 at the default spacing) under the one
+before. Rustcord keeps its own avatar column (42 at 22, text at 86) and
+takes the rest.
+
+- Link: `--text-link` `#2781e7`, underlined under the pointer, no icon.
+- Emphasis: the text's own ink. Headings: bold, 24 / 20 / 16.
+- Mention: `--mention-foreground` `#8ca0fd` on `--mention-background`
+  (`#5864f2` at 24 %), medium. A role's: its color over itself.
+- Reply line: spine 2 px `--spine-default` `#383940`, radius 6; the name at
+  64 % opacity; the text 14 on 18 in `--text-default`; 4 under it.
+- Day divider: hairline `--border-subtle`; label 12 on 13 semibold
+  `--text-muted`. «NUEVO»: line and pill `--background-feedback-notification`
+  `#d22d39`; the pill 13 high, 10 px bold white, its right corners 4 and a
+  pointed cap at its left (Rustcord draws a plain rounded pill).
+- Reaction: radius 8, padding 2 × 6, 4 apart; fill `--reaction-background-default`
+  (12 %), no edge; count 14 semibold `--text-subtle`. The account's own:
+  fill blurple at 24 %, edge `--blurple-50`, a lighter count.
+- BOT tag: beside a name in a message 15 high, 10 px semibold, radius 4; in
+  the member list 16 high, 12 on 16 semibold, padding 0 × 4, 4 after the name.
+- Not taken yet (limn's Markdown draws them): inline code (85 %, blurple at
+  8 % with a 1 px border, radius 4), a code block without a header row
+  (same fill, radius 4, 14 on 18), a quote as a 4 px `--spine-default` bar
+  with no fill and its text in `--text-subtle`.
+
+**Member list.** A name with no role's color is `--channels-default`
+`#7a7b83`, and `--interactive-text-hover` under the pointer; the line under
+it brightens with it. Row radius `--radius-sm` 8, 1 px above and below;
+avatar 32, 12 to the name; the crown 14 × 14 in `--text-feedback-warning`,
+4 after the name. Someone offline: the whole row at 30 % opacity, 100 %
+under the pointer (Rustcord only dims the name: limn has no opacity for a
+subtree). Width `--custom-member-list-width` 264 (268 cozy) plus a hairline.
+
+**Composer.** The box is `--custom-channel-textarea-text-area-height` 56
+high with a 1 px border, level with the account panel; radius 8. Buttons at
+its right 8 apart, their glyphs 20 px in `--interactive-icon-default`,
+brighter under the pointer; the placeholder is `--text-muted` and stays
+while the box has the focus (limn hides it then, and draws 16 px glyphs).
+Scrolled up, the client shows a round 36 button with an arrow, 16 from the
+right and the bottom, and a centered pill when older messages are loaded
+(Rustcord's is one labelled blurple button).
+
+**Sidebar and header.** A channel's row and a voice user's highlight have
+radius 8; a voice user's name and marks are `--channels-default`; the
+«EN VIVO» pill is `--background-feedback-notification` `#d22d39`. In the
+header the channel's glyph is 20 px, 11 before the name; the rule before
+the topic is 1 × 24; the tools are `--space-xs` (10) apart; the search box
+is 244 × 32. The client's 32 px title bar over everything (back, forward,
+inbox, help) is not Rustcord's: its header carries those.
+
 ## Questions (confirmation dialogs)
 
 Read from the web bundle (2026-11-05): a confirmation (`ConfirmModal`'s

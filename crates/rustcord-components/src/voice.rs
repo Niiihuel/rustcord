@@ -1392,12 +1392,13 @@ pub const DETAILS_WIDTH: f32 = 319.0;
 /// keeps the same size while they speak. The picture starts under the
 /// channel's name (`sidebar::INSET` + 43). Its highlight is 1 short above and
 /// below, so two rows' never touch, and ends where a channel's does
-/// (`sidebar::INSET` from the column's edge), rounded the same 6.
+/// (`sidebar::INSET` from the column's edge), rounded the same 8
+/// (Discord's `--radius-sm`).
 pub const ROW_HEIGHT: f32 = 32.0;
 const ROW_INDENT: f32 = 38.0;
 const ROW_AVATAR: f32 = 24.0;
 const ROW_RING: f32 = 30.0;
-const ROW_RADIUS: f32 = 6.0;
+const ROW_RADIUS: f32 = 8.0;
 /// The voice card: 280 wide with 16 of padding, so its content is 248 wide.
 pub const LIVE_CARD_WIDTH: f32 = 280.0;
 /// The width of its content, and of the buttons and pictures in it.
@@ -2246,7 +2247,7 @@ fn live(size: f32, font: f32, look: &Look) -> Element {
     ]))
     .size(None, Some(size))
     .radius(size / 2.0)
-    .background(look.danger)
+    .background(look.danger_fill)
     .shrink_to_fit()
 }
 
@@ -2371,11 +2372,8 @@ pub fn participant(
         person.speaking,
         look,
     );
-    let name_ink = if person.speaking {
-        look.text
-    } else {
-        look.muted
-    };
+    // Discord's `--channels-default`, as a channel not read.
+    let name_ink = if person.speaking { look.text } else { look.dim };
     // The row's 1 px and the ring's 3 px put the picture under the channel's
     // name: `sidebar::INSET` + 43 from the column's edge.
     let mut parts = vec![
@@ -2392,7 +2390,7 @@ pub fn participant(
         parts.push(gap(4.0, 0.0));
         parts.push(game_mark(&id, game, look).centered_y());
     }
-    for mark in marks(person, &id, look.muted, look) {
+    for mark in marks(person, &id, look.dim, look) {
         parts.push(gap(4.0, 0.0));
         parts.push(mark.centered_y());
     }

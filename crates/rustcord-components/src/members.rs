@@ -141,29 +141,61 @@ pub fn member(row: &MemberRow, profile: Option<&Profile>, look: &Look) -> Elemen
     } else {
         with_status(face, 34.0, row.status, look.sidebar)
     };
-    let name = strong_line(
-        &row.name,
-        16.0,
-        if row.offline { look.faint } else { row.ink },
-    );
+    // A name with no role's color is Discord's `--channels-default` until
+    // the pointer is over its row, where it is the text's ink.
+    let plain = row.ink == look.text && row.marks.gradient.is_empty();
+    let ink = match (row.offline, plain) {
+        (true, _) => look.faint,
+        (false, true) => look.dim,
+        (false, false) => row.ink,
+    };
+    let name = strong_line(&row.name, 16.0, ink);
     // Around, in the gradient of their role; offline, faint.
     let name = if row.offline {
         name
     } else {
-        crate::identity::styled(
-            name,
-            16.0,
-            (row.ink, &row.marks.gradient),
-            row.marks.style.as_ref(),
-            look,
-        )
+        let styled = |ink| {
+            crate::identity::styled(
+                strong_line(&row.name, 16.0, ink),
+                16.0,
+                (ink, &row.marks.gradient),
+                row.marks.style.as_ref(),
+                look,
+            )
+        };
+        if plain {
+            Element::stack(vec![
+                styled(look.dim),
+                styled(look.text).reveal_on_hover(format!("{}:lit", row.id)),
+            ])
+        } else {
+            styled(row.ink)
+        }
     };
-    let mut marks = crate::identity::after_name(&row.marks, 14.0, look);
+    let mut marks = Vec::new();
+    if row.bot {
+        // Discord's tag, after the name: 16 high, 12 px semibold, radius 4.
+        marks.push(
+            Element::panel(Element::row(vec![
+                gap(4.0, 0.0),
+                Element::text("BOT")
+                    .font_family(FontFamily::SansSemibold)
+                    .font_size(12.0)
+                    .foreground(look.on_accent)
+                    .centered_y(),
+                gap(4.0, 0.0),
+            ]))
+            .size(None, Some(16.0))
+            .radius(4.0)
+            .background(look.accent),
+        );
+    }
+    marks.extend(crate::identity::after_name(&row.marks, 14.0, look));
     if row.owner {
         marks.push(
             Element::icon(Icon::Custom(CROWN))
                 .foreground(CROWN_COLOR)
-                .size(Some(13.0), Some(13.0))
+                .size(Some(14.0), Some(14.0))
                 .accessible(limn::Access::default().description(t("Dueño del servidor"))),
         );
     }
@@ -200,21 +232,6 @@ pub fn member(row: &MemberRow, profile: Option<&Profile>, look: &Look) -> Elemen
         gap(13.5, 0.0),
         Element::column(copy).flex(1.0).centered_y(),
     ];
-    if row.bot {
-        parts.push(gap(8.0, 0.0));
-        parts.push(
-            Element::panel(
-                Element::text("BOT")
-                    .font_family(FontFamily::SansBold)
-                    .font_size(9.0)
-                    .foreground(look.on_accent),
-            )
-            .padding(3.0)
-            .radius(3.0)
-            .background(look.accent)
-            .centered_y(),
-        );
-    }
     parts.push(gap(8.0, 0.0));
     let ground = ROW - 2.0 * ROW_MARGIN;
     let content = crate::identity::on_plate(
@@ -227,6 +244,7 @@ pub fn member(row: &MemberRow, profile: Option<&Profile>, look: &Look) -> Elemen
         .size(None, Some(ground))
         .radius(RADIUS)
         .hover_background(look.hover)
+        .hover_region_id(format!("{}:row", row.id))
         .accessible(limn::Access::new(limn::Role::ListItem).name(row.name.clone()));
     // The card stands against the ground, where a held one stands too.
     let button = crate::profile::card_popout(
@@ -262,6 +280,51 @@ mod tests {
             owner: false,
             restricted: None,
         }
+    }
+
+    #[test]
+    fn a_name_with_no_role_color_waits_dim_and_a_bot_s_tag_follows_its_name() {
+        let look = Look::DARK;
+        let inks = |row: &MemberRow, wanted: &str| -> Vec<(Color, f32)> {
+            let (_, laid) = frame(member(row, None, &look), Size::new(WIDTH, ROW));
+            laid.commands
+                .iter()
+                .filter_map(|command| match command {
+                    limn::DrawCommand::Text {
+                        text,
+                        color,
+                        position,
+                        ..
+                    } if text == wanted => Some((*color, position.x)),
+                    _ => None,
+                })
+                .collect()
+        };
+        // Discord's `--channels-default` until the pointer is over the row.
+        let plain = inks(&row("Ada"), "Ada");
+        assert_eq!(
+            plain.first().map(|(ink, _)| *ink),
+            Some(look.dim),
+            "{plain:?}"
+        );
+        // A role's color is the name's, at rest too.
+        let role = Color::rgb(200, 80, 80);
+        let colored = MemberRow {
+            ink: role,
+            ..row("Ada")
+        };
+        assert_eq!(inks(&colored, "Ada"), vec![(role, plain[0].1)]);
+        let bot = MemberRow {
+            bot: true,
+            ..row("Ada")
+        };
+        let (name, tag) = (inks(&bot, "Ada"), inks(&bot, "BOT"));
+        // 7 px characters: the tag's text starts 4 + 4 after the name.
+        assert!(
+            matches!(tag[..], [(ink, x)] if ink == look.on_accent
+            && (x - (name[0].1 + 21.0 + 8.0)).abs() <= 1.0),
+            "{tag:?}"
+        );
     }
 
     #[test]
@@ -477,7 +540,7 @@ mod tests {
         // 7 px characters: the name ends at 10.5 + 34 + 13.5 + 21.
         // In Discord's gold, whatever the accent.
         assert!(
-            matches!(crown[..], [(rect, CROWN_COLOR)] if (rect.x - 83.0).abs() <= 1.0 && rect.width == 13.0),
+            matches!(crown[..], [(rect, CROWN_COLOR)] if (rect.x - 83.0).abs() <= 1.0 && rect.width == 14.0),
             "{crown:?}"
         );
     }

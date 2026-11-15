@@ -43,8 +43,9 @@ pub use voice::{VoiceNow, VOICE_SPEEDS};
 pub const GUTTER: f32 = LEFT + AVATAR + 22.0;
 const LEFT: f32 = 22.0;
 const AVATAR: f32 = 42.0;
-/// The space right of a message's text, past which only the bar floats.
-const RIGHT: f32 = 48.0;
+/// The space right of a message's text: as much as left of its avatar, as
+/// Discord's (`--custom-message-margin-horizontal` on both sides).
+const RIGHT: f32 = LEFT;
 /// Messages of one author within this many minutes of the first of their
 /// group read as one group. A design value.
 pub const GROUP_MINUTES: i64 = 7;
@@ -832,6 +833,7 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
     let style = view.style;
     let scale = style.scale();
     let mut column = Vec::new();
+    let mut head_line = None;
     // The author's name and mark open their card.
     let (on_mark, card) = match view.author_card.clone() {
         Some((on_mark, card)) => (on_mark, Some(card)),
@@ -864,8 +866,13 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
         if view.author.bot {
             head.push(tag("BOT", look).centered_y());
         }
-        head.push(when(message, view.now, 12.0 * scale, look).centered_y());
-        column.push(
+        // On the name's baseline, as Discord's `vertical-align: baseline`:
+        // the faces' ascent is 1.02 em, and the name's letters are 4 px taller.
+        head.push(Element::column(vec![
+            gap(0.0, 4.08 * scale),
+            when(message, view.now, 12.0 * scale, look),
+        ]));
+        head_line = Some(
             Element::row(head)
                 .gap(8.0)
                 .size(None, Some(22.0 * scale.max(1.0))),
@@ -903,8 +910,14 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
         let mut line_parts = vec![Element::row(head).gap(6.0).size(None, Some(body_line))];
         line_parts.push(written.unwrap_or_else(Element::spacer).flex(1.0));
         column.push(Element::row(line_parts).gap(6.0));
-    } else if let Some(written) = written {
-        column.push(written);
+    } else {
+        // The name's line and the text's first are 22 px apart, as any two
+        // lines of the text: Discord's header is one more line of it. What
+        // follows (files, cards, reactions) keeps the column's gap.
+        match (head_line.take(), written) {
+            (Some(head), Some(written)) => column.push(Element::column(vec![head, written])),
+            (head, written) => column.extend(head.into_iter().chain(written)),
+        }
     }
     if live.editing.is_none() && !style.sample {
         for index in 0..invitation_links(message).len() {
@@ -1081,13 +1094,18 @@ fn content(view: &MessageView<'_>, live: &Live<'_>, width: f32, look: &Look) -> 
                         .name(tr!("Perfil de {name}", name = view.author.name)),
                 )
         };
-        Element::column(vec![crate::profile::card_popout(
-            mark,
-            mark_card,
-            crate::profile::ids::AUTHOR_DISMISS,
-            limn::PopoverPlacement::RightStart,
-            look,
-        )])
+        // 2 px under the name line's top, as Discord's (`margin-top: calc(4px
+        // - var(--custom-message-spacing-vertical-container-cozy))`).
+        Element::column(vec![
+            gap(0.0, 2.0),
+            crate::profile::card_popout(
+                mark,
+                mark_card,
+                crate::profile::ids::AUTHOR_DISMISS,
+                limn::PopoverPlacement::RightStart,
+                look,
+            ),
+        ])
         .size(Some(AVATAR), None)
     };
     let (lead, after) = if style.compact {
@@ -1426,7 +1444,7 @@ fn said(view: &MessageView<'_>, live: &Live<'_>, width: f32, size: f32, look: &L
         } else {
             look.text
         },
-        ..MarkdownColors::for_palette(palette)
+        ..look.markdown_colors(palette)
     };
     let mut element = Markdown::new(&message.content, palette)
         .width(width)
@@ -1467,7 +1485,7 @@ fn said(view: &MessageView<'_>, live: &Live<'_>, width: f32, size: f32, look: &L
         text::enlarge(&mut element, text::JUMBO);
     }
     if let Some(at) = message.edited {
-        let edited = 11.0 * size / MARKDOWN_BODY;
+        let edited = size * 0.625;
         if !text::append_edited(&mut element, at, edited, look) {
             let mark = TextSpan {
                 text: t("(editado)").into(),
@@ -1535,7 +1553,7 @@ fn when(message: &Message, now: Timestamp, size: f32, look: &Look) -> Element {
     let said = written_when(at, now);
     let id = action(message, "when");
     Tooltip::new(
-        line(said, size, look.faint).shrink_to_fit(),
+        strong_line(said, size, look.faint).shrink_to_fit(),
         id,
         full_date(at),
         look.menu_palette(),
@@ -1595,14 +1613,18 @@ fn delivery(message: &Message, width: f32, look: &Look) -> Option<Element> {
 
 /// A small mark beside a name, such as BOT.
 fn tag(label: &str, look: &Look) -> Element {
-    Element::panel(
+    // Discord's `botTag` beside a name: 15 high, 10 px semibold, radius 4.
+    Element::panel(Element::row(vec![
+        gap(4.4, 0.0),
         Element::text(label)
-            .font_family(FontFamily::SansBold)
-            .font_size(9.0)
-            .foreground(look.on_accent),
-    )
-    .padding(3.0)
-    .radius(3.0)
+            .font_family(FontFamily::SansSemibold)
+            .font_size(10.0)
+            .foreground(look.on_accent)
+            .centered_y(),
+        gap(4.4, 0.0),
+    ]))
+    .size(None, Some(15.0))
+    .radius(4.0)
     .background(look.accent)
 }
 
@@ -1627,7 +1649,7 @@ fn reply_line(reply: &Reply, style: &MessageStyle, look: &Look) -> Element {
     // limn has no per-side border.
     let spine = Element::panel(Element::spacer())
         .size(Some(bend + 12.0), Some(HEIGHT))
-        .border(look.border, SPINE)
+        .border(look.spine(), SPINE)
         .radius(6.0)
         .translate(limn::Point::new(0.0, HEIGHT / 2.0 - SPINE / 2.0))
         .clip_to(bend, HEIGHT);
@@ -1640,7 +1662,7 @@ fn reply_line(reply: &Reply, style: &MessageStyle, look: &Look) -> Element {
             );
             parts.push(gap(4.0, 0.0));
             parts.push(
-                strong_line(&author.name, 14.0, author.ink)
+                strong_line(&author.name, 14.0, Look::alpha(author.ink, 163))
                     .shrink_to_fit()
                     .centered_y(),
             );
@@ -1664,8 +1686,8 @@ fn reply_line(reply: &Reply, style: &MessageStyle, look: &Look) -> Element {
 /// What a reply answers, in its one line: its emoji 1.25 times its
 /// letters, as the official client draws them there.
 fn reply_snippet(reply: &Reply, look: &Look) -> Element {
-    text::line_with_pictures(&reply.snippet, &reply.emoji, 14.0, look.muted, 1.25)
-        .unwrap_or_else(|| line(&reply.snippet, 14.0, look.muted))
+    text::line_with_pictures(&reply.snippet, &reply.emoji, 14.0, look.text, 1.25)
+        .unwrap_or_else(|| line(&reply.snippet, 14.0, look.text))
 }
 
 /// Who reacted with an emoji, as far as the account knows: only its count
@@ -1754,10 +1776,14 @@ fn reactions(message: &Message, can_react: bool, sample: bool, look: &Look) -> E
         if reaction.count == 0 {
             continue;
         }
+        // Discord's: its blurple at 24 % under a lighter count for the
+        // account's own, `--background-mod-subtle` with no edge otherwise.
         let (fill, edge, ink) = if reaction.me {
-            (Look::alpha(look.accent, 40), look.accent, look.accent)
+            let (ink, fill) = look.mention_pill();
+            (fill, look.accent, ink)
         } else {
-            (look.card, look.border, look.muted)
+            let fill = Look::alpha(Color::rgb(151, 151, 159), 31);
+            (fill, Look::alpha(look.border, 0), look.muted)
         };
         let pill = Element::row(vec![
             Element::text(reaction.emoji.clone())
@@ -1766,7 +1792,7 @@ fn reactions(message: &Message, can_react: bool, sample: bool, look: &Look) -> E
                 .foreground(look.text)
                 .centered_y(),
             Element::text(reaction.count.to_string())
-                .font_family(FontFamily::SansMedium)
+                .font_family(FontFamily::SansSemibold)
                 .font_size(14.0)
                 .foreground(ink)
                 .centered_y(),
@@ -1947,11 +1973,7 @@ fn actions(view: &MessageView<'_>, live: &Live<'_>, look: &Look) -> Element {
     // Discord's: 16 above the row's top, over the message before, so the
     // last message's never runs under the composer.
     Element::column(vec![
-        Element::row(vec![
-            Element::spacer().flex(1.0),
-            panel,
-            gap(RIGHT - 32.0, 0.0),
-        ]),
+        Element::row(vec![Element::spacer().flex(1.0), panel, gap(16.0, 0.0)]),
         Element::spacer().flex(1.0),
     ])
     .translate(limn::Point::new(0.0, -BAR_RAISE))
@@ -2264,9 +2286,9 @@ fn day_divider(label: &str, look: &Look) -> Element {
             .centered_y()
     };
     let label = Element::text(label.to_owned())
-        .font_family(FontFamily::SansMedium)
+        .font_family(FontFamily::SansSemibold)
         .font_size(12.0)
-        .foreground(look.muted)
+        .foreground(look.dim)
         .centered_y();
     Element::row(vec![
         gap(17.0, 0.0),
@@ -2287,13 +2309,13 @@ fn new_divider(look: &Look) -> Element {
             .foreground(Color::rgb(255, 255, 255)),
     ))
     .size(Some(52.5), Some(14.0))
-    .radius(3.0)
-    .background(look.danger);
+    .radius(4.0)
+    .background(look.danger_fill);
     Element::row(vec![
         gap(17.0, 0.0),
         Element::panel(Element::spacer())
             .size(None, Some(1.0))
-            .background(look.danger)
+            .background(look.danger_fill)
             .flex(1.0)
             .centered_y(),
         tag.centered_y(),
@@ -3955,6 +3977,17 @@ mod tests {
                 _ => None,
             })
             .expect("the text is painted");
+        // The name's line and the text's first are 22 px apart, as Discord's.
+        let top = |wanted: &str| {
+            laid.commands.iter().find_map(|command| match command {
+                limn::DrawCommand::Text { text, position, .. } if text == wanted => {
+                    Some(position.y)
+                }
+                _ => None,
+            })
+        };
+        let apart = top("hola").unwrap() - top("Ada").unwrap();
+        assert!((apart - 22.0).abs() < 0.5, "{apart}");
         assert!((text.0 - GUTTER).abs() < 1.0, "{text:?}");
         assert!((text.1 - TEXT_SIZE).abs() < 0.01, "{text:?}");
         let name = laid

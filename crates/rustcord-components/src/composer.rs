@@ -110,14 +110,17 @@ pub mod ids {
     pub const POLL: &str = "composer:poll";
 }
 
-/// A compact single-line box; the editor grows from its actual font metrics.
-const MIN_HEIGHT: f32 = 48.0;
+/// A single-line box, as high as the account panel beside it (Discord's
+/// `--custom-channel-textarea-text-area-height`, 56); the editor grows from
+/// its actual font metrics.
+const MIN_HEIGHT: f32 = 56.0;
 /// The strip of a reply over the box.
 const STRIP: f32 = 37.5;
-/// Room around the text: it starts where the messages' text does.
-const EDITOR_PADDING: f32 = 14.0;
+/// Room around the text: its one line in the middle of the box, where limn
+/// centers the controls, and its start where the messages' text starts.
+const EDITOR_PADDING: f32 = 18.0;
 /// The column of «+», with the glyph centered in it.
-const PLUS_WIDTH: f32 = 60.0;
+const PLUS_WIDTH: f32 = 56.0;
 /// The column of the emoji, with the glyph centered in it.
 const EMOJI_WIDTH: f32 = 52.0;
 /// An icon button's side.
@@ -142,6 +145,8 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     let plus = plus_menu(&view, enabled, look);
     let emoji_button = IconButton::new(ids::EMOJI, Icon::Emoji, palette)
         .variant(ButtonVariant::Ghost)
+        .ink(look.muted)
+        .hover_ink(look.text)
         .tooltip(t("Emoji"))
         .enabled(enabled)
         .render();
@@ -181,11 +186,12 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
     let tool = |id: &str, glyph: &'static str, hint: &str| {
         IconButton::new(id, Icon::Custom(glyph), palette)
             .variant(ButtonVariant::Ghost)
+            .ink(look.muted)
+            .hover_ink(look.text)
             .tooltip(hint)
             .accessibility_label(hint)
             .render()
     };
-    let emoji_column = column(emoji_button, EMOJI_WIDTH, false);
     // Where nothing can be written, or they would leave the editor too
     // little room, only the emoji.
     let tools = 2.0 * (CONTROL + TOOL_GAP);
@@ -200,10 +206,11 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
                 t("Abrir selector de stickers"),
             ),
             gap(TOOL_GAP, 0.0),
-            emoji_column,
+            emoji_button,
+            gap(EMOJI_WIDTH / 2.0 - CARD_PADDING - CONTROL / 2.0, 0.0),
         ])
     } else {
-        emoji_column
+        column(emoji_button, EMOJI_WIDTH, false)
     };
     // limn's composer: the editor grows between «+» and the emoji, which
     // stay beside its first line; a long reason not to write wraps.
@@ -379,6 +386,8 @@ pub fn composer(view: ComposerView<'_>, look: &Look) -> Element {
 fn plus_menu(view: &ComposerView<'_>, enabled: bool, look: &Look) -> Element {
     let button = IconButton::new(ids::PLUS, Icon::Add, raised_palette(look))
         .variant(ButtonVariant::Ghost)
+        .ink(look.muted)
+        .hover_ink(look.text)
         .tooltip(t("Más opciones"))
         .enabled(enabled)
         .render();

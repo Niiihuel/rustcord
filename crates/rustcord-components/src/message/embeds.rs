@@ -1240,6 +1240,7 @@ pub(super) fn markdown(
         .width(width)
         .font_size(super::MARKDOWN_BODY * scale)
         .line_height(18.0 * scale)
+        .colors(draw.look.markdown_colors(draw.look.palette()))
         .render()
         .element;
     if let Some(names) = draw.names {

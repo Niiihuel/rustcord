@@ -316,7 +316,7 @@ fn insertion(row: Element, mark: DragMark, look: &Look) -> Element {
         DragMark::Below => vec![Element::spacer().flex(1.0), bar()],
         DragMark::Inside => {
             let ring = Element::panel(Element::spacer())
-                .radius(6.0)
+                .radius(8.0)
                 .border(look.online, 2.0);
             return Element::stack(vec![row, ring]);
         }
@@ -454,7 +454,7 @@ pub fn channel(row: ChannelRow, look: &Look) -> Element {
     }
     let body = Element::clickable(row.id.clone(), Element::row(parts))
         .size(None, Some(ROW))
-        .radius(6.0)
+        .radius(8.0)
         .background(if row.selected {
             look.selected
         } else {
@@ -535,7 +535,7 @@ pub fn thread(row: ChannelRow, last: bool, look: &Look) -> Element {
     parts.push(gap(7.5, 0.0));
     let body = Element::clickable(row.id.clone(), Element::row(parts))
         .size(None, Some(THREAD_ROW))
-        .radius(6.0)
+        .radius(8.0)
         .background(if row.selected {
             look.selected
         } else {
