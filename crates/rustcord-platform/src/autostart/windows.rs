@@ -54,6 +54,25 @@ pub(super) fn set(on: bool, minimized: bool, program: &Path) -> std::io::Result<
     registry::remove(RUN, LEGACY_NAME)
 }
 
+/// RUNE's value, or Rustcord's starting `rune.exe`, as Rustcord's own
+/// starting `program`: on again if it was on, gone if Task Manager had it
+/// off (off either way).
+#[cfg(windows)]
+pub(super) fn renew(program: &Path) -> std::io::Result<()> {
+    let legacy = registry::text(RUN, LEGACY_NAME).is_some();
+    let old = registry::text(RUN, NAME).is_some_and(|command| starts_rune(&command));
+    if !legacy && !old {
+        return Ok(());
+    }
+    let (on, minimized) = state();
+    set(on, minimized, program)
+}
+
+/// Whether `command` starts RUNE's program, `rune.exe`.
+fn starts_rune(command: &str) -> bool {
+    command.to_ascii_lowercase().contains("\\rune.exe\"")
+}
+
 /// The command for `program`: quoted, as a path with spaces needs, and the
 /// argument that starts Rustcord in the tray. `None` for a path Windows cannot
 /// quote.
@@ -93,6 +112,17 @@ mod tests {
         assert!(command("", false).is_none());
         assert!(command("C:\\a\"b.exe", false).is_none());
         assert!(command("C:\\a\nb.exe", true).is_none());
+    }
+
+    #[test]
+    fn an_entry_that_starts_rune_s_program_is_told_apart() {
+        let folder = r"C:\Users\Ada\AppData\Local\Programs\Rustcord";
+        assert!(starts_rune(&format!("\"{folder}\\rune.exe\"")));
+        assert!(starts_rune(&format!(
+            "\"{folder}\\RUNE.EXE\" --start-minimized"
+        )));
+        assert!(!starts_rune(&format!("\"{folder}\\rustcord.exe\"")));
+        assert!(!starts_rune(r#""C:\Juegos\fortune.exe""#));
     }
 
     #[test]

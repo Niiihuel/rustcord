@@ -50,6 +50,19 @@ pub fn change(on: bool, minimized: bool, program: &Path) -> Result<(), &'static 
     }
 }
 
+/// RUNE's entry (Rustcord's name before), or one that starts its program
+/// `rune.exe`, as Rustcord's own: in the same state, starting `program`.
+/// Nothing when there is none. Windows only: the XDG entry moves when it is
+/// looked for ([`entry_path`]).
+pub fn renew(program: &Path) {
+    #[cfg(windows)]
+    if let Err(error) = self::windows::renew(program) {
+        eprintln!("rustcord: autostart: {error}");
+    }
+    #[cfg(not(windows))]
+    let _ = program;
+}
+
 /// Where the entry lives: `$XDG_CONFIG_HOME/autostart`, or `~/.config/autostart`.
 pub fn entry_path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")

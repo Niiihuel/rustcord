@@ -61,6 +61,8 @@ fn scripted() -> (Arc<Scripted>, tokio::sync::mpsc::UnboundedSender<Event>) {
 struct Recording {
     saved: std::sync::Mutex<HashMap<String, String>>,
     deleted: std::sync::Mutex<Vec<String>>,
+    /// What is kept under the service's former name (RUNE's `rune-cache`).
+    former: std::sync::Mutex<HashMap<String, String>>,
     gate: Option<tokio::sync::Semaphore>,
     fail: bool,
 }
@@ -72,7 +74,14 @@ impl SecretStore for Recording {
 
     fn load<'a>(&'a self, service: &'a str, account: &'a str) -> SecretFuture<'a, Option<Saved>> {
         Box::pin(async move {
-            assert_eq!(service, rustcord_platform::secrets::CACHE_KEYS);
+            if service != rustcord_platform::secrets::CACHE_KEYS {
+                assert!(rustcord_platform::secrets::FORMER_CACHE_KEYS.contains(&service));
+                let found = self.former.lock().unwrap().get(account).cloned();
+                return Ok(found.map(|secret| Saved {
+                    account: account.into(),
+                    secret: secret.into(),
+                }));
+            }
             if let Some(gate) = &self.gate {
                 let _ = gate.acquire().await.unwrap();
             }
@@ -106,7 +115,11 @@ impl SecretStore for Recording {
 
     fn delete<'a>(&'a self, service: &'a str, account: &'a str) -> SecretFuture<'a, ()> {
         Box::pin(async move {
-            assert_eq!(service, rustcord_platform::secrets::CACHE_KEYS);
+            if service != rustcord_platform::secrets::CACHE_KEYS {
+                assert!(rustcord_platform::secrets::FORMER_CACHE_KEYS.contains(&service));
+                self.former.lock().unwrap().remove(account);
+                return Ok(());
+            }
             self.saved.lock().unwrap().remove(account);
             self.deleted.lock().unwrap().push(account.into());
             Ok(())
@@ -332,6 +345,56 @@ fn ready_waits_for_the_read_marks_result_before_reporting_a_storage_failure() {
         drop(client);
         let _ = std::fs::remove_dir_all(directory);
     }
+}
+
+/// RUNE kept the keys under `rune-cache`: such a key is the account's, moves
+/// under Rustcord's name and leaves the old one, and no new key is made.
+#[test]
+fn a_key_kept_under_the_former_service_name_moves_to_the_new_one() {
+    let directory = directory("former-service");
+    let path = directory.join("rustcord.db");
+    let (provider, script) = scripted();
+    let snapshot = provider.inner.snapshot();
+    let account = snapshot.me.as_ref().unwrap().id;
+    let namespace = namespace(identity(account.0));
+    let key = rustcord_storage::Key::generate().unwrap().to_text();
+    let keyring = Arc::new(Recording::default());
+    keyring
+        .former
+        .lock()
+        .unwrap()
+        .insert(namespace.clone(), key.to_string());
+    let mut client = start(provider.clone(), &path, Some(keyring.clone()));
+    script
+        .send(Event::StorageIdentity(identity(account.0)))
+        .unwrap();
+    script
+        .send(Event::Ready(Box::new(snapshot.clone())))
+        .unwrap();
+    ready(&mut client);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while client.storage_account().is_none() && Instant::now() < deadline {
+        client.poll(64);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(client.storage_account(), Some(account));
+    settle(&mut client);
+    drop(client);
+    assert_eq!(
+        keyring
+            .saved
+            .lock()
+            .unwrap()
+            .get(&namespace)
+            .map(String::as_str),
+        Some(key.as_str()),
+        "the same key, under the new name"
+    );
+    assert!(
+        keyring.former.lock().unwrap().is_empty(),
+        "the old one left"
+    );
+    let _ = std::fs::remove_dir_all(directory);
 }
 
 #[test]

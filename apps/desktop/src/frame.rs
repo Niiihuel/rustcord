@@ -127,14 +127,20 @@ pub fn icon() -> std::sync::Arc<egui::IconData> {
 }
 
 /// The frame between frames: who draws it, whether a press on the bar
-/// already moved the window, and whether it is still the splash.
+/// already moved the window, whether it is still the splash, and the size
+/// it grows to while it has not taken it yet.
 #[derive(Debug, Default)]
 pub struct WindowFrame {
     pub chrome: Chrome,
     moved: bool,
     /// Opened at [`SPLASH_SIZE`] and not grown yet.
     pub compact: bool,
+    growing: Option<(egui::Vec2, std::time::Instant)>,
 }
+
+/// The longest the window shows its ground alone while it grows, should the
+/// system give it another size than the one asked for.
+const GROWING_AT_MOST: std::time::Duration = std::time::Duration::from_millis(700);
 
 impl WindowFrame {
     pub fn new(chrome: Chrome, compact: bool) -> Self {
@@ -142,7 +148,34 @@ impl WindowFrame {
             chrome,
             moved: false,
             compact,
+            growing: None,
         }
+    }
+
+    /// Whether the window shows its ground alone this frame: from the frame
+    /// it is asked to grow until it has its new size. Windows stretches the
+    /// last picture over a window that grew until one of the new size comes,
+    /// and that picture is the interface laid out at the splash's size: a
+    /// second of it stretched read as a broken interface. Its ground
+    /// stretched is the same ground. At most [`GROWING_AT_MOST`].
+    pub fn covering(&mut self, ctx: &egui::Context, now: std::time::Instant) -> bool {
+        let Some((size, since)) = self.growing else {
+            return false;
+        };
+        let (inner, maximized, fullscreen) = ctx.input(|input| {
+            let viewport = input.viewport();
+            (
+                viewport.inner_rect.map(|rect| rect.size()),
+                viewport.maximized.unwrap_or(false),
+                viewport.fullscreen.unwrap_or(false),
+            )
+        });
+        let grown = inner.is_some_and(|inner| (inner - size).abs().max_elem() <= 2.0);
+        if grown || maximized || fullscreen || now.duration_since(since) >= GROWING_AT_MOST {
+            self.growing = None;
+            return false;
+        }
+        true
     }
 
     /// From the splash to the usual window, once: its frame as the person
@@ -160,6 +193,7 @@ impl WindowFrame {
         let size = monitor.map_or(vec2(SIZE[0], SIZE[1]), |monitor| {
             vec2(SIZE[0], SIZE[1]).min(monitor * 0.9)
         });
+        self.growing = Some((size, std::time::Instant::now()));
         ctx.send_viewport_cmd(ViewportCommand::Decorations(self.chrome == Chrome::System));
         ctx.send_viewport_cmd(ViewportCommand::Resizable(true));
         ctx.send_viewport_cmd(ViewportCommand::InnerSize(size));
@@ -320,6 +354,7 @@ fn resize_direction(bounds: Rect, point: Pos2) -> Option<ResizeDirection> {
 mod tests {
     use super::*;
     use eframe::egui::pos2;
+    use std::time::Duration;
 
     const WIDTH: f32 = 800.0;
     const HEIGHT: f32 = 600.0;
@@ -598,6 +633,53 @@ mod tests {
             .commands
             .iter()
             .any(|command| matches!(command, ViewportCommand::InnerSize(_))));
+    }
+
+    #[test]
+    fn a_growing_window_shows_its_ground_until_it_has_its_new_size() {
+        let ctx = egui::Context::default();
+        // A frame of the window as the system says it is, `inner` large.
+        let at = |inner: egui::Vec2| {
+            let mut input = egui::RawInput::default();
+            let info = egui::ViewportInfo {
+                inner_rect: Some(Rect::from_min_size(Pos2::ZERO, inner)),
+                ..Default::default()
+            };
+            input.viewports.insert(egui::ViewportId::ROOT, info);
+            input
+        };
+        let splash = vec2(SPLASH_SIZE[0], SPLASH_SIZE[1]);
+        let mut frame = WindowFrame::new(Chrome::Drawn, true);
+        let start = std::time::Instant::now();
+        let mut run = |inner, now| {
+            let mut covered = false;
+            let mut output = ctx.run_ui(at(inner), |ui| {
+                frame.grow(ui.ctx());
+                covered = frame.covering(ui.ctx(), now);
+            });
+            output.textures_delta.clear();
+            covered
+        };
+        // Not grown, nothing to cover; asked to grow, the splash's size is
+        // the picture Windows would stretch.
+        assert!(!WindowFrame::new(Chrome::Drawn, true).covering(&ctx, start));
+        assert!(run(splash, start));
+        assert!(run(splash, start + Duration::from_millis(100)));
+        // The new size, give or take a point: the interface shows, for good.
+        assert!(!run(
+            vec2(SIZE[0] - 1.0, SIZE[1]),
+            start + Duration::from_millis(120)
+        ));
+        assert!(!run(splash, start + Duration::from_millis(140)));
+        // A size the system chose instead: not past the bound.
+        let mut frame = WindowFrame::new(Chrome::Drawn, true);
+        let _ = ctx.run_ui(at(splash), |ui| frame.grow(ui.ctx()));
+        let late = std::time::Instant::now() + GROWING_AT_MOST;
+        let mut covered = true;
+        let _ = ctx.run_ui(at(vec2(900.0, 600.0)), |ui| {
+            covered = frame.covering(ui.ctx(), late);
+        });
+        assert!(!covered);
     }
 
     #[test]

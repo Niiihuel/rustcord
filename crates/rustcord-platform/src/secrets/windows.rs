@@ -17,7 +17,8 @@ use super::{Entry, Saved, SecretError, SecretFuture, SecretStore};
 
 /// Every target Rustcord writes starts so: `Rustcord/{service}/{account}`.
 const PREFIX: &str = "Rustcord/";
-/// Credential Manager entries from RUNE installations remain readable.
+/// What RUNE, Rustcord's name before, wrote: still read, and moved under
+/// [`PREFIX`] the first time it is.
 const LEGACY_PREFIX: &str = "RUNE/";
 /// The system's bound on a generic credential's secret.
 const MAX_SECRET: usize = 5 * 512;
@@ -136,13 +137,30 @@ fn list_prefix(service: &str, prefix: &str) -> Result<Vec<(u64, Entry)>, SecretE
 }
 
 fn load(service: &str, account: &str) -> Result<Option<Saved>, SecretError> {
-    match load_prefix(service, account, PREFIX)? {
-        Some(saved) => Ok(Some(saved)),
-        None => load_prefix(service, account, LEGACY_PREFIX),
+    if let Some((saved, _)) = load_prefix(service, account, PREFIX)? {
+        return Ok(Some(saved));
     }
+    let Some((saved, (name, avatar))) = load_prefix(service, account, LEGACY_PREFIX)? else {
+        return Ok(None);
+    };
+    // RUNE's: kept under Rustcord's name, its shown name and picture with
+    // it, and only then let go of. A failure leaves it where it was, still
+    // read from there.
+    if save(service, account, &name, &avatar, &saved.secret).is_ok() {
+        let _ = delete_prefix(service, account, LEGACY_PREFIX);
+    }
+    Ok(Some(saved))
 }
 
-fn load_prefix(service: &str, account: &str, prefix: &str) -> Result<Option<Saved>, SecretError> {
+/// An entry's shown name and avatar key.
+type Shown = (String, String);
+
+/// The entry under `prefix`, with its shown name and avatar key.
+fn load_prefix(
+    service: &str,
+    account: &str,
+    prefix: &str,
+) -> Result<Option<(Saved, Shown)>, SecretError> {
     let mut found: *mut CREDENTIALW = std::ptr::null_mut();
     // SAFETY: a valid out-pointer; the credential is freed below.
     match unsafe {
@@ -159,8 +177,12 @@ fn load_prefix(service: &str, account: &str, prefix: &str) -> Result<Option<Save
     }
     // SAFETY: the system's credential, alive until CredFree; its secret is
     // erased in place before it is freed.
-    let secret = unsafe {
+    let (secret, shown) = unsafe {
         let credential = &*found;
+        let shown = (
+            attribute(credential, "name"),
+            attribute(credential, "avatar"),
+        );
         let blob = std::slice::from_raw_parts_mut(
             credential.CredentialBlob,
             if credential.CredentialBlob.is_null() {
@@ -172,12 +194,13 @@ fn load_prefix(service: &str, account: &str, prefix: &str) -> Result<Option<Save
         let secret = std::str::from_utf8(blob).map(|text| Zeroizing::new(text.to_owned()));
         zeroize::Zeroize::zeroize(blob);
         CredFree(found.cast());
-        secret
+        (secret, shown)
     };
-    Ok(Some(Saved {
+    let saved = Saved {
         account: account.to_owned(),
         secret: secret.map_err(|_| SecretError::FAILED)?,
-    }))
+    };
+    Ok(Some((saved, shown)))
 }
 
 fn save(

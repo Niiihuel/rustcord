@@ -45,16 +45,17 @@ pub fn installation() -> Option<Install> {
 /// The program a launcher or the session's autostart should start: the
 /// installation's, which stays the same across updates, or this one.
 pub fn program() -> std::io::Result<PathBuf> {
-    match Install::locate() {
-        Some(install)
-            if std::env::current_exe()
-                .and_then(std::fs::canonicalize)
-                .is_ok_and(|program| install.runs(&program)) =>
-        {
-            Ok(install.program())
-        }
-        _ => std::env::current_exe(),
-    }
+    installed_program().map_or_else(std::env::current_exe, Ok)
+}
+
+/// The installation's program while this is it; `None` for a build run
+/// from elsewhere.
+pub fn installed_program() -> Option<PathBuf> {
+    let install = Install::locate()?;
+    let current = std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .ok()?;
+    install.runs(&current).then(|| install.program())
 }
 
 /// Look when Rustcord starts, or no longer, from the next start.

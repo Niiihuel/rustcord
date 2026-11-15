@@ -4729,6 +4729,16 @@ impl eframe::App for App {
         if self.frame.compact && !rustcord_ui::splash::compact(&self.ui, &self.store, now) {
             self.frame.grow(&ctx);
         }
+        // Until it has its new size, the window shows its ground alone, over
+        // whatever this frame paints (see `WindowFrame::covering`).
+        if self.frame.covering(&ctx, now) {
+            let ground = egui::Color32::from_rgb(rim.r, rim.g, rim.b);
+            let cover =
+                egui::LayerId::new(egui::Order::Debug, egui::Id::unique("rustcord:growing"));
+            ctx.layer_painter(cover)
+                .rect_filled(ctx.viewport_rect(), 0.0, ground);
+            ctx.request_repaint();
+        }
         // Rustcord's own updates: installed, Rustcord closes
         // (saving first, as any close) to start the new version.
         if self.updates.step(&mut self.ui) {

@@ -70,14 +70,14 @@ Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
 Type: filesandordirs; Name: "{app}\licenses"
 ; The Start menu shortcut under the app's old name.
 Type: files; Name: "{autoprograms}\RUNE.lnk"
+; The program under the app's old name, for startup entries from then:
+; Rustcord renews such an entry as it starts, which the installer does next.
+Type: files; Name: "{app}\rune.exe"
 
 [Files]
 ; ignoreversion: a release always replaces the program, even one whose
 ; version information is the same (0.2.0-rc.1 and 0.2.0 are both 0.2.0.0).
 Source: "{#Program}"; DestDir: "{app}"; DestName: "rustcord.exe"; Flags: ignoreversion
-; Older startup entries and shortcuts may still launch rune.exe, so the program is
-; installed under that name too.
-Source: "{#Program}"; DestDir: "{app}"; DestName: "rune.exe"; Flags: ignoreversion
 #ifdef Loader
 Source: "{#Loader}"; DestDir: "{app}"; DestName: "WebView2Loader.dll"; Flags: ignoreversion
 #endif

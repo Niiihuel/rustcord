@@ -161,6 +161,11 @@ impl Desktop {
             desktop.starting_hidden = start_minimized;
             desktop.hidden = start_minimized;
             desktop.autostart = Some(background(wake, || {
+                // RUNE's entry, from Rustcord's name before, becomes
+                // Rustcord's, run from the installation.
+                if let Some(program) = crate::update::installed_program() {
+                    rustcord_platform::autostart::renew(&program);
+                }
                 let (on, minimized) = rustcord_platform::autostart::state().unwrap_or_default();
                 (on, minimized, None)
             }));

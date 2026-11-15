@@ -11,9 +11,11 @@ use zeroize::Zeroizing;
 
 pub type SecretFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, SecretError>> + Send + 'a>>;
 
-/// The persistent service ID of the local store's keys, kept as `rune-cache`
-/// so encrypted data remains available after the Rustcord rename.
-pub const CACHE_KEYS: &str = "rune-cache";
+/// The persistent service ID of the local store's keys.
+pub const CACHE_KEYS: &str = "rustcord-cache";
+/// Its names before, from when Rustcord was called RUNE: a key found only
+/// under one of them moves to [`CACHE_KEYS`] the first time it is read.
+pub const FORMER_CACHE_KEYS: &[&str] = &["rune-cache"];
 
 /// One saved entry: the account it belongs to and the value that restores it.
 pub struct Saved {
@@ -145,8 +147,11 @@ mod linux {
 
     use super::{Entry, Saved, SecretError, SecretFuture, SecretStore};
 
-    // Existing Secret Service items use this application attribute.
-    const APPLICATION: &str = "rune";
+    // Every Secret Service item Rustcord writes carries this application
+    // attribute; items of RUNE's, Rustcord's name before, carry the other
+    // and move to it the first time they are read.
+    const APPLICATION: &str = "rustcord";
+    const LEGACY_APPLICATION: &str = "rune";
     // Calls are bounded; an unlock prompt waits for the person.
     const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -218,12 +223,17 @@ mod linux {
             Box::pin(async move {
                 let bus = self.connect().await?;
                 let mut entries = Vec::new();
-                for item in search(
-                    &bus,
-                    HashMap::from([("application", APPLICATION), ("service", service)]),
-                )
-                .await?
-                {
+                let mut items = Vec::new();
+                for application in [APPLICATION, LEGACY_APPLICATION] {
+                    items.extend(
+                        search(
+                            &bus,
+                            HashMap::from([("application", application), ("service", service)]),
+                        )
+                        .await?,
+                    );
+                }
+                for item in items {
                     // Attributes of a locked item may not be readable.
                     unlocked(&item).await?;
                     let mut attributes = item.get_attributes().await.map_err(error)?;
@@ -244,7 +254,12 @@ mod linux {
                     ));
                 }
                 entries.sort_by_key(|(created, _)| std::cmp::Reverse(*created));
-                Ok(entries.into_iter().map(|(_, entry)| entry).collect())
+                let mut accounts = std::collections::HashSet::new();
+                Ok(entries
+                    .into_iter()
+                    .map(|(_, entry)| entry)
+                    .filter(|entry| accounts.insert(entry.account.clone()))
+                    .collect())
             })
         }
 
@@ -255,25 +270,37 @@ mod linux {
         ) -> SecretFuture<'a, Option<Saved>> {
             Box::pin(async move {
                 let bus = self.connect().await?;
-                let items = search(
-                    &bus,
-                    HashMap::from([
-                        ("application", APPLICATION),
-                        ("service", service),
-                        ("account", account),
-                    ]),
-                )
-                .await?;
-                let Some(item) = items.first() else {
-                    return Ok(None);
-                };
-                unlocked(item).await?;
-                let bytes = Zeroizing::new(item.get_secret().await.map_err(error)?);
-                let secret = std::str::from_utf8(&bytes).map_err(|_| SecretError::FAILED)?;
-                Ok(Some(Saved {
-                    account: account.to_owned(),
-                    secret: Zeroizing::new(secret.to_owned()),
-                }))
+                for application in [APPLICATION, LEGACY_APPLICATION] {
+                    let items = search(
+                        &bus,
+                        HashMap::from([
+                            ("application", application),
+                            ("service", service),
+                            ("account", account),
+                        ]),
+                    )
+                    .await?;
+                    let Some(item) = items.first() else {
+                        continue;
+                    };
+                    unlocked(item).await?;
+                    let bytes = Zeroizing::new(item.get_secret().await.map_err(error)?);
+                    let secret = std::str::from_utf8(&bytes).map_err(|_| SecretError::FAILED)?;
+                    if application == LEGACY_APPLICATION {
+                        // RUNE's: kept under Rustcord's name, its shown name
+                        // and picture with it. A failure leaves it where it
+                        // was, still read from there.
+                        let attributes = item.get_attributes().await.map_err(error)?;
+                        let field = |key: &str| attributes.get(key).cloned().unwrap_or_default();
+                        let (name, avatar) = (field("name"), field("avatar"));
+                        let _ = self.save(service, account, &name, &avatar, secret).await;
+                    }
+                    return Ok(Some(Saved {
+                        account: account.to_owned(),
+                        secret: Zeroizing::new(secret.to_owned()),
+                    }));
+                }
+                Ok(None)
             })
         }
 
@@ -316,7 +343,11 @@ mod linux {
                     .create_item(&label, attributes, secret.as_bytes(), true, "text/plain")
                     .await
                     .map_err(error)?;
-                for item in search(&bus, lookup).await? {
+                let mut legacy = lookup.clone();
+                legacy.insert("application", LEGACY_APPLICATION);
+                let mut old = search(&bus, lookup).await?;
+                old.extend(search(&bus, legacy).await?);
+                for item in old {
                     if item.item_path != created.item_path {
                         unlocked(&item).await?;
                         item.delete().await.map_err(error)?;
@@ -329,18 +360,20 @@ mod linux {
         fn delete<'a>(&'a self, service: &'a str, account: &'a str) -> SecretFuture<'a, ()> {
             Box::pin(async move {
                 let bus = self.connect().await?;
-                for item in search(
-                    &bus,
-                    HashMap::from([
-                        ("application", APPLICATION),
-                        ("service", service),
-                        ("account", account),
-                    ]),
-                )
-                .await?
-                {
-                    unlocked(&item).await?;
-                    item.delete().await.map_err(error)?;
+                for application in [APPLICATION, LEGACY_APPLICATION] {
+                    for item in search(
+                        &bus,
+                        HashMap::from([
+                            ("application", application),
+                            ("service", service),
+                            ("account", account),
+                        ]),
+                    )
+                    .await?
+                    {
+                        unlocked(&item).await?;
+                        item.delete().await.map_err(error)?;
+                    }
                 }
                 Ok(())
             })
@@ -352,10 +385,12 @@ mod linux {
         use super::*;
         use crate::portal::tests::bus::Bus;
 
-        // Existing Secret Service items carry this application name.
+        // Renaming either one leaves the items written under the other
+        // unread: the old one stays a name to read and move from.
         #[test]
-        fn the_secret_service_application_name_does_not_change() {
-            assert_eq!(APPLICATION, "rune");
+        fn the_secret_service_application_names_do_not_change() {
+            assert_eq!(APPLICATION, "rustcord");
+            assert_eq!(LEGACY_APPLICATION, "rune");
         }
 
         // A private bus without a Secret Service: never the person's keyring.
@@ -391,10 +426,12 @@ mod linux {
 mod tests {
     use super::*;
 
-    // Renaming either one leaves every stored account key unreadable by name.
+    // A new name leaves every stored account key unreadable by name unless
+    // the one before is among the former, where keys are read and moved from.
     #[test]
     fn the_keyring_names_of_the_local_cache_do_not_change() {
-        assert_eq!(CACHE_KEYS, "rune-cache");
+        assert_eq!(CACHE_KEYS, "rustcord-cache");
+        assert_eq!(FORMER_CACHE_KEYS, ["rune-cache"]);
     }
 
     #[test]

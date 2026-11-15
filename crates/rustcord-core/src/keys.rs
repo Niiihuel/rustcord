@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use rustcord_platform::secrets::{SecretError, SecretStore, CACHE_KEYS};
+use rustcord_platform::secrets::{Saved, SecretError, SecretStore, CACHE_KEYS, FORMER_CACHE_KEYS};
 use rustcord_storage::Key;
 
 /// Bounds a keyring that does not answer; an unlock prompt waits this long.
@@ -37,10 +37,10 @@ pub(crate) async fn fetch(
     former: Vec<String>,
 ) -> Result<Fetched, SecretError> {
     let fetch = async {
-        let saved = keyring.load(CACHE_KEYS, &account).await?;
+        let saved = load(keyring.as_ref(), &account).await?;
         let mut former_keys = Vec::new();
         for name in former {
-            if let Ok(saved) = keyring.load(CACHE_KEYS, &name).await {
+            if let Ok(saved) = load(keyring.as_ref(), &name).await {
                 let key = saved.and_then(|saved| Key::from_text(&saved.secret));
                 former_keys.push((name, key));
             }
@@ -79,11 +79,41 @@ pub(crate) async fn fetch(
         .unwrap_or(Err(SecretError::FAILED))
 }
 
+/// `account`'s key under [`CACHE_KEYS`], or under a former name of that
+/// service, from where it moves: saved under the current one, then let go
+/// of. A move that fails leaves it where it was, read from there next time.
+async fn load(keyring: &dyn SecretStore, account: &str) -> Result<Option<Saved>, SecretError> {
+    if let Some(saved) = keyring.load(CACHE_KEYS, account).await? {
+        return Ok(Some(saved));
+    }
+    for former in FORMER_CACHE_KEYS {
+        let Some(saved) = keyring.load(former, account).await? else {
+            continue;
+        };
+        if keyring
+            .save(CACHE_KEYS, account, "", "", &saved.secret)
+            .await
+            .is_ok()
+        {
+            let _ = keyring.delete(former, account).await;
+        }
+        return Ok(Some(saved));
+    }
+    Ok(None)
+}
+
+/// Forget `account`'s key, under the service's current name and its former.
 pub(crate) async fn delete(
     keyring: Arc<dyn SecretStore>,
     account: &str,
 ) -> Result<(), SecretError> {
-    tokio::time::timeout(TIMEOUT, keyring.delete(CACHE_KEYS, account))
+    let delete = async {
+        for former in FORMER_CACHE_KEYS {
+            keyring.delete(former, account).await?;
+        }
+        keyring.delete(CACHE_KEYS, account).await
+    };
+    tokio::time::timeout(TIMEOUT, delete)
         .await
         .unwrap_or(Err(SecretError::FAILED))
 }

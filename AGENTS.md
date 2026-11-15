@@ -33,8 +33,9 @@ en [limn](https://github.com/Niiihuel/limn).
   por cuenta en el llavero del sistema, nunca en disco; sin llavero, sólo
   memoria y nunca texto plano; al cerrar sesión u olvidar la cuenta se borran
   sus datos y su clave. Los nombres que identifican esos datos (proveedor en
-  `StorageIdentity`, servicio `rune-cache` del llavero) son persistentes: si
-  uno cambia, el anterior se declara en `former_storage_providers`.
+  `StorageIdentity`, servicio `rustcord-cache` del llavero) son persistentes:
+  si uno cambia, el anterior se declara (`former_storage_providers`,
+  `FORMER_CACHE_KEYS`) y lo guardado bajo él se lee y se mueve al nuevo.
 - El proveedor no oficial puede usar las rutas no documentadas de perfil
   completo y lista de miembros por suscripción, los componentes de bots
   (botones, menús, modales) y los comandos de aplicación, y el socket local
