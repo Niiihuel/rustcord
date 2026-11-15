@@ -82,44 +82,62 @@ struct Reader {
     /// Which frames to keep, and the last one previewed while sending.
     keeper: Keeper,
     connected: bool,
-    /// A GPU buffer's pixels in ordinary memory, kept from frame to frame
-    /// so nothing is allocated.
-    copy: Vec<u8>,
+    copy: Copied,
 }
 
-/// Copy `from`, a mapping of GPU memory, to `to`, as long. That memory is
-/// write-combined: nothing read from it is cached, so every ordinary load
-/// fetches its line from RAM again, and reading a 2880×1800 screen pixel by
-/// pixel took 330 ms. A streaming load (MOVNTDQA) fetches a line once for
-/// the four that read it: 5 ms for that screen, 50 with `memcpy` (Mesa's
-/// `util_streaming_load_memcpy` does the same).
-fn uncached_copy(from: &[u8], to: &mut [u8]) {
-    #[cfg(target_arch = "x86_64")]
-    if std::arch::is_x86_feature_detected!("sse4.1") {
-        // SAFETY: the processor has SSE4.1.
-        return unsafe { stream_copy(from, to) };
-    }
-    to.copy_from_slice(from);
+/// What reading a source's GPU buffers keeps from frame to frame: the rows
+/// copied out of one, so nothing is allocated; the buffers as they stay
+/// mapped; and what the last frame's sync calls and mapping took.
+#[derive(Default)]
+struct Copied {
+    bytes: Vec<u8>,
+    maps: Vec<Kept>,
+    mapping: Duration,
 }
 
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "sse4.1")]
-unsafe fn stream_copy(from: &[u8], to: &mut [u8]) {
-    use std::arch::x86_64::{_mm_storeu_si128, _mm_stream_load_si128};
-    assert_eq!(from.len(), to.len());
-    // The load takes only addresses that are multiples of 16: the bytes
-    // before the first and after the last are copied as any others.
-    let head = from.as_ptr().align_offset(16).min(from.len());
-    let tail = head + (from.len() - head) / 16 * 16;
-    to[..head].copy_from_slice(&from[..head]);
-    for at in (head..tail).step_by(16) {
-        // SAFETY: `at + 16 <= tail`, within both; `from + at` is aligned.
-        unsafe {
-            let lane = _mm_stream_load_si128(from.as_ptr().add(at).cast());
-            _mm_storeu_si128(to.as_mut_ptr().add(at).cast(), lane);
+/// One of a source's GPU buffers, mapped: the file it is (two descriptors
+/// may be one buffer, and one number two buffers in turn) and the part of
+/// it mapped.
+struct Kept {
+    file: (u64, u64),
+    at: usize,
+    len: usize,
+    mapped: Mapped,
+}
+
+/// A source's buffers stay mapped, at most this many: mapping one again
+/// for each frame faults every page of it in again (5,000 for a 2880×1800
+/// screen), which a busy process pays several times over.
+const KEPT: usize = 16;
+
+/// `len` bytes of the buffer `fd` is, from `at`: its mapping among `maps`,
+/// made and kept on its first frame.
+fn mapping(maps: &mut Vec<Kept>, fd: std::os::fd::RawFd, at: usize, len: usize) -> Option<&Mapped> {
+    // SAFETY: `fstat` fills the struct it is given, zeroed before.
+    let file = unsafe {
+        let mut stat: libc::stat = std::mem::zeroed();
+        (libc::fstat(fd, &mut stat) == 0).then_some((stat.st_dev as u64, stat.st_ino as u64))
+    }?;
+    let found = maps
+        .iter()
+        .position(|kept| (kept.file, kept.at, kept.len) == (file, at, len));
+    let index = match found {
+        Some(index) => index,
+        None => {
+            // More than a source keeps: the oldest is one it let go of.
+            if maps.len() >= KEPT {
+                maps.remove(0);
+            }
+            maps.push(Kept {
+                file,
+                at,
+                len,
+                mapped: Mapped::new(fd, at, len)?,
+            });
+            maps.len() - 1
         }
-    }
-    to[tail..].copy_from_slice(&from[tail..]);
+    };
+    Some(&maps[index].mapped)
 }
 
 pub(super) fn read(
@@ -250,6 +268,8 @@ pub(super) fn read(
                 if id != spa::param::ParamType::Format.as_raw() {
                     return;
                 }
+                // Other buffers come with another format.
+                reader.copy.maps.clear();
                 reader.format = param.and_then(|param| {
                     let (_, subtype) = spa::param::format_utils::parse_format(param).ok()?;
                     let jpeg = subtype == MediaSubtype::Mjpg;
@@ -298,11 +318,15 @@ pub(super) fn read(
                 };
                 let now = Instant::now();
                 last_frame.set(Some(now));
-                let memory = buffer.datas_mut().first().map(|data| data.type_());
+                let memory = buffer.datas_mut().first_mut().map(|data| {
+                    let mapped = data.data().is_some_and(|bytes| bytes.len() > 1);
+                    (data.type_(), mapped)
+                });
                 lock(&shared.stats).memory = match memory {
-                    Some(spa::buffer::DataType::DmaBuf) => "dmabuf",
-                    Some(spa::buffer::DataType::MemFd) => "memfd",
-                    Some(spa::buffer::DataType::MemPtr) => "memptr",
+                    Some((spa::buffer::DataType::DmaBuf, true)) => "dmabuf (mapped by PipeWire)",
+                    Some((spa::buffer::DataType::DmaBuf, false)) => "dmabuf",
+                    Some((spa::buffer::DataType::MemFd, _)) => "memfd",
+                    Some((spa::buffer::DataType::MemPtr, _)) => "memptr",
                     _ => "other",
                 };
                 // Dropping the buffer queues it back: skipped frames cost nothing.
@@ -315,6 +339,10 @@ pub(super) fn read(
                 shared.deliver(keeper, now, |max| {
                     frame((*format)?, buffer.datas_mut(), max, copy)
                 });
+                let mapping = std::mem::take(&mut copy.mapping);
+                if !mapping.is_zero() {
+                    lock(&shared.stats).mapping_micros += mapping.as_micros() as u64;
+                }
             }
         })
         .register()
@@ -555,7 +583,7 @@ fn frame(
     format: Format,
     datas: &mut [spa::buffer::Data],
     max: (u32, u32),
-    copy: &mut Vec<u8>,
+    copy: &mut Copied,
 ) -> Option<super::Frame> {
     if format.jpeg {
         let data = datas.first_mut()?;
@@ -571,8 +599,6 @@ fn frame(
     };
     if format.linear {
         let data = datas.first_mut()?;
-        // A GPU buffer is slow to read where it is (`uncached_copy`): its
-        // rows are copied out first, and read from the copy.
         if data.type_() == spa::buffer::DataType::DmaBuf {
             let chunk = data.chunk();
             let offset = chunk.offset() as usize;
@@ -581,30 +607,47 @@ fn frame(
                 .filter(|stride| *stride >= bytes_per_row)
                 .unwrap_or(bytes_per_row);
             let len = stride.checked_mul(format.height as usize)?;
-            // A source's GPU buffer may not be mapped by PipeWire (niri marks
-            // none mappable, and says its size is 1): mapped here for this frame.
-            // shortcut: mapped again each frame, 2 ms at 2880×1800; cache by fd if it shows.
-            let own = match data.data().is_some_and(|bytes| bytes.len() > 1) {
-                true => None,
-                false => Some(Mapped::new(
-                    data.fd(),
-                    data.as_raw().mapoffset as usize,
-                    len.checked_add(offset)?,
-                )?),
-            };
-            let bytes: &[u8] = match &own {
-                Some(own) => own.bytes(),
-                None => data.data()?,
-            };
-            let rows = bytes.get(offset..)?;
-            let rows = &rows[..len.min(rows.len())];
-            copy.resize(rows.len(), 0);
-            uncached_copy(rows, copy);
-            let plane = Plane {
-                bytes: copy,
-                stride,
-            };
-            return convert_within(format.pixels, format.width, format.height, &[plane], max);
+            // Between DMA-BUF's sync calls, so what the GPU drew is seen: the
+            // first waits for it, and has the driver put the buffer where
+            // the CPU reads it (amdgpu moves it out of video memory).
+            let started = Instant::now();
+            let fd = data.fd();
+            sync(fd, DMA_BUF_SYNC_READ);
+            let synced = started.elapsed();
+            let Copied {
+                bytes: rows_copy,
+                maps,
+                ..
+            } = &mut *copy;
+            let frame = (|| {
+                // The source's own mapping, or Rustcord's when it gives none
+                // (niri marks no buffer mappable, and says its size is 1).
+                let bytes: &[u8] = match data.data().is_some_and(|bytes| bytes.len() > 1) {
+                    true => data.data()?,
+                    false => {
+                        let whole = len.checked_add(offset)?;
+                        mapping(maps, fd, data.as_raw().mapoffset as usize, whole)?.bytes()
+                    }
+                };
+                let plane = Plane {
+                    bytes: bytes.get(offset..)?,
+                    stride,
+                };
+                // A GPU buffer is slow to read where it is: its rows go
+                // through ordinary memory as they are read.
+                super::convert_uncached(
+                    format.pixels,
+                    format.width,
+                    format.height,
+                    &plane,
+                    max,
+                    rows_copy,
+                )
+            })();
+            let read = started.elapsed();
+            sync(fd, DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END);
+            copy.mapping += (synced + (started.elapsed() - read)).max(Duration::from_micros(1));
+            return frame;
         }
     }
     let (first, rest) = datas.split_first_mut()?;
@@ -654,14 +697,20 @@ fn packed_chroma(
         .collect()
 }
 
-/// A buffer's file mapped for reading, between DMA-BUF's sync calls so the
-/// GPU's writes are seen; unmapped when dropped.
+/// A buffer's file mapped for reading; unmapped when dropped. It keeps the
+/// buffer alive, whatever becomes of the descriptor it was made from.
 struct Mapped {
     address: *mut libc::c_void,
     len: usize,
     /// From the page-aligned start of the mapping to the buffer's `mapoffset`.
     skip: usize,
-    fd: std::os::fd::RawFd,
+}
+
+/// Tell the kernel a CPU read of the buffer `fd` is starts or ends; a file
+/// that is not a DMA-BUF refuses it, harmlessly.
+fn sync(fd: std::os::fd::RawFd, flags: u64) {
+    // SAFETY: the ioctl reads one u64 (`struct dma_buf_sync`) from it.
+    let _ = unsafe { libc::ioctl(fd, DMA_BUF_IOCTL_SYNC, &flags) };
 }
 
 /// `DMA_BUF_IOCTL_SYNC` (`_IOW('b', 0, struct dma_buf_sync)`) and its flags.
@@ -682,8 +731,8 @@ impl Mapped {
         let len = len.checked_add(skip)?;
         let offset = libc::off_t::try_from(start).ok()?;
         // SAFETY: a read-only shared mapping of `len` bytes of the buffer's
-        // file, which PipeWire keeps open while the buffer is dequeued; it
-        // is only read through `bytes` and unmapped on drop.
+        // file, which the mapping itself keeps alive; it is only read
+        // through `bytes` and unmapped on drop.
         let address = unsafe {
             libc::mmap(
                 std::ptr::null_mut(),
@@ -697,22 +746,7 @@ impl Mapped {
         if address == libc::MAP_FAILED {
             return None;
         }
-        let mapped = Self {
-            address,
-            len,
-            skip,
-            fd,
-        };
-        mapped.sync(DMA_BUF_SYNC_READ);
-        Some(mapped)
-    }
-
-    /// Tell the kernel a CPU read starts or ends; a file that is not a
-    /// DMA-BUF refuses it, harmlessly.
-    fn sync(&self, flags: u64) {
-        let sync = flags;
-        // SAFETY: the ioctl reads one u64 (`struct dma_buf_sync`) from it.
-        let _ = unsafe { libc::ioctl(self.fd, DMA_BUF_IOCTL_SYNC, &sync) };
+        Some(Self { address, len, skip })
     }
 
     fn bytes(&self) -> &[u8] {
@@ -725,7 +759,6 @@ impl Mapped {
 
 impl Drop for Mapped {
     fn drop(&mut self) {
-        self.sync(DMA_BUF_SYNC_READ | DMA_BUF_SYNC_END);
         // SAFETY: the mapping `new` made, unmapped once.
         unsafe { libc::munmap(self.address, self.len) };
     }
@@ -889,7 +922,13 @@ mod tests {
             .expect("RUSTCORD_TEST_PW_NODE");
         let socket = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR") + "/pipewire-0";
         let remote = std::os::unix::net::UnixStream::connect(socket).expect("PipeWire");
-        let every = Duration::from_secs(1) / 30;
+        // `RUSTCORD_TEST_FPS=1` keeps a frame a second, as a screen that
+        // barely changes gives: each one finds the processor asleep.
+        let fps = std::env::var("RUSTCORD_TEST_FPS")
+            .ok()
+            .and_then(|fps| fps.parse().ok())
+            .unwrap_or(30);
+        let every = Duration::from_secs(1) / fps;
         let shared = Arc::new(Shared {
             sending: Some(((1280, 720), every)),
             ..Shared::new()
@@ -914,18 +953,45 @@ mod tests {
         assert!(stats.kept > 0 && each * 2 < every, "{stats:?}");
     }
 
+    /// A source's buffers stay mapped: one mapping a buffer, whatever
+    /// descriptor names it; memfds stand in for DMA-BUFs.
     #[test]
-    fn a_copy_out_of_a_gpu_buffer_is_whole_from_any_address() {
-        let from: Vec<u8> = (0..200u32).map(|at| (at * 7) as u8).collect();
-        // Every alignment of the first byte, and lengths under a lane.
-        for start in 0..17 {
-            for len in [0, 1, 15, 16, 17, 64, 150] {
-                let from = &from[start..start + len];
-                let mut to = vec![0; len];
-                uncached_copy(from, &mut to);
-                assert_eq!(to, from, "{start} {len}");
-            }
+    fn a_buffer_stays_mapped_from_frame_to_frame() {
+        use std::io::Write;
+        use std::os::fd::{AsRawFd, FromRawFd};
+        let file = |bytes: &[u8]| {
+            // SAFETY: a new anonymous file, owned by the `File` made of it.
+            let mut file = unsafe {
+                let fd = libc::memfd_create(c"frame".as_ptr(), 0);
+                assert!(fd >= 0);
+                std::fs::File::from_raw_fd(fd)
+            };
+            file.write_all(bytes).unwrap();
+            file
+        };
+        let (one, other) = (file(&[1; 8]), file(&[2; 8]));
+        let mut maps = Vec::new();
+        let at = |maps: &mut Vec<Kept>, fd| mapping(maps, fd, 0, 8).map(|map| map.bytes().as_ptr());
+        let first = at(&mut maps, one.as_raw_fd()).expect("mapped");
+        assert_eq!(at(&mut maps, one.as_raw_fd()), Some(first), "kept");
+        // The same buffer under another descriptor is the same mapping.
+        let again = one.try_clone().unwrap();
+        assert_eq!(at(&mut maps, again.as_raw_fd()), Some(first));
+        assert_eq!(maps.len(), 1);
+        // Another buffer is another mapping, and so is another part of one.
+        assert_ne!(at(&mut maps, other.as_raw_fd()), Some(first));
+        assert_eq!(
+            mapping(&mut maps, other.as_raw_fd(), 0, 8).unwrap().bytes(),
+            &[2; 8]
+        );
+        assert!(mapping(&mut maps, one.as_raw_fd(), 0, 4).is_some());
+        assert_eq!(maps.len(), 3);
+        assert!(mapping(&mut maps, -1, 0, 8).is_none());
+        // No more than a source keeps: the oldest goes.
+        for _ in 0..KEPT + 4 {
+            assert!(mapping(&mut maps, file(&[3; 8]).as_raw_fd(), 0, 8).is_some());
         }
+        assert_eq!(maps.len(), KEPT);
     }
 
     #[test]

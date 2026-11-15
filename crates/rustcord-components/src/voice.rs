@@ -644,6 +644,19 @@ fn over_button_at(
     enabled: bool,
     look: &Look,
 ) -> Element {
+    over_button_in(id, glyph, hint, fill, OVER_INK, enabled, look)
+}
+
+/// [`over_button_at`] with its glyph in `ink`.
+fn over_button_in(
+    id: impl Into<String>,
+    glyph: Icon,
+    hint: &str,
+    fill: Color,
+    ink: Color,
+    enabled: bool,
+    look: &Look,
+) -> Element {
     let hover = if fill == OVER {
         OVER_HOVER
     } else {
@@ -660,8 +673,8 @@ fn over_button_at(
         })
         .width(OVER_BUTTON)
         .radius(RadiusRole::Card)
-        .ink(OVER_INK)
-        .hover_ink(OVER_INK)
+        .ink(ink)
+        .hover_ink(ink)
         .tooltip(hint)
         .accessibility_label(hint);
     let button = if enabled {
@@ -821,25 +834,30 @@ fn preview_tile(view: &Preview, size: Size, compact: bool, look: &Look) -> Eleme
     .accessibility_label(view.title.clone())
 }
 
-/// The account's own stream's card over its still: «EN VIVO», its title, who
-/// sees it and a red button to stop (Discord's card of the same).
+/// What lies over the account's own stream's card, as over the official
+/// client's tile: its size, rate and «EN VIVO» 8 from the top right; 12
+/// from the bottom, the screen's glyph and the name at the left and the way
+/// to stop it at the right, there while the pointer is over the card.
 fn own_over(view: &Preview, title: Element, look: &Look) -> Element {
-    // As the official client's tile: its size, rate and «EN VIVO» at the
-    // top right, the screen's glyph and the name at the bottom left; the way
-    // to stop it at the bottom right, as an icon.
-    let stop = over_button(
+    // Discord's `stopStreamForeground`: its `--red-400` on a tile's button.
+    const STOP_INK: Color = Color::rgb(0xDA, 0x3E, 0x44);
+    let stop = over_button_in(
         view.stop.0.clone(),
         Icon::Custom(SCREEN_STOP),
         t(view.stop.1),
-        look.danger,
+        OVER,
+        STOP_INK,
+        true,
         look,
-    );
+    )
+    .reveal_on_hover(format!("{}:shown", view.stop.0));
+    let foot = Element::row(vec![title, Element::spacer().flex(1.0), stop]).gap(8.0);
     Element::column(vec![
         Element::row(vec![Element::spacer().flex(1.0), tile_live(view, look)]),
         Element::spacer().flex(1.0),
-        Element::row(vec![title, Element::spacer().flex(1.0), stop]).gap(8.0),
+        Element::column(vec![foot]).padding(4.0),
     ])
-    .padding(12.5)
+    .padding(8.0)
 }
 
 /// What a stream over shows, centred on its tile `width` wide, with no
@@ -8017,6 +8035,17 @@ mod tests {
             painted.contains(&"1080P".to_owned()) && painted.contains(&"EN VIVO".to_owned()),
             "{painted:?}"
         );
+        // The way to stop it is there while the pointer is over the card, as
+        // the official client's: at rest its glyph is laid out, clear.
+        let stop = laid.commands.iter().find_map(|command| match command {
+            limn::DrawCommand::Icon {
+                icon: Icon::Custom(SCREEN_STOP),
+                tint,
+                ..
+            } => Some(tint.a),
+            _ => None,
+        });
+        assert_eq!(stop, Some(0));
         // Without a frame yet, the card still stands with its button.
         let waiting = Preview {
             frame: None,

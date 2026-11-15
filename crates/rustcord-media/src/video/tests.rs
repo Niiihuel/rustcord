@@ -96,6 +96,42 @@ fn frames_the_mapping_does_not_hold_are_refused() {
 }
 
 #[test]
+fn a_copy_out_of_a_gpu_buffer_is_whole_from_any_address() {
+    let from: Vec<u8> = (0..200u32).map(|at| (at * 7) as u8).collect();
+    // Every alignment of the first byte, and lengths under a lane.
+    for start in 0..17 {
+        for len in [0, 1, 15, 16, 17, 64, 150] {
+            let from = &from[start..start + len];
+            let mut to = vec![0; len];
+            uncached_copy(from, &mut to);
+            assert_eq!(to, from, "{start} {len}");
+        }
+    }
+}
+
+#[test]
+fn a_gpu_buffer_read_row_by_row_gives_the_same_picture() {
+    // 6×4 BGRx with 8 bytes of padding a row, every byte its own.
+    let (width, height, stride) = (6usize, 4usize, 32usize);
+    let bgrx: Vec<u8> = (0..stride * height)
+        .map(|at| (at * 5 % 251) as u8)
+        .collect();
+    let source = plane(&bgrx, stride);
+    let mut scratch = Vec::new();
+    // Smaller, and as it is: the same as from ordinary memory.
+    for max in [(3, 2), (4, 4), (64, 64)] {
+        let plain = convert_within(Pixels::Bgr4, 6, 4, &[plane(&bgrx, stride)], max).unwrap();
+        let read = convert_uncached(Pixels::Bgr4, 6, 4, &source, max, &mut scratch).unwrap();
+        assert_eq!(read, plain, "{max:?}");
+    }
+    assert_eq!((width, height), (6, 4));
+    // Another layout, or a plane too short, is not read.
+    assert!(convert_uncached(Pixels::Nv12, 6, 4, &source, (64, 64), &mut scratch).is_none());
+    let short = plane(&bgrx[..stride * 2], stride);
+    assert!(convert_uncached(Pixels::Bgr4, 6, 4, &short, (64, 64), &mut scratch).is_none());
+}
+
+#[test]
 fn a_smaller_picture_is_the_mean_of_what_it_covers_so_thin_lines_stay() {
     // 5×5 BGRx, white with one black row and one black column, to 2×2: the
     // row and the column are in no pixel taken alone (0 and 2 of each five).

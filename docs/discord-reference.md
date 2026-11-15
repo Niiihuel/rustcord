@@ -1221,6 +1221,17 @@ Scrolled up, the client shows a round 36 button with an arrow, 16 from the
 right and the bottom, and a centered pill when older messages are loaded
 (Rustcord's is one labelled blurple button).
 
+**A tile's overlay.** What lies over a tile is inset 12 (4 on a small
+one) and fades with `opacity 0.2s ease-in-out`: the name tag at the bottom
+left (a 16 px glyph, 4 before the name), the buttons at the bottom right, 8
+apart, there only while the pointer is over the tile or one has the focus
+(`hideWhenInactive`). The quality and «EN VIVO» are apart from it, 8 from
+the top and the right. On the account's own stream the button stops it: a
+24 px glyph in `--red-400` `#da3e44` on a tile's button, not a red button.
+Its picture plays as it is captured; Rustcord's card showed a still made
+every five seconds until 0.2.10. The pill says the rate chosen («720P 30
+FPS»), not the frames going out, which are fewer while the screen is still.
+
 **Sidebar and header.** A channel's row and a voice user's highlight have
 radius 8; a voice user's name and marks are `--channels-default`; the
 «EN VIVO» pill is `--background-feedback-notification` `#d22d39`. In the

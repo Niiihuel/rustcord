@@ -61,6 +61,8 @@ struct Held {
     last: Option<Frame>,
     /// The pixels-per-point it was presented at.
     shown: Option<f32>,
+    /// The same of the screen's card in the grid, its other surface.
+    card: Option<f32>,
 }
 
 /// A decoded watched stream wakes the interface with each picture, so it is
@@ -76,12 +78,6 @@ const QUEUE: usize = 8;
 const KEY_AGAIN: Duration = Duration::from_millis(500);
 /// How often the shared screen's diagnostic line is written.
 const DIAG_EVERY: Duration = Duration::from_secs(5);
-/// The still on the account's own stream's card: made this often at most,
-/// and no larger than [`THUMB_MAX`] (a still, not live video).
-#[cfg(any(target_os = "linux", windows))]
-const THUMB_EVERY: Duration = Duration::from_secs(5);
-#[cfg(any(target_os = "linux", windows))]
-const THUMB_MAX: (u32, u32) = (320, 180);
 /// What goes to the call, frames and kilobits a second, and who encodes it.
 #[cfg(any(target_os = "linux", windows))]
 type Going = ((u32, u32), &'static str);
@@ -325,17 +321,9 @@ pub struct Video {
     /// The same for the account's camera.
     #[cfg(any(target_os = "linux", windows))]
     camera_diag: Option<(Instant, CaptureStats, EncodeStats)>,
-    /// The still of the account's own stream on its card: the one shown, when
-    /// it was asked for, and the one being made off this thread.
+    /// Whether the account's own stream's card in the grid has its picture.
     #[cfg(any(target_os = "linux", windows))]
-    own_thumb: Option<Frame>,
-    #[cfg(any(target_os = "linux", windows))]
-    own_thumb_at: Option<Instant>,
-    #[cfg(any(target_os = "linux", windows))]
-    own_thumb_making: Option<std::sync::mpsc::Receiver<Option<Frame>>>,
-    /// The density the still was last presented at.
-    #[cfg(any(target_os = "linux", windows))]
-    own_thumb_shown: Option<f32>,
+    own_card: bool,
     /// The GPU's engines the account lets encode and decode video.
     #[cfg(any(target_os = "linux", windows))]
     engines: &'static [Engine],
@@ -387,45 +375,6 @@ fn thumbnail_jpeg(frame: &rustcord_media::video::Frame) -> Option<Vec<u8>> {
         .encode_image(&rgb)
         .ok()?;
     Some(jpeg)
-}
-
-/// Whether the own stream's still is due at `now`, made at `made` (`None`
-/// before any).
-#[cfg(any(target_os = "linux", windows))]
-fn thumb_due(made: Option<Instant>, now: Instant) -> bool {
-    made.is_none_or(|made| now.duration_since(made) >= THUMB_EVERY)
-}
-
-/// The size of a still of a `width` by `height` frame: as large as fits
-/// [`THUMB_MAX`], keeping its shape, never larger than the frame.
-#[cfg(any(target_os = "linux", windows))]
-fn thumb_size(width: u32, height: u32) -> (u32, u32) {
-    let scale = (THUMB_MAX.0 as f32 / width as f32)
-        .min(THUMB_MAX.1 as f32 / height as f32)
-        .min(1.0);
-    let fit = |side: u32| ((side as f32 * scale).round() as u32).max(1);
-    (fit(width), fit(height))
-}
-
-/// The still of `frame` at [`thumb_size`]; `None` for a frame with no area.
-#[cfg(any(target_os = "linux", windows))]
-fn thumbnail_frame(frame: &Frame) -> Option<Frame> {
-    if frame.width == 0 || frame.height == 0 {
-        return None;
-    }
-    let picture = image::RgbaImage::from_raw(frame.width, frame.height, frame.rgba.clone())?;
-    let (width, height) = thumb_size(frame.width, frame.height);
-    let small = image::imageops::resize(
-        &picture,
-        width,
-        height,
-        image::imageops::FilterType::Triangle,
-    );
-    Some(Frame {
-        width,
-        height,
-        rgba: small.into_raw(),
-    })
 }
 
 /// `live` without its rate: a new count of frames a second alone asks for
@@ -654,7 +603,7 @@ impl Video {
             ui.video.streams = self.step_streams(ctx, store, laid_out, now);
             intents.extend(rustcord_ui::video_previews(ui, store, now));
             intents.extend(self.step_thumbnail(ui, store, now));
-            self.step_own_thumb(ctx, laid_out, now);
+            self.step_own_card(ctx, laid_out);
             let wanted = rustcord_ui::video_cameras(ui, store);
             ui.video.watched = self.step_cameras(ctx, &wanted, simulated(store), laid_out, now);
         }
@@ -714,50 +663,24 @@ impl Video {
         Vec::new()
     }
 
-    /// The still of the account's own stream for its card: made from the
-    /// screen's latest frame at most every [`THUMB_EVERY`], and presented
-    /// on its surface; nothing is presented while the screen is not held.
+    /// The account's own stream on its card in the grid: the screen's
+    /// newest frame as it comes, as on the stage, as the official client's
+    /// tile plays it. Only while the card is laid out: on the stage the
+    /// frame is on the stage's surface.
     #[cfg(any(target_os = "linux", windows))]
-    fn step_own_thumb(&mut self, ctx: &egui::Context, laid_out: &limn::Frame, now: Instant) {
-        use std::sync::mpsc::TryRecvError;
-        let Some(held) = self.screen.as_ref() else {
-            if self.own_thumb.take().is_some() {
+    fn step_own_card(&mut self, ctx: &egui::Context, laid_out: &limn::Frame) {
+        let card = surface(laid_out, ids::OWN_THUMB_SURFACE).is_some();
+        let Some(held) = self.screen.as_mut().filter(|_| card) else {
+            if let Some(held) = self.screen.as_mut() {
+                held.card = None;
+            }
+            if std::mem::take(&mut self.own_card) {
                 limn_egui::forget_surface(ids::OWN_THUMB_SURFACE);
             }
-            self.own_thumb_at = None;
-            self.own_thumb_making = None;
-            self.own_thumb_shown = None;
             return;
         };
-        if let Some(making) = &self.own_thumb_making {
-            match making.try_recv() {
-                Err(TryRecvError::Empty) => {}
-                Ok(thumb) => {
-                    self.own_thumb = thumb;
-                    self.own_thumb_making = None;
-                    self.own_thumb_shown = None;
-                }
-                Err(TryRecvError::Disconnected) => self.own_thumb_making = None,
-            }
-        }
-        if self.own_thumb_making.is_none() && thumb_due(self.own_thumb_at, now) {
-            if let Some(last) = held.last.clone() {
-                let (sender, receiver) = std::sync::mpsc::channel();
-                std::thread::spawn(move || {
-                    let _ = sender.send(thumbnail_frame(&last));
-                });
-                self.own_thumb_making = Some(receiver);
-                self.own_thumb_at = Some(now);
-            }
-        }
-        if let Some(thumb) = &self.own_thumb {
-            present(
-                ctx,
-                ids::OWN_THUMB_SURFACE,
-                thumb,
-                laid_out,
-                &mut self.own_thumb_shown,
-            );
+        if let Some(frame) = &held.last {
+            self.own_card |= present(ctx, ids::OWN_THUMB_SURFACE, frame, laid_out, &mut held.card);
         }
     }
 
@@ -1332,6 +1255,7 @@ fn step_one(
             encoding: None,
             last: None,
             shown: None,
+            card: None,
         }
     });
     let snapshot = held.source.snapshot();
@@ -1349,7 +1273,7 @@ fn step_one(
     }
     if let Some(frame) = held.source.take_frame() {
         held.last = Some(frame);
-        held.shown = None;
+        (held.shown, held.card) = (None, None);
     }
     let Some(frame) = &held.last else {
         return Ok((Live::Waiting, cameras));
@@ -1429,8 +1353,9 @@ fn video_line(
     format!(
         "video: encoder {}; source {}x{} {} {} at {}/{} (most {}/{}); delivered {:.1}/s, kept {:.1}/s; \
          encoded {}x{} at {:.1}/s ({:.1}/s skipped by rate control, {} key, {} refused); \
-         {:.1}/s replaced before the encoder took them; {:.1} ms converting + {:.1} ms \
-         encoding a frame; {:.0} kbit/s, encoder at {} kbit/s ({} rate changes, {} restarts)",
+         {:.1}/s replaced before the encoder took them; {:.1} ms converting ({:.1} mapping) \
+         + {:.1} ms encoding a frame; {:.0} kbit/s, encoder at {} kbit/s \
+         ({} rate changes, {} restarts)",
         engine_note(Engine::encoder, encode.engine, encode.failed, hardware),
         capture.size.0,
         capture.size.1,
@@ -1450,6 +1375,7 @@ fn video_line(
         encode.refused.saturating_sub(made.refused),
         rate(capture.replaced, before.replaced),
         average(capture.converting_micros, before.converting_micros, kept),
+        average(capture.mapping_micros, before.mapping_micros, kept),
         average(encode.encoding_micros, made.encoding_micros, encoded),
         rate(encode.bytes, made.bytes) * 8.0 / 1000.0,
         bitrate / 1000,
@@ -1517,6 +1443,7 @@ mod tests {
             delivered: 400,
             kept: 200,
             converting_micros: 245_000,
+            mapping_micros: 33_000,
             replaced: 6,
         };
         let made = EncodeStats {
@@ -1553,8 +1480,8 @@ mod tests {
             "video: encoder VA-API; source 2560x1600 BGRx memfd at 0/1 (most 60/1); delivered 60.0/s, \
              kept 30.0/s; encoded 1152x720 at 29.6/s (0.4/s skipped by rate control, \
              1 key, 0 refused); 1.0/s replaced before the encoder took them; 1.3 ms \
-             converting + 7.4 ms encoding a frame; 2400 kbit/s, encoder at 3500 kbit/s \
-             (1 rate changes, 0 restarts)"
+             converting (0.2 mapping) + 7.4 ms encoding a frame; 2400 kbit/s, \
+             encoder at 3500 kbit/s (1 rate changes, 0 restarts)"
         );
     }
 
@@ -1758,29 +1685,6 @@ mod tests {
         assert!(video.cameras[0].hardware);
         key_frame();
         video.clear();
-    }
-
-    #[cfg(any(target_os = "linux", windows))]
-    #[test]
-    fn the_own_still_is_made_at_most_every_five_seconds_and_fits_320_by_180() {
-        let start = Instant::now();
-        assert!(thumb_due(None, start));
-        assert!(!thumb_due(
-            Some(start),
-            start + Duration::from_millis(4_900)
-        ));
-        assert!(thumb_due(Some(start), start + THUMB_EVERY));
-        assert_eq!(thumb_size(1920, 1080), (320, 180));
-        assert_eq!(thumb_size(1000, 1000), (180, 180));
-        assert_eq!(thumb_size(200, 100), (200, 100));
-        let frame = Frame {
-            width: 1920,
-            height: 1080,
-            rgba: vec![0; 1920 * 1080 * 4],
-        };
-        let still = thumbnail_frame(&frame).expect("a still");
-        assert_eq!((still.width, still.height), (320, 180));
-        assert_eq!(still.rgba.len(), 320 * 180 * 4);
     }
 
     #[test]

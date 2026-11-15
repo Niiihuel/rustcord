@@ -211,6 +211,9 @@ pub struct CaptureStats {
     pub kept: u64,
     /// Time converting and scaling the kept frames, in microseconds.
     pub converting_micros: u64,
+    /// Of it, for a source in GPU buffers: the sync calls around reading
+    /// one (the first waits for what is being drawn in it) and mapping it.
+    pub mapping_micros: u64,
     /// Frames kept for sending that a newer one replaced before the
     /// encoder took them: it, or the network behind it, did not keep up.
     pub replaced: u64,
@@ -745,7 +748,7 @@ fn convert_within(
         return Some(Frame {
             width: out_w,
             height: out_h,
-            rgba: shrink(main, pixels == Pixels::Bgr4, (w, h), to),
+            rgba: shrink(main, pixels == Pixels::Bgr4, (w, h), to, None),
         });
     }
     let columns: Vec<usize> = (0..out_w as usize)
@@ -788,7 +791,17 @@ fn convert_within(
 /// as libyuv's box filter gives WebRTC a smaller screen. Taking one of them
 /// loses thin lines and frays text: a 2880×1800 screen sent at 720p kept
 /// two pixels of five.
-fn shrink(plane: &Plane, bgr: bool, from: (usize, usize), to: (usize, usize)) -> Vec<u8> {
+///
+/// With a `scratch`, the plane is memory slow to read as it is (a GPU
+/// buffer's mapping): each row goes through it ([`uncached_copy`]) as it is
+/// read, so the whole buffer is never copied first.
+fn shrink(
+    plane: &Plane,
+    bgr: bool,
+    from: (usize, usize),
+    to: (usize, usize),
+    mut scratch: Option<&mut Vec<u8>>,
+) -> Vec<u8> {
     // Where each output column and row starts in the source, and the last ends.
     let starts =
         |from: usize, to: usize| -> Vec<usize> { (0..=to).map(|at| at * from / to).collect() };
@@ -805,6 +818,14 @@ fn shrink(plane: &Plane, bgr: bool, from: (usize, usize), to: (usize, usize)) ->
         sums.fill([0; 4]);
         for sy in y[0]..y[1] {
             let row = &plane.bytes[sy * plane.stride..][..from.0 * 4];
+            let row: &[u8] = match &mut scratch {
+                Some(scratch) => {
+                    scratch.resize(row.len(), 0);
+                    uncached_copy(row, scratch);
+                    scratch
+                }
+                None => row,
+            };
             for (sum, byte) in sums[1..].as_flattened_mut().iter_mut().zip(row) {
                 *sum = sum.wrapping_add(u32::from(*byte));
             }
@@ -838,6 +859,82 @@ fn shrink(plane: &Plane, bgr: bool, from: (usize, usize), to: (usize, usize)) ->
         }
     }
     rgba
+}
+
+/// Copy `from`, a mapping of GPU memory, to `to`, as long. That memory is
+/// write-combined: nothing read from it is cached, so every ordinary load
+/// fetches its line from RAM again, and reading a 2880×1800 screen pixel by
+/// pixel took 330 ms. A streaming load (MOVNTDQA) fetches a line once for
+/// the four that read it: 5 ms for that screen, 50 with `memcpy` (Mesa's
+/// `util_streaming_load_memcpy` does the same).
+fn uncached_copy(from: &[u8], to: &mut [u8]) {
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("sse4.1") {
+        // SAFETY: the processor has SSE4.1.
+        return unsafe { stream_copy(from, to) };
+    }
+    to.copy_from_slice(from);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse4.1")]
+unsafe fn stream_copy(from: &[u8], to: &mut [u8]) {
+    use std::arch::x86_64::{_mm_storeu_si128, _mm_stream_load_si128};
+    assert_eq!(from.len(), to.len());
+    // The load takes only addresses that are multiples of 16: the bytes
+    // before the first and after the last are copied as any others.
+    let head = from.as_ptr().align_offset(16).min(from.len());
+    let tail = head + (from.len() - head) / 16 * 16;
+    to[..head].copy_from_slice(&from[..head]);
+    for at in (head..tail).step_by(16) {
+        // SAFETY: `at + 16 <= tail`, within both; `from + at` is aligned.
+        unsafe {
+            let lane = _mm_stream_load_si128(from.as_ptr().add(at).cast());
+            _mm_storeu_si128(to.as_mut_ptr().add(at).cast(), lane);
+        }
+    }
+    to[tail..].copy_from_slice(&from[tail..]);
+}
+
+/// [`convert_within`] for one plane of packed pixels in memory slow to read
+/// as it is, a GPU buffer's mapping: a smaller picture reads it a row at a
+/// time through `scratch`; one of the same size has it copied there whole.
+/// `None` for another layout, or when the plane does not hold the frame.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn convert_uncached(
+    pixels: Pixels,
+    width: u32,
+    height: u32,
+    plane: &Plane,
+    max: (u32, u32),
+    scratch: &mut Vec<u8>,
+) -> Option<Frame> {
+    let sides = 1..=MAX_SOURCE_SIDE;
+    let (w, h) = (width as usize, height as usize);
+    if !matches!(pixels, Pixels::Bgr4 | Pixels::Rgb4)
+        || !sides.contains(&width)
+        || !sides.contains(&height)
+        || !holds(plane, h, w * 4)
+    {
+        return None;
+    }
+    let (out_w, out_h) = fit(width, height, max);
+    if (out_w, out_h) != (width, height) {
+        let to = (out_w as usize, out_h as usize);
+        return Some(Frame {
+            width: out_w,
+            height: out_h,
+            rgba: shrink(plane, pixels == Pixels::Bgr4, (w, h), to, Some(scratch)),
+        });
+    }
+    let whole = &plane.bytes[..plane.stride * (h - 1) + w * 4];
+    scratch.resize(whole.len(), 0);
+    uncached_copy(whole, scratch);
+    let copied = Plane {
+        bytes: scratch,
+        stride: plane.stride,
+    };
+    convert_within(pixels, width, height, &[copied], max)
 }
 
 /// One camera's JPEG picture within `max`. A camera's MJPEG often leaves

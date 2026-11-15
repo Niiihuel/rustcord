@@ -694,8 +694,9 @@ pub(crate) fn previews(ui: &Ui, store: &Store) -> Vec<Preview> {
             title: t("Tu pantalla").into(),
             waiting: t("Esperando al sistema…").into(),
             frame: ui.video.screen.live.frame(),
-            // What the share sends, as its note says.
-            fps: ui.video.screen.sent.map(|(fps, _)| fps),
+            // The rate chosen, as the official client's pill says it: what
+            // goes out, less while the screen is still, is in the note.
+            fps: Some(ui.video.quality.fps),
             stop: (ids::STOP_SCREEN.into(), t("Dejar de compartir")),
             note: screen_note(ui, store),
             actions: pause_action(store).into_iter().collect(),
@@ -714,7 +715,9 @@ pub(crate) fn previews(ui: &Ui, store: &Store) -> Vec<Preview> {
             ),
             waiting: t("Esperando al sistema…").into(),
             frame: ui.video.screen.live.frame(),
-            fps: ui.video.screen.sent.map(|(fps, _)| fps),
+            // The rate chosen, as the official client's pill says it: what
+            // goes out, less while the screen is still, is in the note.
+            fps: Some(ui.video.quality.fps),
             stop: (ids::OWN_STREAM_STOP.into(), t("Dejar de transmitir")),
             note: t("Los demás ven tu pantalla.").into(),
             actions: Vec::new(),
