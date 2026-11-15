@@ -315,12 +315,13 @@ impl Shared {
     /// A frame delivered at `now`: counted and, if `keeper` keeps it,
     /// converted by `make` within the size kept and handed to the preview
     /// and, while sending, to the encoder. A preview while sending follows
-    /// the rate sent, at most 30 a second, and is scaled to [`PREVIEW_MAX`].
+    /// the rate sent, at most 30 a second, and is scaled to [`PREVIEW_MAX`]
+    /// from what is sent: the source is read once.
     pub(crate) fn deliver(
         &self,
         keeper: &mut Keeper,
         now: Instant,
-        mut make: impl FnMut((u32, u32)) -> Option<Frame>,
+        make: impl FnOnce((u32, u32)) -> Option<Frame>,
     ) {
         lock(&self.stats).delivered += 1;
         let (max, interval) = self.capture();
@@ -346,7 +347,17 @@ impl Shared {
             let preview = if fits {
                 Some(frame.clone())
             } else {
-                make(PREVIEW_MAX)
+                let plane = Plane {
+                    bytes: &frame.rgba,
+                    stride: frame.width as usize * 4,
+                };
+                convert_within(
+                    Pixels::Rgb4,
+                    frame.width,
+                    frame.height,
+                    &[plane],
+                    PREVIEW_MAX,
+                )
             };
             if let Some(preview) = preview {
                 self.push(preview);
@@ -729,6 +740,14 @@ fn convert_within(
         return None;
     }
     let (out_w, out_h) = fit(width, height, max);
+    if matches!(pixels, Pixels::Bgr4 | Pixels::Rgb4) && (out_w, out_h) != (width, height) {
+        let to = (out_w as usize, out_h as usize);
+        return Some(Frame {
+            width: out_w,
+            height: out_h,
+            rgba: shrink(main, pixels == Pixels::Bgr4, (w, h), to),
+        });
+    }
     let columns: Vec<usize> = (0..out_w as usize)
         .map(|x| x * w / out_w as usize)
         .collect();
@@ -762,6 +781,63 @@ fn convert_within(
         height: out_h,
         rgba,
     })
+}
+
+/// A plane of packed pixels (blue first when `bgr`) of `from` size at the
+/// smaller `to`, as opaque RGBA: each pixel is the mean of those it covers,
+/// as libyuv's box filter gives WebRTC a smaller screen. Taking one of them
+/// loses thin lines and frays text: a 2880×1800 screen sent at 720p kept
+/// two pixels of five.
+fn shrink(plane: &Plane, bgr: bool, from: (usize, usize), to: (usize, usize)) -> Vec<u8> {
+    // Where each output column and row starts in the source, and the last ends.
+    let starts =
+        |from: usize, to: usize| -> Vec<usize> { (0..=to).map(|at| at * from / to).collect() };
+    let (columns, rows) = (starts(from.0, to.0), starts(from.1, to.1));
+    let widest = columns.windows(2).map(|x| x[1] - x[0]).max().unwrap_or(1);
+    let (red, blue) = if bgr { (2, 0) } else { (0, 2) };
+    // The rows one row of output covers, added up; then, from the left, all
+    // that comes before each column, so what a pixel covers is one of these
+    // less another: no pass over the source takes a branch. Wrapping, they
+    // are exact while a pixel covers under 16 million.
+    let mut sums = vec![[0u32; 4]; from.0 + 1];
+    let mut rgba = vec![255; to.0 * to.1 * 4];
+    for (y, out) in rows.windows(2).zip(rgba.chunks_exact_mut(to.0 * 4)) {
+        sums.fill([0; 4]);
+        for sy in y[0]..y[1] {
+            let row = &plane.bytes[sy * plane.stride..][..from.0 * 4];
+            for (sum, byte) in sums[1..].as_flattened_mut().iter_mut().zip(row) {
+                *sum = sum.wrapping_add(u32::from(*byte));
+            }
+        }
+        let mut before = [0u32; 4];
+        for pixel in &mut sums[1..] {
+            for (sum, before) in pixel.iter_mut().zip(&mut before) {
+                *before = before.wrapping_add(*sum);
+                *sum = *before;
+            }
+        }
+        // One over the pixels covered, with 24 fractional bits, by their
+        // width: times at most 255 of each, it fits a u32.
+        let shares: Vec<u32> = (0..=widest)
+            .map(|wide| (1 << 24) / (wide * (y[1] - y[0])).max(1) as u32)
+            .collect();
+        let mut left = sums[columns[0]];
+        for (pixel, x) in out
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(columns.windows(2))
+        {
+            let (right, share) = (sums[x[1]], shares[x[1] - x[0]]);
+            let mean = |channel: usize| {
+                let sum = right[channel].wrapping_sub(left[channel]);
+                (sum.wrapping_mul(share).wrapping_add(1 << 23) >> 24) as u8
+            };
+            *pixel = [mean(red), mean(1), mean(blue), 255];
+            left = right;
+        }
+    }
+    rgba
 }
 
 /// One camera's JPEG picture within `max`. A camera's MJPEG often leaves

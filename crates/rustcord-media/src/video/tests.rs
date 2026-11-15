@@ -96,6 +96,29 @@ fn frames_the_mapping_does_not_hold_are_refused() {
 }
 
 #[test]
+fn a_smaller_picture_is_the_mean_of_what_it_covers_so_thin_lines_stay() {
+    // 5×5 BGRx, white with one black row and one black column, to 2×2: the
+    // row and the column are in no pixel taken alone (0 and 2 of each five).
+    let mut bgrx = vec![255u8; 5 * 5 * 4];
+    for at in 0..5 {
+        for pixel in [5 + at, at * 5 + 3] {
+            bgrx[pixel * 4..pixel * 4 + 3].fill(0);
+        }
+    }
+    let frame = convert_within(Pixels::Bgr4, 5, 5, &[plane(&bgrx, 20)], (2, 2)).unwrap();
+    assert_eq!((frame.width, frame.height), (2, 2));
+    // The first covers 2×2 with two black, the last 3×3 with three.
+    assert_eq!(frame.rgba[..4], [128, 128, 128, 255]);
+    assert_eq!(frame.rgba[12..], [170, 170, 170, 255]);
+    // Colours keep their order, and a plain picture its colour.
+    let plain = [10u8, 20, 30, 0].repeat(4 * 4);
+    let frame = convert_within(Pixels::Bgr4, 4, 4, &[plane(&plain, 16)], (2, 2)).unwrap();
+    assert_eq!(frame.rgba, [30u8, 20, 10, 255].repeat(4));
+    let frame = convert_within(Pixels::Rgb4, 4, 4, &[plane(&plain, 16)], (3, 3)).unwrap();
+    assert_eq!(frame.rgba, [10u8, 20, 30, 255].repeat(9));
+}
+
+#[test]
 fn the_queue_keeps_only_the_newest_frames() {
     let queue = FrameQueue::default();
     let frame = |n: u8| Frame {

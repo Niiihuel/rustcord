@@ -23,7 +23,7 @@ use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
 use openh264::encoder::{
-    BitRate, Encoder, EncoderConfig, FrameRate, FrameType, IntraFramePeriod, Profile,
+    BitRate, Complexity, Encoder, EncoderConfig, FrameRate, FrameType, IntraFramePeriod, Profile,
     RateControlMode, UsageType,
 };
 use openh264::formats::{RgbaSliceU8, YUVBuffer};
@@ -183,11 +183,43 @@ fn encoder(settings: Settings, bitrate: u32) -> Option<Encoder> {
     };
     let config = config
         .profile(Profile::Baseline)
+        // OpenH264's own default, and so WebRTC's: the wrapper's medium
+        // takes a third longer a picture.
+        .complexity(Complexity::Low)
         .rate_control_mode(RateControlMode::Bitrate)
         .bitrate(BitRate::from_bps(bitrate))
         .max_frame_rate(FrameRate::from_hz(settings.fps.max(1) as f32))
         .intra_frame_period(IntraFramePeriod::from_num_frames(0));
-    Encoder::with_api_config(OpenH264API::from_source(), config).ok()
+    // A thread encodes a slice, and the wrapper makes more than one only
+    // by their size: one a thread, unless a picture is larger than any is.
+    let config = match threads() {
+        1 => config,
+        threads => config.max_slice_len(SLICE).num_threads(threads),
+    };
+    let mut encoder = Encoder::with_api_config(OpenH264API::from_source(), config).ok()?;
+    // Quiet from before its first picture: starting, it warns on stderr
+    // that the slices' size is also the largest NAL's, as the wrapper sets it.
+    let mut quiet: std::ffi::c_int = openh264_sys2::WELS_LOG_QUIET as _;
+    // SAFETY: OpenH264 takes its trace level before it is initialized; it
+    // reads one int, which outlives the call.
+    unsafe {
+        encoder.raw_api().set_option(
+            openh264_sys2::ENCODER_OPTION_TRACE_LEVEL,
+            (&mut quiet as *mut std::ffi::c_int).cast(),
+        );
+    }
+    Some(encoder)
+}
+
+/// The most bytes in a slice of OpenH264's.
+const SLICE: u32 = 60_000;
+
+/// How many threads OpenH264 encodes on: half the processor's, four at
+/// most. A moving 1080p30 screen took 33 ms a picture on one, with the
+/// wrapper's settings, and 13 on four; six were no faster (`encode_bench`).
+fn threads() -> u16 {
+    let processors = thread::available_parallelism().map_or(1, usize::from);
+    (processors / 2).clamp(1, 4) as u16
 }
 
 /// Change the running encoder's bit rate, as WebRTC does with OpenH264:

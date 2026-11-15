@@ -82,6 +82,44 @@ struct Reader {
     /// Which frames to keep, and the last one previewed while sending.
     keeper: Keeper,
     connected: bool,
+    /// A GPU buffer's pixels in ordinary memory, kept from frame to frame
+    /// so nothing is allocated.
+    copy: Vec<u8>,
+}
+
+/// Copy `from`, a mapping of GPU memory, to `to`, as long. That memory is
+/// write-combined: nothing read from it is cached, so every ordinary load
+/// fetches its line from RAM again, and reading a 2880×1800 screen pixel by
+/// pixel took 330 ms. A streaming load (MOVNTDQA) fetches a line once for
+/// the four that read it: 5 ms for that screen, 50 with `memcpy` (Mesa's
+/// `util_streaming_load_memcpy` does the same).
+fn uncached_copy(from: &[u8], to: &mut [u8]) {
+    #[cfg(target_arch = "x86_64")]
+    if std::arch::is_x86_feature_detected!("sse4.1") {
+        // SAFETY: the processor has SSE4.1.
+        return unsafe { stream_copy(from, to) };
+    }
+    to.copy_from_slice(from);
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "sse4.1")]
+unsafe fn stream_copy(from: &[u8], to: &mut [u8]) {
+    use std::arch::x86_64::{_mm_storeu_si128, _mm_stream_load_si128};
+    assert_eq!(from.len(), to.len());
+    // The load takes only addresses that are multiples of 16: the bytes
+    // before the first and after the last are copied as any others.
+    let head = from.as_ptr().align_offset(16).min(from.len());
+    let tail = head + (from.len() - head) / 16 * 16;
+    to[..head].copy_from_slice(&from[..head]);
+    for at in (head..tail).step_by(16) {
+        // SAFETY: `at + 16 <= tail`, within both; `from + at` is aligned.
+        unsafe {
+            let lane = _mm_stream_load_si128(from.as_ptr().add(at).cast());
+            _mm_storeu_si128(to.as_mut_ptr().add(at).cast(), lane);
+        }
+    }
+    to[tail..].copy_from_slice(&from[tail..]);
 }
 
 pub(super) fn read(
@@ -268,9 +306,14 @@ pub(super) fn read(
                     _ => "other",
                 };
                 // Dropping the buffer queues it back: skipped frames cost nothing.
-                let format = reader.format;
-                shared.deliver(&mut reader.keeper, now, |max| {
-                    frame(format?, buffer.datas_mut(), max)
+                let Reader {
+                    format,
+                    keeper,
+                    copy,
+                    ..
+                } = reader;
+                shared.deliver(keeper, now, |max| {
+                    frame((*format)?, buffer.datas_mut(), max, copy)
                 });
             }
         })
@@ -506,8 +549,14 @@ fn explain(message: &str) -> String {
     format!("{reason} (PipeWire: {message})")
 }
 
-/// One mapped buffer within `max`, if its planes hold a whole frame.
-fn frame(format: Format, datas: &mut [spa::buffer::Data], max: (u32, u32)) -> Option<super::Frame> {
+/// One mapped buffer within `max`, if its planes hold a whole frame. A GPU
+/// buffer's pixels go through `copy`.
+fn frame(
+    format: Format,
+    datas: &mut [spa::buffer::Data],
+    max: (u32, u32),
+    copy: &mut Vec<u8>,
+) -> Option<super::Frame> {
     if format.jpeg {
         let data = datas.first_mut()?;
         let chunk = data.chunk();
@@ -522,24 +571,37 @@ fn frame(format: Format, datas: &mut [spa::buffer::Data], max: (u32, u32)) -> Op
     };
     if format.linear {
         let data = datas.first_mut()?;
-        // A source's GPU buffer is not mapped by PipeWire (niri marks none
-        // mappable, and says its size is 1): map it here for this frame.
-        if data.type_() == spa::buffer::DataType::DmaBuf
-            && data.data().is_none_or(|bytes| bytes.len() <= 1)
-        {
+        // A GPU buffer is slow to read where it is (`uncached_copy`): its
+        // rows are copied out first, and read from the copy.
+        if data.type_() == spa::buffer::DataType::DmaBuf {
             let chunk = data.chunk();
             let offset = chunk.offset() as usize;
             let stride = usize::try_from(chunk.stride())
                 .ok()
                 .filter(|stride| *stride >= bytes_per_row)
                 .unwrap_or(bytes_per_row);
-            let len = stride
-                .checked_mul(format.height as usize)?
-                .checked_add(offset)?;
-            // shortcut: mapped again each frame, cheap next to the copy; cache by fd if it shows.
-            let mapped = Mapped::new(data.fd(), data.as_raw().mapoffset as usize, len)?;
+            let len = stride.checked_mul(format.height as usize)?;
+            // A source's GPU buffer may not be mapped by PipeWire (niri marks
+            // none mappable, and says its size is 1): mapped here for this frame.
+            // shortcut: mapped again each frame, 2 ms at 2880×1800; cache by fd if it shows.
+            let own = match data.data().is_some_and(|bytes| bytes.len() > 1) {
+                true => None,
+                false => Some(Mapped::new(
+                    data.fd(),
+                    data.as_raw().mapoffset as usize,
+                    len.checked_add(offset)?,
+                )?),
+            };
+            let bytes: &[u8] = match &own {
+                Some(own) => own.bytes(),
+                None => data.data()?,
+            };
+            let rows = bytes.get(offset..)?;
+            let rows = &rows[..len.min(rows.len())];
+            copy.resize(rows.len(), 0);
+            uncached_copy(rows, copy);
             let plane = Plane {
-                bytes: mapped.bytes().get(offset..)?,
+                bytes: copy,
                 stride,
             };
             return convert_within(format.pixels, format.width, format.height, &[plane], max);
@@ -810,6 +872,60 @@ mod tests {
         let mapped = Mapped::new(file.as_raw_fd(), 3, 5).expect("mapped");
         assert_eq!(mapped.bytes(), &[4, 5, 6, 7, 8]);
         assert!(Mapped::new(-1, 0, 8).is_none());
+    }
+
+    /// A real screen through the whole reader, at the quality a share
+    /// starts with, timed. `RUSTCORD_TEST_PW_NODE` names a screen cast's node
+    /// on the session's PipeWire: niri's and GNOME's
+    /// `org.gnome.Mutter.ScreenCast` give one with no dialog. In release, as
+    /// it is sent. A 2880×1800 screen in GPU buffers took 370 ms a frame, so
+    /// 2.7 frames a second went out; it takes 14 ms now.
+    #[test]
+    #[ignore = "needs a running screen cast: RUSTCORD_TEST_PW_NODE"]
+    fn a_screen_is_read_fast_enough_for_the_rate_sent() {
+        let node = std::env::var("RUSTCORD_TEST_PW_NODE")
+            .ok()
+            .and_then(|node| node.parse().ok())
+            .expect("RUSTCORD_TEST_PW_NODE");
+        let socket = std::env::var("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR") + "/pipewire-0";
+        let remote = std::os::unix::net::UnixStream::connect(socket).expect("PipeWire");
+        let every = Duration::from_secs(1) / 30;
+        let shared = Arc::new(Shared {
+            sending: Some(((1280, 720), every)),
+            ..Shared::new()
+        });
+        let reader = shared.clone();
+        let reading = std::thread::spawn(move || {
+            read(remote.into(), Some(node), VideoKind::Screen, None, &reader)
+        });
+        std::thread::sleep(Duration::from_secs(5));
+        let stats = *lock(&shared.stats);
+        let failed = matches!(
+            &*lock(&shared.state),
+            crate::video::VideoState::Ended(Some(_))
+        );
+        shared.end(None);
+        // Stopped from here, its last word is that the source went away.
+        let _ = reading.join().expect("the reader");
+        assert!(!failed, "the source failed");
+        let each = Duration::from_micros(stats.converting_micros / stats.kept.max(1));
+        eprintln!("{each:?} a frame: {stats:?}");
+        // Half of a frame's time at most: the rest is the source's.
+        assert!(stats.kept > 0 && each * 2 < every, "{stats:?}");
+    }
+
+    #[test]
+    fn a_copy_out_of_a_gpu_buffer_is_whole_from_any_address() {
+        let from: Vec<u8> = (0..200u32).map(|at| (at * 7) as u8).collect();
+        // Every alignment of the first byte, and lengths under a lane.
+        for start in 0..17 {
+            for len in [0, 1, 15, 16, 17, 64, 150] {
+                let from = &from[start..start + len];
+                let mut to = vec![0; len];
+                uncached_copy(from, &mut to);
+                assert_eq!(to, from, "{start} {len}");
+            }
+        }
     }
 
     #[test]
